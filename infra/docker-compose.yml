@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+
+  # ── React frontend ──────────────────────────────────────
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ../apps/web:/app
+      - /app/node_modules
+    environment:
+      - VITE_SUPABASE_URL=${SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - VITE_GATEWAY_URL=http://localhost:3000
+    depends_on:
+      - gateway
+
+  # ── Node.js API Gateway ─────────────────────────────────
+  gateway:
+    build:
+      context: ../apps/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    volumes:
+      - ../apps/gateway:/app
+      - /app/node_modules
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - GRAPH_ENGINE_URL=${GRAPH_ENGINE_URL}
+      - PORT=3000
+    depends_on:
+      - graph-engine
+
+  # ── Python Graph Engine ─────────────────────────────────
+  graph-engine:
+    build:
+      context: ../services/graph-engine
+      dockerfile: Dockerfile
+    ports:
+      - "${GRAPH_ENGINE_PORT:-8000}:8000"
+    volumes:
+      - ../services/graph-engine:/app
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    env_file:
+      - .env
