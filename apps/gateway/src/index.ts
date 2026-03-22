@@ -16,7 +16,7 @@ const GRAPH_ENGINE_URL = process.env.GRAPH_ENGINE_URL || 'http://localhost:8000'
 
 // ── Middlewares ───────────────────────────────────────────────────────────────
 app.use(helmet())
-app.use(cors({ origin: ['http://localhost:5173'] }))
+app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'] }))
 app.use(express.json())
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -24,23 +24,26 @@ app.use('/health',  healthRouter)
 app.use('/courses', coursesRouter)
 
 // ── Proxy → Graph Engine ──────────────────────────────────────────────────────
-// Cualquier petición a /graph/* se redirige al Graph Engine en Python
-app.use('/graph', async (req, res) => {
+// Redirige /graph/* y /mastery/* al Graph Engine en Python
+async function proxyToGraphEngine(req: express.Request, res: express.Response, prefix: string) {
     try {
-        const url = `${GRAPH_ENGINE_URL}/graph${req.path}`
+        const url = `${GRAPH_ENGINE_URL}/${prefix}${req.path}`
         const response = await axios({
-            method: req.method,
+            method:  req.method,
             url,
-            data: req.body,
+            data:    req.body,
             headers: { 'Content-Type': 'application/json' },
         })
         res.json(response.data)
     } catch (error: any) {
-        const status = error.response?.status || 500
-        const message = error.response?.data || { error: 'Graph Engine no disponible' }
+        const status  = error.response?.status || 500
+        const message = error.response?.data   || { error: 'Graph Engine no disponible' }
         res.status(status).json(message)
     }
-})
+}
+
+app.use('/graph',   (req, res) => proxyToGraphEngine(req, res, 'graph'))
+app.use('/mastery', (req, res) => proxyToGraphEngine(req, res, 'mastery'))
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use(errorHandler)
@@ -48,5 +51,5 @@ app.use(errorHandler)
 // ── Arrancar servidor ─────────────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`Gateway corriendo en http://localhost:${PORT}`)
-    console.log(`Proxy /graph/* → ${GRAPH_ENGINE_URL}`)
+    console.log(`Proxy /graph/* y /mastery/* → ${GRAPH_ENGINE_URL}`)
 })

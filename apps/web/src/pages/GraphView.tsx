@@ -1,148 +1,329 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import CytoscapeComponent from 'react-cytoscapejs'
-import { getGraph } from '../lib/api'
-import type { GraphResponse, ConceptNode } from '../types'
+import {useEffect, useState, useRef} from 'react'
+import {useParams, useNavigate} from 'react-router-dom'
+import Cytoscape from 'cytoscape'
+import {getGraph, getStudentMastery, getGaps, recordEvent} from '../lib/api'
 
-// Color del nodo según dificultad
-function difficultyColor(difficulty: number): string {
-    const colors: Record<number, string> = {
-        1: '#1D9E75', // teal   — fácil
-        2: '#5DCAA5', // teal claro
-        3: '#FAC775', // amber  — medio
-        4: '#F0997B', // coral
-        5: '#E24B4A', // rojo   — difícil
-    }
-    return colors[difficulty] || '#888780'
+const TEST_USER_ID = '0d212af1-6c27-4d7b-8fc0-64256b35e563'
+
+interface MasteryNode {
+    node_id: string
+    label: string
+    mastery_score: number
+    attempts: number
+    level: string
+}
+
+interface Gap {
+    node_id: string
+    label: string
+    severity: number
+}
+
+function masteryColor(score: number): string {
+    if (score >= 0.8) return '#1D9E75'
+    if (score >= 0.6) return '#5DCAA5'
+    if (score >= 0.3) return '#FAC775'
+    if (score > 0) return '#F0997B'
+    return '#D3D1C7'
 }
 
 export default function GraphView() {
-    const { courseId } = useParams<{ courseId: string }>()
-    const navigate     = useNavigate()
-    const [graph, setGraph]           = useState<GraphResponse | null>(null)
-    const [selected, setSelected]     = useState<ConceptNode['data'] | null>(null)
-    const [loading, setLoading]       = useState(true)
-    const [error, setError]           = useState<string | null>(null)
+    const {courseId} = useParams<{ courseId: string }>()
+    const navigate = useNavigate()
 
-    useEffect(() => {
+    const containerRef = useRef<HTMLDivElement>(null)
+    const cyRef = useRef<Cytoscape.Core | null>(null)
+    const masteryRef = useRef<Record<string, MasteryNode>>({})
+    const graphRef = useRef<any>(null)
+
+
+    const [selected, setSelected] = useState<any>(null)
+    const [summary, setSummary] = useState<any>(null)
+    const [gaps, setGaps] = useState<Gap[]>([])
+    const [loading, setLoading] = useState(true)
+
+    // ── Cargar datos ──────────────────────────────────────────────────────────
+    const loadData = async (reinitCy = false) => {
+
         if (!courseId) return
-        getGraph(courseId)
-            .then(setGraph)
-            .catch(() => setError('No se pudo cargar el grafo'))
-            .finally(() => setLoading(false))
+        try {
+            const [graphData, masteryData, gapsData] = await Promise.all([
+                getGraph(courseId),
+                getStudentMastery(TEST_USER_ID, courseId),
+                getGaps(TEST_USER_ID, courseId),
+            ])
+
+            const map: Record<string, MasteryNode> = {}
+            masteryData.nodes.forEach((n: MasteryNode) => {
+                map[n.node_id] = n
+            })
+            masteryRef.current = map
+
+            graphRef.current = graphData
+            setSummary(masteryData.summary)
+            setGaps(gapsData.gaps.slice(0, 5))
+
+            if (reinitCy) {
+                // Actualizar colores de nodos sin destruir Cytoscape
+                if (cyRef.current) {
+                    cyRef.current.nodes().forEach((node: any) => {
+                        const nodeId = node.data('id')
+                        const score = map[nodeId]?.mastery_score ?? 0
+                        node.data('mastery', score)
+                        node.style('background-color', masteryColor(score))
+                    })
+                }
+            }
+        } catch (e) {
+            console.error('Error cargando datos:', e)
+            setLoading(false)
+        } finally {
+
+            setLoading(false)
+        }
+    }
+
+    // ── Inicializar Cytoscape — solo una vez ──────────────────────────────────
+    const initCytoscape = () => {
+
+
+        if (!containerRef.current || !graphRef.current) return
+
+        // Limpiar el container manualmente antes de inicializar
+        containerRef.current.innerHTML = ''
+
+        if (cyRef.current) {
+            cyRef.current.destroy()
+            cyRef.current = null
+        }
+
+        const graph = graphRef.current
+        const mastery = masteryRef.current
+
+        const elements = [
+            ...graph.nodes.map((n: any) => {
+                const score = mastery[n.data.id]?.mastery_score ?? 0
+                return {
+                    data: {
+                        id: n.data.id,
+                        label: n.data.label,
+                        description: n.data.description,
+                        difficulty: n.data.difficulty,
+                        pagerank: n.data.pagerank,
+                        mastery: score,
+                    },
+                    position: {x: n.position.x, y: n.position.y},
+                }
+            }),
+            ...graph.edges.map((e: any) => ({data: e.data})),
+        ]
+
+        const cy = Cytoscape({
+            container: containerRef.current,
+            elements,
+            pixelRatio: 1,
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        label: 'data(label)',
+                        'background-color': (ele: any) => masteryColor(ele.data('mastery')),
+                        color: '#1E3A5F',
+                        'font-size': 12,
+                        'font-weight': 'bold',
+                        'text-valign': 'bottom',
+                        'text-margin-y': 6,
+                        width: (ele: any) => Math.max(40, 40 + ele.data('pagerank') * 400),
+                        height: (ele: any) => Math.max(40, 40 + ele.data('pagerank') * 400),
+                    },
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        width: (ele: any) => ele.data('strength') * 3,
+                        'line-color': '#D3D1C7',
+                        'target-arrow-color': '#D3D1C7',
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                        opacity: 0.7,
+                    },
+                },
+                {
+                    selector: 'node:selected',
+                    style: {
+                        'border-width': 3,
+                        'border-color': '#1E3A5F',
+                    },
+                },
+            ],
+            layout: {name: 'preset'},
+            userZoomingEnabled: true,
+            userPanningEnabled: true,
+            boxSelectionEnabled: false,
+        })
+        containerRef.current.style.width = '100%'
+        containerRef.current.style.height = '100%'
+        cy.resize()
+        cy.fit(undefined, 40)
+
+        cy.on('tap', 'node', (evt: any) => {
+            const data = evt.target.data()
+            const m = masteryRef.current[data.id]
+
+            setSelected({...data, masteryData: m})
+        })
+
+        cy.on('tap', (evt: any) => {
+            if (evt.target === cy) setSelected(null)
+        })
+
+        cyRef.current = cy
+
+    }
+    // ── Cargar datos al montar — luego inicializar Cytoscape ──────────────────
+    useEffect(() => {
+        loadData(false).then(() => {
+            setTimeout(() => {
+                initCytoscape()
+            }, 500)
+        })
+
+        return () => {
+            if (cyRef.current) {
+                cyRef.current.destroy()
+                cyRef.current = null
+            }
+        }
     }, [courseId])
 
-    if (loading) return <div style={styles.center}><p style={styles.muted}>Cargando grafo...</p></div>
-    if (error)   return <div style={styles.center}><p style={styles.error}>{error}</p></div>
-    if (!graph)  return null
+    // ── Registrar respuesta ───────────────────────────────────────────────────
+    const handleAnswer = async (correct: boolean) => {
+        if (!selected || !courseId) return
+        await recordEvent({
+            user_id: TEST_USER_ID,
+            node_id: selected.id,
+            correct,
+            course_id: courseId,
+        })
+        // Recargar mastery y actualizar colores sin destruir Cytoscape
+        await loadData(true)
+        // Actualizar el panel lateral con nuevos datos
+        const updatedMastery = masteryRef.current[selected.id]
+        setSelected((prev: any) => ({...prev, masteryData: updatedMastery}))
+        setSummary((s: any) => ({...s}))
+    }
 
-    // Elementos para Cytoscape
-    const elements = [
-        ...graph.nodes.map((n) => ({
-            data: n.data,
-            position: n.position,
-        })),
-        ...graph.edges.map((e) => ({ data: e.data })),
-    ]
+    if (loading) return <div style={s.center}><p style={s.muted}>Cargando...</p></div>
 
-    // Estilo visual de Cytoscape
-    const stylesheet: any[] = [
-        {
-            selector: 'node',
-            style: {
-                label:            'data(label)',
-                'background-color': (ele: any) => difficultyColor(ele.data('difficulty')),
-                color:            '#fff',
-                'font-size':      13,
-                'font-weight':    600,
-                'text-valign':    'center',
-                'text-halign':    'center',
-                width:            80,
-                height:           80,
-                'text-wrap':      'wrap',
-                'text-max-width': 70,
-            },
-        },
-        {
-            selector: 'edge',
-            style: {
-                width:               (ele: any) => ele.data('strength') * 4,
-                'line-color':        '#D3D1C7',
-                'target-arrow-color':'#D3D1C7',
-                'target-arrow-shape':'triangle',
-                'curve-style':       'bezier',
-            },
-        },
-        {
-            selector: 'node:selected',
-            style: {
-                'border-width': 3,
-                'border-color': '#1E3A5F',
-            },
-        },
-    ]
+    const selectedMastery = selected?.masteryData
 
     return (
-        <div style={styles.page}>
+        <div style={s.page}>
+
             {/* Header */}
-            <div style={styles.header}>
-                <button onClick={() => navigate('/dashboard')} style={styles.back}>← Volver</button>
-                <div>
-                    <h1 style={styles.title}>{graph.course.title}</h1>
-                    <p style={styles.subtitle}>
-                        {graph.summary.total_nodes} conceptos · {graph.summary.total_edges} prerequisitos
+            <div style={s.header}>
+                <button onClick={() => navigate('/dashboard')} style={s.back}>← Volver</button>
+                <div style={{flex: 1}}>
+                    <h1 style={s.title}>{graphRef.current?.course.title}</h1>
+                    <p style={s.subtitle}>
+                        {graphRef.current?.summary.total_nodes} conceptos
+                        · {graphRef.current?.summary.total_edges} prerequisitos
                     </p>
                 </div>
+                {summary && (
+                    <div style={s.statsRow}>
+                        <div style={s.stat}>
+                            <span style={s.statNum}>{Math.round(summary.avg_mastery * 100)}%</span>
+                            <span style={s.statLbl}>Mastery</span>
+                        </div>
+                        <div style={s.stat}>
+                            <span style={{...s.statNum, color: '#1D9E75'}}>{summary.mastered}</span>
+                            <span style={s.statLbl}>Dominados</span>
+                        </div>
+                        <div style={s.stat}>
+                            <span style={{...s.statNum, color: '#E24B4A'}}>{summary.not_started}</span>
+                            <span style={s.statLbl}>Sin iniciar</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            <div style={styles.body}>
-                {/* Grafo */}
-                <div style={styles.graphContainer}>
-                    <CytoscapeComponent
-                        elements={elements}
-                        stylesheet={stylesheet}
-                        style={{ width: '100%', height: '100%' }}
-                        layout={{ name: 'preset' }}
-                        cy={(cy) => {
-                            cy.on('tap', 'node', (evt) => {
-                                setSelected(evt.target.data())
-                            })
-                            cy.on('tap', (evt) => {
-                                if (evt.target === cy) setSelected(null)
-                            })
-                        }}
-                    />
-                </div>
+            <div style={s.body}>
+
+                {/* Canvas Cytoscape */}
+                <div ref={containerRef} style={{
+                    flex: 1,
+                    background: '#fff',
+                    position: 'relative',
+                    height: '100%',
+                    width: '100%',
+                    minHeight: '400px'
+                }}/>
 
                 {/* Panel lateral */}
-                <div style={styles.panel}>
+                <div style={s.panel}>
                     {selected ? (
-                        <>
-                            <h2 style={styles.panelTitle}>{selected.label}</h2>
-                            <div style={{ ...styles.diffBadge, background: difficultyColor(selected.difficulty) }}>
-                                Dificultad {selected.difficulty}/5
+                        <div style={s.nodeCard}>
+                            <h2 style={s.nodeTitle}>{selected.label}</h2>
+                            <div style={s.masteryBar}>
+                                <div style={s.masteryBarLabel}>
+                                    <span>Mastery</span>
+                                    <span style={{fontWeight: 600}}>
+                    {Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%
+                  </span>
+                                </div>
+                                <div style={s.masteryTrack}>
+                                    <div style={{
+                                        ...s.masteryFill,
+                                        width: `${(selectedMastery?.mastery_score ?? 0) * 100}%`,
+                                        background: masteryColor(selectedMastery?.mastery_score ?? 0),
+                                    }}/>
+                                </div>
+                                <div style={s.masteryLevel}>
+                                    {selectedMastery?.level ?? 'not_started'} · {selectedMastery?.attempts ?? 0} intentos
+                                </div>
                             </div>
-                            <p style={styles.panelDesc}>{selected.description}</p>
-                            <div style={styles.panelId}>
-                                <span style={styles.panelIdLabel}>ID</span>
-                                <span style={styles.panelIdVal}>{selected.id.slice(0, 8)}...</span>
+                            <p style={s.nodeDesc}>{selected.description}</p>
+                            <div style={s.answerRow}>
+                                <p style={s.answerLabel}>¿Respondiste correctamente?</p>
+                                <div style={s.btnRow}>
+                                    <button style={s.btnCorrect} onClick={() => handleAnswer(true)}>✓ Sí</button>
+                                    <button style={s.btnWrong} onClick={() => handleAnswer(false)}>✗ No</button>
+                                </div>
                             </div>
-                        </>
+                        </div>
                     ) : (
-                        <div style={styles.panelEmpty}>
-                            <p style={styles.muted}>Haz clic en un nodo para ver sus detalles</p>
+                        <div style={s.panelEmpty}>
+                            <p style={s.muted}>Haz clic en un nodo para ver su mastery</p>
                         </div>
                     )}
 
-                    {/* Leyenda */}
-                    <div style={styles.legend}>
-                        <p style={styles.legendTitle}>Dificultad</p>
-                        {[1,2,3,4,5].map((d) => (
-                            <div key={d} style={styles.legendRow}>
-                                <div style={{ ...styles.legendDot, background: difficultyColor(d) }} />
-                                <span style={styles.legendLabel}>
-                  {['Introductorio','Básico','Intermedio','Avanzado','Experto'][d-1]}
-                </span>
+                    {gaps.length > 0 && (
+                        <div style={s.gapsSection}>
+                            <h3 style={s.gapsTitle}>Gaps críticos</h3>
+                            {gaps.map((gap) => (
+                                <div key={gap.node_id} style={s.gapRow}>
+                                    <div style={s.gapLabel}>{gap.label}</div>
+                                    <div style={s.gapBar}>
+                                        <div style={{...s.gapFill, width: `${Math.min(gap.severity * 500, 100)}%`}}/>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div style={s.legend}>
+                        <p style={s.legendTitle}>Mastery</p>
+                        {[
+                            {color: '#D3D1C7', label: 'Sin iniciar'},
+                            {color: '#F0997B', label: 'Iniciado'},
+                            {color: '#FAC775', label: 'En progreso'},
+                            {color: '#5DCAA5', label: 'Aprendiendo'},
+                            {color: '#1D9E75', label: 'Dominado'},
+                        ].map((item) => (
+                            <div key={item.label} style={s.legendRow}>
+                                <div style={{...s.legendDot, background: item.color}}/>
+                                <span style={s.legendLabel}>{item.label}</span>
                             </div>
                         ))}
                     </div>
@@ -152,28 +333,104 @@ export default function GraphView() {
     )
 }
 
-const styles: Record<string, React.CSSProperties> = {
-    page:         { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8' },
-    header:       { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 24px', background: '#1E3A5F' },
-    back:         { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
-    title:        { fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 },
-    subtitle:     { fontSize: 13, color: 'rgba(255,255,255,0.6)', margin: '4px 0 0' },
-    body:         { display: 'flex', flex: 1, overflow: 'hidden' },
-    graphContainer:{ flex: 1, background: '#fff' },
-    panel:        { width: 260, background: '#fff', borderLeft: '1px solid #D3D1C7', padding: 20, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' },
-    panelTitle:   { fontSize: 18, fontWeight: 700, color: '#1E3A5F', margin: 0 },
-    diffBadge:    { display: 'inline-block', color: '#fff', fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20 },
-    panelDesc:    { fontSize: 14, color: '#5F5E5A', lineHeight: 1.6, margin: 0 },
-    panelId:      { display: 'flex', gap: 8, alignItems: 'center' },
-    panelIdLabel: { fontSize: 11, fontWeight: 600, color: '#888780', textTransform: 'uppercase' },
-    panelIdVal:   { fontSize: 11, fontFamily: 'monospace', color: '#444441' },
-    panelEmpty:   { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-    legend:       { marginTop: 'auto', borderTop: '1px solid #D3D1C7', paddingTop: 16 },
-    legendTitle:  { fontSize: 11, fontWeight: 600, color: '#888780', textTransform: 'uppercase', marginBottom: 8 },
-    legendRow:    { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 },
-    legendDot:    { width: 12, height: 12, borderRadius: '50%' },
-    legendLabel:  { fontSize: 12, color: '#5F5E5A' },
-    center:       { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
-    muted:        { color: '#888780', fontSize: 14, textAlign: 'center' },
-    error:        { color: '#A32D2D', fontSize: 14 },
+const s: Record<string, React.CSSProperties> = {
+    page: {
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        fontFamily: 'system-ui, sans-serif',
+        background: '#F1EFE8',
+        overflow: 'hidden'
+    },
+    header: {display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F'},
+    back: {
+        background: 'none',
+        border: '1px solid rgba(255,255,255,0.3)',
+        color: '#fff',
+        padding: '6px 12px',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 13
+    },
+    title: {fontSize: 18, fontWeight: 700, color: '#fff', margin: 0},
+    subtitle: {fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: '2px 0 0'},
+    statsRow: {display: 'flex', gap: 20},
+    stat: {display: 'flex', flexDirection: 'column', alignItems: 'center'},
+    statNum: {fontSize: 20, fontWeight: 700, color: '#fff'},
+    statLbl: {fontSize: 11, color: 'rgba(255,255,255,0.6)'},
+    body: {
+        display: 'flex',
+        flex: '1 1 auto',
+        overflow: 'hidden',
+        height: 'calc(100vh - 64px)'
+    },
+    graphContainer: {
+        flex: 1, background: '#fff', minHeight: 0, position: 'relative', height: '100%',
+        width: '100%'
+    },
+    panel: {
+        width: 280,
+        background: '#fff',
+        borderLeft: '1px solid #D3D1C7',
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        overflowY: 'auto'
+    },
+    nodeCard: {display: 'flex', flexDirection: 'column', gap: 10},
+    nodeTitle: {fontSize: 16, fontWeight: 700, color: '#1E3A5F', margin: 0},
+    nodeDesc: {fontSize: 13, color: '#5F5E5A', lineHeight: 1.5, margin: 0},
+    masteryBar: {display: 'flex', flexDirection: 'column', gap: 4},
+    masteryBarLabel: {display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#5F5E5A'},
+    masteryTrack: {height: 8, background: '#F1EFE8', borderRadius: 4, overflow: 'hidden'},
+    masteryFill: {height: '100%', borderRadius: 4, transition: 'width 0.3s'},
+    masteryLevel: {fontSize: 11, color: '#888780'},
+    answerRow: {borderTop: '1px solid #F1EFE8', paddingTop: 10},
+    answerLabel: {fontSize: 12, color: '#5F5E5A', margin: '0 0 8px'},
+    btnRow: {display: 'flex', gap: 8},
+    btnCorrect: {
+        flex: 1,
+        padding: '8px 0',
+        background: '#E1F5EE',
+        color: '#085041',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: 13
+    },
+    btnWrong: {
+        flex: 1,
+        padding: '8px 0',
+        background: '#FAECE7',
+        color: '#712B13',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: 13
+    },
+    gapsSection: {borderTop: '1px solid #F1EFE8', paddingTop: 12},
+    gapsTitle: {
+        fontSize: 12,
+        fontWeight: 600,
+        color: '#888780',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        margin: '0 0 8px'
+    },
+    gapRow: {display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6},
+    gapLabel: {fontSize: 12, color: '#2C2C2A', width: 80, flexShrink: 0},
+    gapBar: {flex: 1, height: 6, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden'},
+    gapFill: {height: '100%', background: '#E24B4A', borderRadius: 3},
+    legend: {marginTop: 'auto', borderTop: '1px solid #D3D1C7', paddingTop: 12},
+    legendTitle: {fontSize: 11, fontWeight: 600, color: '#888780', textTransform: 'uppercase', margin: '0 0 8px'},
+    legendRow: {display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4},
+    legendDot: {width: 10, height: 10, borderRadius: '50%', flexShrink: 0},
+    legendLabel: {fontSize: 12, color: '#5F5E5A'},
+    panelEmpty: {flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center'},
+    center: {display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'},
+    muted: {color: '#888780', fontSize: 14, textAlign: 'center'},
+    error: {color: '#A32D2D', fontSize: 14},
 }
