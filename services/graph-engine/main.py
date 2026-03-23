@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-
-from routers import health, graph, mastery
+from routers import health, graph, mastery, ai
 
 app = FastAPI(
     title="AI Learning Graph — Graph Engine",
@@ -10,8 +9,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
-# Permite que el frontend React (puerto 5173) hable con este servicio
+# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -21,10 +19,10 @@ app.add_middleware(
 )
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-app.include_router(health.router, tags=["Health"])
-app.include_router(graph.router,  prefix="/graph",   tags=["Graph"])
-app.include_router(mastery.router, prefix="/mastery", tags=["Mastery"])
-
+app.include_router(health.router,   tags=["Health"])
+app.include_router(graph.router,    prefix="/graph",   tags=["Graph"])
+app.include_router(mastery.router,  prefix="/mastery", tags=["Mastery"])
+app.include_router(ai.router,       prefix="/ai",      tags=["AI"])
 
 @app.on_event("startup")
 async def startup():
