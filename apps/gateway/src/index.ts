@@ -44,6 +44,8 @@ async function proxyToGraphEngine(req: express.Request, res: express.Response, p
 
 app.use('/graph',   (req, res) => proxyToGraphEngine(req, res, 'graph'))
 app.use('/mastery', (req, res) => proxyToGraphEngine(req, res, 'mastery'))
+app.use('/ai',      (req, res) => proxyToGraphEngine(req, res, 'ai'))
+
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use(errorHandler)
