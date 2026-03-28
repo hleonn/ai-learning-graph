@@ -31,8 +31,18 @@ export default function Dashboard() {
     return (
         <div style={styles.page}>
             <div style={styles.header}>
-                <h1 style={styles.title}>AI Learning Graph</h1>
-                <p style={styles.subtitle}>Plataforma de conocimiento adaptativo</p>
+                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+                    <div>
+                        <h1 style={styles.title}>AI Learning Graph</h1>
+                        <p style={styles.subtitle}>Plataforma de conocimiento adaptativo</p>
+                    </div>
+                    <button
+                        style={styles.generateBtn}
+                        onClick={() => navigate('/curriculum')}
+                    >
+                        + Generar currículo con AI
+                    </button>
+                </div>
             </div>
 
             <div style={styles.section}>
@@ -72,4 +82,5 @@ const styles: Record<string, React.CSSProperties> = {
     center:      { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
     muted:       { color: '#888780', fontSize: 16 },
     error:       { color: '#A32D2D', fontSize: 16 },
+    generateBtn: { background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
 }

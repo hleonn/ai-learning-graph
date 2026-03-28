@@ -29,3 +29,24 @@ export const recordEvent = (payload: {
     correct: boolean
     course_id: string
 }) => api.post('/mastery/event', payload).then((r) => r.data)
+
+// ── AI ────────────────────────────────────────────────────────────────────────
+export const getSimilarNodes = (courseId: string, nodeId: string, k = 5) =>
+    api.get(`/ai/embeddings/similar/${courseId}/${nodeId}?k=${k}`).then((r) => r.data)
+
+export const getRecommendations = (userId: string, courseId: string, k = 5) =>
+    api.get(`/ai/recommend/${userId}/${courseId}?k=${k}`).then((r) => r.data)
+
+export const generateCurriculum = (payload: {
+    title: string
+    description: string
+    domain: string
+    num_concepts: number
+}) => api.post('/ai/curriculum/generate', payload).then((r) => r.data)
+
+export const saveCurriculum = (courseId: string, payload: {
+    title: string
+    description: string
+    domain: string
+    num_concepts: number
+}) => api.post(`/ai/curriculum/save/${courseId}`, payload).then((r) => r.data)
