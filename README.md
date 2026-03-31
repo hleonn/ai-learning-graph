@@ -7,6 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?style=flat&logo=typescript)](https://typescriptlang.org)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat&logo=python)](https://python.org)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat&logo=supabase)](https://supabase.com)
+[![Google Classroom](https://img.shields.io/badge/Google%20Classroom-1.0-25A667?style=flat&logo=googleclassroom&logoColor=white)](https://classroom.google.com)
 
 ---
 
