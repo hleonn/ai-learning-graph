@@ -14,11 +14,12 @@ python-dotenv==1.0.1
 
 # Grafo
 networkx==3.2.1
+scipy
 
 # Data
 numpy==1.26.4
 pandas==2.2.1
-scipy
+
 
 # Tests
 pytest==8.1.1
@@ -26,6 +27,9 @@ httpx==0.24.1
 
 # Logging
 loguru==0.7.2
+
+# LLM
+openai
 
 # AI / Embeddings (Fase 3)
 node2vec==0.5.0
@@ -35,6 +39,3 @@ torch==2.10.0
 gensim==4.4.0
 transformers==5.3.0
 huggingface-hub==1.7.2
-
-# LLM
-openai

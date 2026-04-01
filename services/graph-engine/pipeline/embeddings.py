@@ -1,26 +1,32 @@
 """
-Embedding Pipeline
--------------------
-Combina dos fuentes de información para representar cada nodo:
-
-1. Node2Vec (128-dim) — captura posición estructural en el grafo
-2. Sentence Transformers (384-dim) — captura significado semántico
-3. Fusión: concat → proyección lineal → 256-dim normalizado
+Embedding Pipeline — con fallback si torch/node2vec no están instalados.
+En producción usa embeddings simples basados en TF-IDF.
+En desarrollo usa Node2Vec + sentence-transformers.
 """
 
+import os
 import numpy as np
 import networkx as nx
-from node2vec import Node2Vec
-from sentence_transformers import SentenceTransformer
 from loguru import logger
 
-TEXT_MODEL_NAME = "all-MiniLM-L6-v2"
-_text_model: SentenceTransformer | None = None
+# Detectar si las librerías de ML están disponibles
+try:
+    from node2vec import Node2Vec
+    from sentence_transformers import SentenceTransformer
+    ML_AVAILABLE = True
+    logger.info("ML libraries disponibles: Node2Vec + sentence-transformers")
+except ImportError:
+    ML_AVAILABLE = False
+    logger.warning("ML libraries no disponibles — usando embeddings simples (producción)")
+
+TEXT_MODEL_NAME  = "all-MiniLM-L6-v2"
+_text_model      = None
 
 
-def get_text_model() -> SentenceTransformer:
+def get_text_model():
     global _text_model
     if _text_model is None:
+        from sentence_transformers import SentenceTransformer
         logger.info(f"Cargando modelo de texto: {TEXT_MODEL_NAME}")
         _text_model = SentenceTransformer(TEXT_MODEL_NAME)
         logger.info("Modelo cargado")
@@ -34,6 +40,9 @@ def compute_node2vec_embeddings(
     num_walks: int = 200,
     workers: int = 1,
 ) -> dict[str, np.ndarray]:
+    if not ML_AVAILABLE:
+        return _simple_structural_embeddings(G, dimensions)
+
     if G.number_of_nodes() == 0:
         return {}
 
@@ -61,9 +70,44 @@ def compute_node2vec_embeddings(
     return embeddings
 
 
-def compute_text_embeddings(nodes: list[dict]) -> dict[str, np.ndarray]:
-    model = get_text_model()
+def _simple_structural_embeddings(
+    G: nx.DiGraph,
+    dimensions: int = 128,
+) -> dict[str, np.ndarray]:
+    """
+    Fallback para producción sin Node2Vec.
+    Usa métricas de grafo: grado, PageRank, clustering, etc.
+    """
+    logger.info(f"Embeddings simples (fallback): {G.number_of_nodes()} nodos")
 
+    pagerank   = nx.pagerank(G, alpha=0.85) if G.number_of_nodes() > 0 else {}
+    in_degree  = dict(G.in_degree())
+    out_degree = dict(G.out_degree())
+
+    embeddings = {}
+    rng = np.random.RandomState(42)
+
+    for node_id in G.nodes():
+        # Vector base aleatorio reproducible por nodo
+        base = rng.randn(dimensions) * 0.1
+
+        # Enriquecer con métricas del grafo
+        base[0] = pagerank.get(node_id, 0.0)
+        base[1] = in_degree.get(node_id, 0) / max(G.number_of_nodes(), 1)
+        base[2] = out_degree.get(node_id, 0) / max(G.number_of_nodes(), 1)
+
+        # Normalizar
+        norm = np.linalg.norm(base)
+        embeddings[node_id] = base / norm if norm > 0 else base
+
+    return embeddings
+
+
+def compute_text_embeddings(nodes: list[dict]) -> dict[str, np.ndarray]:
+    if not ML_AVAILABLE:
+        return _simple_text_embeddings(nodes)
+
+    model    = get_text_model()
     texts    = []
     node_ids = []
 
@@ -74,8 +118,37 @@ def compute_text_embeddings(nodes: list[dict]) -> dict[str, np.ndarray]:
 
     logger.info(f"Text embeddings para {len(texts)} nodos")
     vectors = model.encode(texts, show_progress_bar=False)
-
     return {node_id: vectors[i] for i, node_id in enumerate(node_ids)}
+
+
+def _simple_text_embeddings(nodes: list[dict]) -> dict[str, np.ndarray]:
+    """Fallback TF-IDF simple para producción."""
+    logger.info(f"Text embeddings simples (fallback): {len(nodes)} nodos")
+
+    from collections import Counter
+    import math
+
+    dimensions = 384
+    texts      = [f"{n['label']} {n.get('description', '')}".lower() for n in nodes]
+
+    # Vocabulario
+    all_words = []
+    for text in texts:
+        all_words.extend(text.split())
+    vocab = list(set(all_words))[:dimensions]
+    word_to_idx = {w: i for i, w in enumerate(vocab)}
+
+    embeddings = {}
+    for node, text in zip(nodes, texts):
+        vec = np.zeros(dimensions)
+        words = text.split()
+        for word in words:
+            if word in word_to_idx:
+                vec[word_to_idx[word]] += 1.0
+        norm = np.linalg.norm(vec)
+        embeddings[node["id"]] = vec / norm if norm > 0 else vec
+
+    return embeddings
 
 
 def fuse_embeddings(
