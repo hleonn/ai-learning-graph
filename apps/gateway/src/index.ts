@@ -7,7 +7,7 @@ import axios from 'axios'
 import healthRouter from './routes/health'
 import coursesRouter from './routes/courses'
 import { errorHandler } from './middleware/errorHandler'
-
+import authRouter from './routes/auth'
 dotenv.config()
 
 const app = express()
@@ -22,6 +22,8 @@ app.use(express.json())
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/health',  healthRouter)
 app.use('/courses', coursesRouter)
+app.use('/auth', authRouter)
+
 
 // ── Proxy → Graph Engine ──────────────────────────────────────────────────────
 // Redirige /graph/* y /mastery/* al Graph Engine en Python

@@ -7,6 +7,10 @@ export default function Dashboard() {
     const [courses, setCourses] = useState<Course[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError]     = useState<string | null>(null)
+    const userName = localStorage.getItem('user_name')
+    const userPhoto = localStorage.getItem('user_photo')
+
+
     const navigate = useNavigate()
 
     useEffect(() => {
@@ -42,6 +46,22 @@ export default function Dashboard() {
                     >
                         + Generar currículo con AI
                     </button>
+                    {userName ? (
+                        <div style={styles.userBadge}>
+                            {userPhoto && (
+                                <img src={userPhoto} style={styles.userPhoto} alt={userName} />
+                            )}
+                            <span style={styles.userName}>{userName}</span>
+                            <span style={styles.connected}>✓ Classroom</span>
+                        </div>
+                    ) : (
+                        <button
+                            style={styles.googleBtn}
+                            onClick={() => window.location.href = 'http://localhost:3000/auth/google'}
+                        >
+                            Conectar Google Classroom
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -83,4 +103,10 @@ const styles: Record<string, React.CSSProperties> = {
     muted:       { color: '#888780', fontSize: 16 },
     error:       { color: '#A32D2D', fontSize: 16 },
     generateBtn: { background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+    // googleBtn: { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+    userBadge:  { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 8, padding: '6px 12px', border: '1px solid #D3D1C7' },
+    userPhoto:  { width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' as const },
+    userName:   { fontSize: 13, fontWeight: 500, color: '#1E3A5F' },
+    connected:  { fontSize: 11, color: '#1D9E75', fontWeight: 600 },
+    googleBtn:  { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
 }

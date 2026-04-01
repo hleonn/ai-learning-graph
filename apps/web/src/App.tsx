@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import GraphView from './pages/GraphView'
 import CurriculumGenerator from './pages/CurriculumGenerator'
+import AuthCallback from './pages/AuthCallback'
 
 function App() {
     return (
@@ -11,6 +12,7 @@ function App() {
                 <Route path="/dashboard"  element={<Dashboard />} />
                 <Route path="/graph/:courseId" element={<GraphView />} />
                 <Route path="/curriculum" element={<CurriculumGenerator />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
             </Routes>
         </BrowserRouter>
     )
