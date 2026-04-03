@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 
 const router = Router()
 
-// GET /courses — lista todos los cursos
+// GET /courses
 router.get('/', async (req: Request, res: Response) => {
     const { data, error } = await supabase
         .from('courses')
@@ -17,7 +17,7 @@ router.get('/', async (req: Request, res: Response) => {
     res.json({ courses: data, total: data.length })
 })
 
-// POST /courses — crear un nuevo curso
+// POST /courses
 router.post('/', async (req: Request, res: Response) => {
     const { title, description, domain, google_classroom_id } = req.body
 
@@ -32,7 +32,6 @@ router.post('/', async (req: Request, res: Response) => {
             description: description || '',
             domain: domain || 'generic',
             google_classroom_id: google_classroom_id || null,
-            created_at: new Date().toISOString(),
         })
         .select()
 
@@ -44,7 +43,7 @@ router.post('/', async (req: Request, res: Response) => {
     res.json(data)
 })
 
-// GET /courses/:id — obtiene un curso por ID
+// GET /courses/:id
 router.get('/:id', async (req: Request, res: Response) => {
     const { id } = req.params
 

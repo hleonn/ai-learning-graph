@@ -22,6 +22,8 @@ function diffLabel(d: number): string {
     return ['', 'Introductorio', 'Básico', 'Intermedio', 'Avanzado', 'Experto'][d] ?? ''
 }
 
+const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
+
 export default function CurriculumGenerator() {
     const navigate = useNavigate()
 
@@ -64,8 +66,10 @@ export default function CurriculumGenerator() {
         if (!result) return
 
         setLoading(true)
+        setError(null)
+
         try {
-            // Crear el curso en Supabase
+            // 1. Crear el curso en Supabase via Gateway
             const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                 method: 'POST',
                 headers: {
@@ -78,16 +82,22 @@ export default function CurriculumGenerator() {
                 })
             })
 
-            const courseData = await courseResponse.json()
-            const courseId = courseData[0]?.id
-
-            if (!courseId) {
-                throw new Error('No se pudo crear el curso')
+            if (!courseResponse.ok) {
+                throw new Error(`Error creating course: ${courseResponse.status}`)
             }
 
-            // Guardar conceptos (nodos)
+            const courseData = await courseResponse.json()
+            const courseId = courseData[0]?.id || courseData.id
+
+            if (!courseId) {
+                throw new Error('No se pudo obtener el ID del curso')
+            }
+
+            console.log('Curso creado con ID:', courseId)
+
+            // 2. Guardar conceptos (nodos) en el Graph Engine
             for (const concept of result.concepts) {
-                await fetch(`https://mygateway.up.railway.app/graph/${courseId}/nodes`, {
+                const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -96,11 +106,15 @@ export default function CurriculumGenerator() {
                         difficulty: concept.difficulty,
                     })
                 })
+
+                if (!nodeResponse.ok) {
+                    console.error(`Error saving node ${concept.label}:`, await nodeResponse.text())
+                }
             }
 
-            // Guardar aristas (edges)
+            // 3. Guardar aristas (edges) en el Graph Engine
             for (const edge of result.edges) {
-                await fetch(`https://mygateway.up.railway.app/graph/${courseId}/edges`, {
+                const edgeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -109,14 +123,19 @@ export default function CurriculumGenerator() {
                         prerequisite_strength: edge.strength,
                     })
                 })
+
+                if (!edgeResponse.ok) {
+                    console.error(`Error saving edge ${edge.source}->${edge.target}:`, await edgeResponse.text())
+                }
             }
 
-            alert(`✅ Curso "${form.title}" guardado exitosamente`)
+            alert(`✅ Curso "${form.title}" guardado exitosamente con ${result.concepts.length} conceptos y ${result.edges.length} relaciones`)
             navigate('/dashboard')
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving course:', error)
-            alert('Error al guardar el curso')
+            setError(`Error al guardar: ${error.message}`)
+            alert(`Error al guardar el curso: ${error.message}`)
         } finally {
             setLoading(false)
         }
@@ -124,8 +143,6 @@ export default function CurriculumGenerator() {
 
     return (
         <div style={s.page}>
-
-            {/* Header */}
             <div style={s.header}>
                 <button onClick={() => navigate('/dashboard')} style={s.back}>← Volver</button>
                 <div>
@@ -135,14 +152,12 @@ export default function CurriculumGenerator() {
             </div>
 
             <div style={s.body}>
-
-                {/* Formulario */}
                 <div style={s.formPanel}>
                     <div style={s.field}>
                         <label style={s.label}>Título del curso *</label>
                         <input
                             style={s.input}
-                            placeholder="ej. Introduction to Python Programming"
+                            placeholder="ej. Data Science"
                             value={form.title}
                             onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                         />
@@ -205,11 +220,8 @@ export default function CurriculumGenerator() {
                     )}
                 </div>
 
-                {/* Resultado */}
                 {result && (
                     <div style={s.resultPanel}>
-
-                        {/* Stats */}
                         <div style={s.statsRow}>
                             <div style={s.statCard}>
                                 <span style={s.statNum}>{result.stats.total_concepts}</span>
@@ -225,25 +237,15 @@ export default function CurriculumGenerator() {
                                 </span>
                                 <span style={s.statLbl}>DAG válido</span>
                             </div>
-                            {result.stats.removed_edges > 0 && (
-                                <div style={s.statCard}>
-                                    <span style={{ ...s.statNum, color: '#E24B4A' }}>{result.stats.removed_edges}</span>
-                                    <span style={s.statLbl}>Ciclos removidos</span>
-                                </div>
-                            )}
                         </div>
 
-                        {/* Conceptos */}
                         <h2 style={s.sectionTitle}>Conceptos generados</h2>
                         <div style={s.conceptGrid}>
                             {result.concepts.map((c, i) => (
                                 <div key={i} style={s.conceptCard}>
                                     <div style={s.conceptTop}>
                                         <span style={s.conceptLabel}>{c.label}</span>
-                                        <span style={{
-                                            ...s.diffBadge,
-                                            background: diffColor(c.difficulty),
-                                        }}>
+                                        <span style={{ ...s.diffBadge, background: diffColor(c.difficulty) }}>
                                             {diffLabel(c.difficulty)}
                                         </span>
                                     </div>
@@ -252,7 +254,6 @@ export default function CurriculumGenerator() {
                             ))}
                         </div>
 
-                        {/* Prerequisitos */}
                         <h2 style={s.sectionTitle}>Prerequisitos inferidos</h2>
                         <div style={s.edgeList}>
                             {result.edges.map((e, i) => (
@@ -272,7 +273,6 @@ export default function CurriculumGenerator() {
                             ))}
                         </div>
 
-                        {/* Botón para guardar */}
                         <button
                             style={{ ...s.btn, marginTop: 24, background: '#1D9E75' }}
                             onClick={handleSaveCourse}

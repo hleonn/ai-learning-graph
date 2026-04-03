@@ -39,15 +39,12 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     }
 
     try {
-        // Exchange code for tokens
         const { tokens } = await oauth2Client.getToken(code)
         oauth2Client.setCredentials(tokens)
 
-        // Get user profile
         const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client })
         const { data: profile } = await oauth2.userinfo.get()
 
-        // Create session token
         const sessionToken = jwt.sign(
             {
                 email:         profile.email,
@@ -59,8 +56,6 @@ router.get('/google/callback', async (req: Request, res: Response) => {
             { expiresIn: '7d' }
         )
 
-        // Redirect to frontend with token
-        // const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
         const frontendUrl = 'https://ai-learning-graph.vercel.app'
         res.redirect(`${frontendUrl}/auth/callback?token=${sessionToken}`)
 
@@ -106,14 +101,14 @@ router.get('/classroom/courses/:courseId/students', async (req: Request, res: Re
     }
 
     try {
-        const token     = authHeader.split(' ')[1]
-        const decoded   = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
         const googleTokens = decoded.google_tokens
 
         oauth2Client.setCredentials(googleTokens)
 
-        const classroom  = google.classroom({ version: 'v1', auth: oauth2Client })
-        const { data }   = await classroom.courses.students.list({
+        const classroom = google.classroom({ version: 'v1', auth: oauth2Client })
+        const { data } = await classroom.courses.students.list({
             courseId: req.params.courseId,
         })
 
@@ -165,55 +160,95 @@ router.post('/classroom/courses/:courseId/sync', async (req: Request, res: Respo
         const supabaseKey = process.env.SUPABASE_SERVICE_KEY
 
         // Buscar curso por google_classroom_id
-        const searchResponse = await fetch(`${supabaseUrl}/rest/v1/courses?google_classroom_id=eq.${req.params.courseId}`, {
+        let searchResponse = await fetch(`${supabaseUrl}/rest/v1/courses?google_classroom_id=eq.${req.params.courseId}`, {
             headers: {
                 'apikey': supabaseKey!,
                 'Authorization': `Bearer ${supabaseKey!}`,
             }
         })
-        const existingCourses = await searchResponse.json()
+        let existingCourses = await searchResponse.json()
 
         let courseId = null
         if (Array.isArray(existingCourses) && existingCourses.length > 0) {
             courseId = existingCourses[0].id
         }
 
+        // Si no se encuentra por google_classroom_id, buscar por título (automático)
         if (!courseId) {
+            console.log(`Curso no encontrado por google_classroom_id, buscando por título...`)
+
             // Obtener información del curso desde Google Classroom
             const courseResponse = await classroom.courses.get({
                 id: req.params.courseId,
             })
             const courseData = courseResponse.data
+            const courseName = courseData.name || ''
 
-            const createResponse = await fetch(`${supabaseUrl}/rest/v1/courses`, {
-                method: 'POST',
-                headers: {
-                    'apikey': supabaseKey!,
-                    'Authorization': `Bearer ${supabaseKey!}`,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'return=representation'
-                },
-                body: JSON.stringify({
-                    title: courseData.name || 'Curso de Google Classroom',
-                    description: courseData.descriptionHeading || courseData.description || '',
-                    domain: 'generic',
-                    google_classroom_id: req.params.courseId,
-                    created_by: decoded.email,
+            if (courseName) {
+                console.log(`Buscando curso con título: "${courseName}"`)
+
+                // Buscar por título exacto en Supabase
+                const titleSearch = await fetch(`${supabaseUrl}/rest/v1/courses?title=eq.${encodeURIComponent(courseName)}`, {
+                    headers: {
+                        'apikey': supabaseKey!,
+                        'Authorization': `Bearer ${supabaseKey!}`,
+                    }
                 })
-            })
+                const titleCourses = await titleSearch.json()
 
-            if (!createResponse.ok) {
-                throw new Error(`Error creating course: ${createResponse.statusText}`)
-            }
+                if (Array.isArray(titleCourses) && titleCourses.length > 0) {
+                    courseId = titleCourses[0].id
+                    console.log(`✅ Curso encontrado por título: ${courseId}`)
 
-            const newCourses = await createResponse.json()
-            if (Array.isArray(newCourses) && newCourses.length > 0) {
-                courseId = newCourses[0].id
+                    // Actualizar automáticamente el google_classroom_id
+                    await fetch(`${supabaseUrl}/rest/v1/courses?id=eq.${courseId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'apikey': supabaseKey!,
+                            'Authorization': `Bearer ${supabaseKey!}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            google_classroom_id: req.params.courseId
+                        })
+                    })
+                    console.log(`✅ google_classroom_id actualizado automáticamente para: ${courseName}`)
+                } else {
+                    // Si no existe, crear el curso automáticamente
+                    console.log(`Curso no encontrado, creando nuevo curso: "${courseName}"`)
+
+                    const createResponse = await fetch(`${supabaseUrl}/rest/v1/courses`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': supabaseKey!,
+                            'Authorization': `Bearer ${supabaseKey!}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'return=representation'
+                        },
+                        body: JSON.stringify({
+                            title: courseName,
+                            description: courseData.descriptionHeading || courseData.description || `Curso de ${courseName}`,
+                            domain: 'generic',
+                            google_classroom_id: req.params.courseId,
+                            created_by: decoded.email,
+                        })
+                    })
+
+                    if (createResponse.ok) {
+                        const newCourses = await createResponse.json()
+                        if (Array.isArray(newCourses) && newCourses.length > 0) {
+                            courseId = newCourses[0].id
+                            console.log(`✅ Curso creado automáticamente: ${courseId}`)
+                        }
+                    }
+                }
+            } else {
+                console.error('No se pudo obtener el nombre del curso de Google Classroom')
             }
         }
 
         if (!courseId) {
-            throw new Error('No se pudo crear o encontrar el curso')
+            throw new Error('No se pudo encontrar o crear el curso')
         }
 
         // 3. Sincronizar estudiantes a Supabase
@@ -278,7 +313,7 @@ router.post('/classroom/courses/:courseId/sync', async (req: Request, res: Respo
                             role: 'student',
                             source: 'google_classroom',
                         })
-                    }).catch(() => {}) // Ignorar duplicados
+                    }).catch(() => {})
                 }
             } catch (studentError) {
                 console.error('Error syncing student:', student.email, studentError)
