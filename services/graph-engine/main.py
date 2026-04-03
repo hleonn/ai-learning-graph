@@ -10,9 +10,18 @@ app = FastAPI(
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# Permitir tanto desarrollo como producción
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://ai-learning-graph.vercel.app",
+    "https://mygateway.up.railway.app",
+    "https://ai-learning-graph-production.up.railway.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,4 +36,5 @@ app.include_router(ai.router,       prefix="/ai",      tags=["AI"])
 @app.on_event("startup")
 async def startup():
     logger.info("Graph Engine arrancando...")
-    logger.info("Docs disponibles en: http://localhost:8000/docs")
+    logger.info(f"CORS permitido para: {ALLOWED_ORIGINS}")
+    logger.info("Docs disponibles en: /docs")
