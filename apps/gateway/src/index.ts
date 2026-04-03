@@ -16,7 +16,14 @@ const GRAPH_ENGINE_URL = process.env.GRAPH_ENGINE_URL || 'http://localhost:8000'
 
 // ── Middlewares ───────────────────────────────────────────────────────────────
 app.use(helmet())
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'] }))
+app.use(cors({
+    origin: [
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'https://ai-learning-graph.vercel.app',
+    ],
+    credentials: true,
+}))
 app.use(express.json())
 
 // ── Routes ────────────────────────────────────────────────────────────────────
