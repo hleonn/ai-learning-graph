@@ -24,6 +24,90 @@ function diffLabel(d: number): string {
 
 const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
 
+// Función para calcular posiciones automáticas basadas en orden topológico
+function calculatePositions(concepts: Concept[], edges: Edge[]) {
+    // Crear un mapa de nodos y sus dependencias
+    const nodeMap = new Map<string, { label: string, inDegree: number, outDegree: number, level: number }>()
+
+    concepts.forEach(concept => {
+        nodeMap.set(concept.label, {
+            label: concept.label,
+            inDegree: 0,
+            outDegree: 0,
+            level: 0
+        })
+    })
+
+    // Calcular grados
+    edges.forEach(edge => {
+        const source = nodeMap.get(edge.source)
+        const target = nodeMap.get(edge.target)
+        if (source) source.outDegree++
+        if (target) target.inDegree++
+    })
+
+    // Calcular niveles (topological levels)
+    let level = 0
+    let remaining = new Set(nodeMap.keys())
+
+    while (remaining.size > 0) {
+        const currentLevel = Array.from(remaining).filter(label => {
+            const node = nodeMap.get(label)
+            return node && node.inDegree === 0
+        })
+
+        if (currentLevel.length === 0) break
+
+        currentLevel.forEach(label => {
+            const node = nodeMap.get(label)
+            if (node) {
+                node.level = level
+                remaining.delete(label)
+
+                // Reducir inDegree de los targets
+                edges.forEach(edge => {
+                    if (edge.source === label) {
+                        const target = nodeMap.get(edge.target)
+                        if (target) target.inDegree--
+                    }
+                })
+            }
+        })
+        level++
+    }
+
+    // Si hay nodos que quedaron sin nivel (ciclos), asignar nivel 0
+    remaining.forEach(label => {
+        const node = nodeMap.get(label)
+        if (node) node.level = 0
+    })
+
+    // Calcular posiciones basadas en nivel
+    const positions: Record<string, { x: number, y: number }> = {}
+    const nodesPerLevel: Record<number, string[]> = {}
+
+    nodeMap.forEach((node, label) => {
+        if (!nodesPerLevel[node.level]) nodesPerLevel[node.level] = []
+        nodesPerLevel[node.level].push(label)
+    })
+
+    Object.entries(nodesPerLevel).forEach(([levelStr, labels]) => {
+        const levelNum = parseInt(levelStr)
+        const y = 80 + levelNum * 100
+        const total = labels.length
+        const startX = 400 - (total - 1) * 80
+
+        labels.forEach((label, idx) => {
+            positions[label] = {
+                x: startX + idx * 160,
+                y: y
+            }
+        })
+    })
+
+    return positions
+}
+
 export default function CurriculumGenerator() {
     const navigate = useNavigate()
 
@@ -69,6 +153,10 @@ export default function CurriculumGenerator() {
         setError(null)
 
         try {
+            // Calcular posiciones automáticas
+            const positions = calculatePositions(result.concepts, result.edges)
+            console.log('Posiciones calculadas:', positions)
+
             // 1. Crear el curso en Supabase via Gateway
             const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                 method: 'POST',
@@ -95,8 +183,10 @@ export default function CurriculumGenerator() {
 
             console.log('Curso creado con ID:', courseId)
 
-            // 2. Guardar conceptos (nodos) en el Graph Engine
+            // 2. Guardar conceptos (nodos) con posiciones calculadas
             for (const concept of result.concepts) {
+                const pos = positions[concept.label] || { x: 100, y: 100 }
+
                 const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -104,6 +194,8 @@ export default function CurriculumGenerator() {
                         label: concept.label,
                         description: concept.description,
                         difficulty: concept.difficulty,
+                        position_x: pos.x,
+                        position_y: pos.y,
                     })
                 })
 
