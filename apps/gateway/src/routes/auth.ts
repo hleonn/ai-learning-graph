@@ -60,7 +60,8 @@ router.get('/google/callback', async (req: Request, res: Response) => {
         )
 
         // Redirect to frontend with token
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+        // const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+        const frontendUrl = 'https://ai-learning-graph.vercel.app'
         res.redirect(`${frontendUrl}/auth/callback?token=${sessionToken}`)
 
     } catch (error: any) {
