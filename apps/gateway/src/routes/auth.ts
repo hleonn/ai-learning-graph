@@ -47,9 +47,9 @@ router.get('/google/callback', async (req: Request, res: Response) => {
 
         const sessionToken = jwt.sign(
             {
-                email:         profile.email,
-                name:          profile.name,
-                picture:       profile.picture,
+                email: profile.email,
+                name: profile.name,
+                picture: profile.picture,
                 google_tokens: tokens,
             },
             process.env.SUPABASE_SERVICE_KEY!,
@@ -84,7 +84,7 @@ router.get('/classroom/courses', async (req: Request, res: Response) => {
 
         return res.json({
             courses: data.courses || [],
-            total:   (data.courses || []).length,
+            total: (data.courses || []).length,
         })
 
     } catch (error: any) {
@@ -113,10 +113,10 @@ router.get('/classroom/courses/:courseId/students', async (req: Request, res: Re
         })
 
         const students = (data.students || []).map((s: any) => ({
-            id:      s.userId,
-            email:   s.profile?.emailAddress,
-            name:    s.profile?.name?.fullName,
-            photo:   s.profile?.photoUrl,
+            id: s.userId,
+            email: s.profile?.emailAddress,
+            name: s.profile?.name?.fullName,
+            photo: s.profile?.photoUrl,
         }))
 
         return res.json({ students, total: students.length })
@@ -155,127 +155,80 @@ router.post('/classroom/courses/:courseId/sync', async (req: Request, res: Respo
             photo: s.profile?.photoUrl,
         }))
 
-        // 2. Verificar si el curso existe en Supabase
+        // 2. Verificar variables de entorno
         const supabaseUrl = process.env.SUPABASE_URL
         const supabaseKey = process.env.SUPABASE_SERVICE_KEY
 
-        // Buscar curso por google_classroom_id
-        let searchResponse = await fetch(`${supabaseUrl}/rest/v1/courses?google_classroom_id=eq.${req.params.courseId}`, {
+        if (!supabaseUrl || !supabaseKey) {
+            console.error('Missing Supabase environment variables')
+            return res.status(500).json({ error: 'Server configuration error' })
+        }
+
+        // 3. Obtener información del curso desde Google Classroom
+        const courseInfo = await classroom.courses.get({
+            id: req.params.courseId,
+        })
+        const courseName = courseInfo.data.name || ''
+
+        if (!courseName) {
+            return res.status(404).json({ error: 'Course name not found' })
+        }
+
+        console.log(`[Sync] Buscando curso con título: "${courseName}"`)
+
+        // 4. Buscar curso en Supabase por título
+        const searchResponse = await fetch(`${supabaseUrl}/rest/v1/courses?title=eq.${encodeURIComponent(courseName)}`, {
             headers: {
-                'apikey': supabaseKey!,
-                'Authorization': `Bearer ${supabaseKey!}`,
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
             }
         })
-        let existingCourses = await searchResponse.json()
+
+        if (!searchResponse.ok) {
+            console.error('Error searching course:', await searchResponse.text())
+            return res.status(500).json({ error: 'Error searching course in database' })
+        }
+
+        const existingCourses = await searchResponse.json()
 
         let courseId = null
         if (Array.isArray(existingCourses) && existingCourses.length > 0) {
             courseId = existingCourses[0].id
-        }
-
-        // Si no se encuentra por google_classroom_id, buscar por título (automático)
-        if (!courseId) {
-            console.log(`Curso no encontrado por google_classroom_id, buscando por título...`)
-
-            // Obtener información del curso desde Google Classroom
-            const courseResponse = await classroom.courses.get({
-                id: req.params.courseId,
+            console.log(`[Sync] Curso encontrado: ${courseId}`)
+        } else {
+            console.log(`[Sync] Curso no encontrado para título: "${courseName}"`)
+            return res.status(404).json({
+                error: 'Curso no encontrado',
+                message: `No existe un curso con título "${courseName}". Primero debes generarlo desde "Generar currículo con AI" con el MISMO título.`
             })
-            const courseData = courseResponse.data
-            const courseName = courseData.name || ''
-
-            if (courseName) {
-                console.log(`Buscando curso con título: "${courseName}"`)
-
-                // Buscar por título exacto en Supabase
-                const titleSearch = await fetch(`${supabaseUrl}/rest/v1/courses?title=eq.${encodeURIComponent(courseName)}`, {
-                    headers: {
-                        'apikey': supabaseKey!,
-                        'Authorization': `Bearer ${supabaseKey!}`,
-                    }
-                })
-                const titleCourses = await titleSearch.json()
-
-                if (Array.isArray(titleCourses) && titleCourses.length > 0) {
-                    courseId = titleCourses[0].id
-                    console.log(`✅ Curso encontrado por título: ${courseId}`)
-
-                    // Actualizar automáticamente el google_classroom_id
-                    await fetch(`${supabaseUrl}/rest/v1/courses?id=eq.${courseId}`, {
-                        method: 'PATCH',
-                        headers: {
-                            'apikey': supabaseKey!,
-                            'Authorization': `Bearer ${supabaseKey!}`,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            google_classroom_id: req.params.courseId
-                        })
-                    })
-                    console.log(`✅ google_classroom_id actualizado automáticamente para: ${courseName}`)
-                } else {
-                    // Si no existe, crear el curso automáticamente
-                    console.log(`Curso no encontrado, creando nuevo curso: "${courseName}"`)
-
-                    const createResponse = await fetch(`${supabaseUrl}/rest/v1/courses`, {
-                        method: 'POST',
-                        headers: {
-                            'apikey': supabaseKey!,
-                            'Authorization': `Bearer ${supabaseKey!}`,
-                            'Content-Type': 'application/json',
-                            'Prefer': 'return=representation'
-                        },
-                        body: JSON.stringify({
-                            title: courseName,
-                            description: courseData.descriptionHeading || courseData.description || `Curso de ${courseName}`,
-                            domain: 'generic',
-                            google_classroom_id: req.params.courseId,
-                            created_by: decoded.email,
-                        })
-                    })
-
-                    if (createResponse.ok) {
-                        const newCourses = await createResponse.json()
-                        if (Array.isArray(newCourses) && newCourses.length > 0) {
-                            courseId = newCourses[0].id
-                            console.log(`✅ Curso creado automáticamente: ${courseId}`)
-                        }
-                    }
-                }
-            } else {
-                console.error('No se pudo obtener el nombre del curso de Google Classroom')
-            }
         }
 
-        if (!courseId) {
-            throw new Error('No se pudo encontrar o crear el curso')
-        }
-
-        // 3. Sincronizar estudiantes a Supabase
+        // 5. Sincronizar estudiantes
         let syncedCount = 0
         for (const student of students) {
             try {
                 // Buscar perfil existente por email
                 const profileSearch = await fetch(`${supabaseUrl}/rest/v1/profiles?email=eq.${encodeURIComponent(student.email)}`, {
                     headers: {
-                        'apikey': supabaseKey!,
-                        'Authorization': `Bearer ${supabaseKey!}`,
+                        'apikey': supabaseKey,
+                        'Authorization': `Bearer ${supabaseKey}`,
                     }
                 })
-                const existingProfiles = await profileSearch.json()
 
+                if (!profileSearch.ok) continue
+
+                const existingProfiles = await profileSearch.json()
                 let userId = null
+
                 if (Array.isArray(existingProfiles) && existingProfiles.length > 0) {
                     userId = existingProfiles[0].id
-                }
-
-                if (!userId) {
+                } else {
                     // Crear perfil si no existe
                     const createProfileResponse = await fetch(`${supabaseUrl}/rest/v1/profiles`, {
                         method: 'POST',
                         headers: {
-                            'apikey': supabaseKey!,
-                            'Authorization': `Bearer ${supabaseKey!}`,
+                            'apikey': supabaseKey,
+                            'Authorization': `Bearer ${supabaseKey}`,
                             'Content-Type': 'application/json',
                             'Prefer': 'return=representation'
                         },
@@ -291,11 +244,8 @@ router.post('/classroom/courses/:courseId/sync', async (req: Request, res: Respo
                         const newProfiles = await createProfileResponse.json()
                         if (Array.isArray(newProfiles) && newProfiles.length > 0) {
                             userId = newProfiles[0].id
-                            syncedCount++
                         }
                     }
-                } else {
-                    syncedCount++
                 }
 
                 if (userId && courseId) {
@@ -303,8 +253,8 @@ router.post('/classroom/courses/:courseId/sync', async (req: Request, res: Respo
                     await fetch(`${supabaseUrl}/rest/v1/course_enrollments`, {
                         method: 'POST',
                         headers: {
-                            'apikey': supabaseKey!,
-                            'Authorization': `Bearer ${supabaseKey!}`,
+                            'apikey': supabaseKey,
+                            'Authorization': `Bearer ${supabaseKey}`,
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
@@ -313,7 +263,8 @@ router.post('/classroom/courses/:courseId/sync', async (req: Request, res: Respo
                             role: 'student',
                             source: 'google_classroom',
                         })
-                    }).catch(() => {})
+                    })
+                    syncedCount++
                 }
             } catch (studentError) {
                 console.error('Error syncing student:', student.email, studentError)
