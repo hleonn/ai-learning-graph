@@ -57,7 +57,8 @@ export default function Dashboard() {
                     ) : (
                         <button
                             style={styles.googleBtn}
-                            onClick={() => window.location.href = 'http://localhost:3000/auth/google'}
+                            // onClick={() => window.location.href = 'http://localhost:3000/auth/google'}
+                            onClick={() => window.location.href = 'https://mygateway.up.railway.app/auth/google'}
                         >
                             Conectar Google Classroom
                         </button>
