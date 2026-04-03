@@ -1,7 +1,7 @@
 import {useEffect, useState, useRef} from 'react'
 import {useParams, useNavigate} from 'react-router-dom'
 import Cytoscape from 'cytoscape'
-import {getGraph, getStudentMastery, getGaps, recordEvent} from '../lib/api'
+import {getGraph, getStudentMastery, getGaps, recordEvent, updateNodePosition} from '../lib/api'
 
 const TEST_USER_ID = '0d212af1-6c27-4d7b-8fc0-64256b35e563'
 
@@ -35,16 +35,35 @@ export default function GraphView() {
     const cyRef = useRef<Cytoscape.Core | null>(null)
     const masteryRef = useRef<Record<string, MasteryNode>>({})
     const graphRef = useRef<any>(null)
-
+    const saveTimeoutRef = useRef<Record<string, number>>({})
 
     const [selected, setSelected] = useState<any>(null)
     const [summary, setSummary] = useState<any>(null)
     const [gaps, setGaps] = useState<Gap[]>([])
     const [loading, setLoading] = useState(true)
 
+    // ── Guardar posición de un nodo ──────────────────────────────────────────
+    const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
+        if (!courseId) return
+
+        // Debounce: esperar a que el usuario termine de mover
+        if (saveTimeoutRef.current[nodeId]) {
+            clearTimeout(saveTimeoutRef.current[nodeId])
+        }
+
+        saveTimeoutRef.current[nodeId] = setTimeout(async () => {
+            try {
+                await updateNodePosition(courseId, nodeId, position)
+                console.log(`Posición guardada para nodo ${nodeId}:`, position)
+            } catch (error) {
+                console.error(`Error guardando posición del nodo ${nodeId}:`, error)
+            }
+            delete saveTimeoutRef.current[nodeId]
+        }, 500)
+    }
+
     // ── Cargar datos ──────────────────────────────────────────────────────────
     const loadData = async (reinitCy = false) => {
-
         if (!courseId) return
         try {
             const [graphData, masteryData, gapsData] = await Promise.all([
@@ -63,30 +82,24 @@ export default function GraphView() {
             setSummary(masteryData.summary)
             setGaps(gapsData.gaps.slice(0, 5))
 
-            if (reinitCy) {
+            if (reinitCy && cyRef.current) {
                 // Actualizar colores de nodos sin destruir Cytoscape
-                if (cyRef.current) {
-                    cyRef.current.nodes().forEach((node: any) => {
-                        const nodeId = node.data('id')
-                        const score = map[nodeId]?.mastery_score ?? 0
-                        node.data('mastery', score)
-                        node.style('background-color', masteryColor(score))
-                    })
-                }
+                cyRef.current.nodes().forEach((node: any) => {
+                    const nodeId = node.data('id')
+                    const score = map[nodeId]?.mastery_score ?? 0
+                    node.data('mastery', score)
+                    node.style('background-color', masteryColor(score))
+                })
             }
         } catch (e) {
             console.error('Error cargando datos:', e)
-            setLoading(false)
         } finally {
-
             setLoading(false)
         }
     }
 
-    // ── Inicializar Cytoscape — solo una vez ──────────────────────────────────
+    // ── Inicializar Cytoscape ──────────────────────────────────────────────────
     const initCytoscape = () => {
-
-
         if (!containerRef.current || !graphRef.current) return
 
         // Limpiar el container manualmente antes de inicializar
@@ -133,14 +146,14 @@ export default function GraphView() {
                         'font-weight': 'bold',
                         'text-valign': 'bottom',
                         'text-margin-y': 6,
-                        width: (ele: any) => Math.max(40, 40 + ele.data('pagerank') * 400),
-                        height: (ele: any) => Math.max(40, 40 + ele.data('pagerank') * 400),
+                        width: (ele: any) => Math.max(40, 40 + (ele.data('pagerank') || 0) * 400),
+                        height: (ele: any) => Math.max(40, 40 + (ele.data('pagerank') || 0) * 400),
                     },
                 },
                 {
                     selector: 'edge',
                     style: {
-                        width: (ele: any) => ele.data('strength') * 3,
+                        width: (ele: any) => (ele.data('strength') || 0.5) * 3,
                         'line-color': '#D3D1C7',
                         'target-arrow-color': '#D3D1C7',
                         'target-arrow-shape': 'triangle',
@@ -156,45 +169,46 @@ export default function GraphView() {
                     },
                 },
             ],
-            layout: {name: 'preset'},
+            layout: {
+                name: 'preset',
+                fit: true,
+                padding: 50,
+                animate: true,
+                animationDuration: 500,
+            },
             userZoomingEnabled: true,
             userPanningEnabled: true,
             boxSelectionEnabled: false,
         })
-        containerRef.current.style.width = '100%'
-        containerRef.current.style.height = '100%'
-        cy.resize()
-        cy.fit(undefined, 40)
 
+        // Evento: cuando se suelta un nodo después de arrastrar
+        cy.on('dragfree', 'node', (event: any) => {
+            const node = event.target
+            const nodeId = node.data('id')
+            const position = node.position()
+            saveNodePosition(nodeId, position)
+        })
+
+        // Evento: clic en nodo
         cy.on('tap', 'node', (evt: any) => {
             const data = evt.target.data()
             const m = masteryRef.current[data.id]
-
             setSelected({...data, masteryData: m})
         })
 
+        // Evento: clic en fondo
         cy.on('tap', (evt: any) => {
             if (evt.target === cy) setSelected(null)
         })
 
         cyRef.current = cy
 
+        // Ajustar tamaño después de un pequeño retraso
+        setTimeout(() => {
+            cy.resize()
+            cy.fit(undefined, 50)
+        }, 100)
     }
-    // ── Cargar datos al montar — luego inicializar Cytoscape ──────────────────
-    useEffect(() => {
-        loadData(false).then(() => {
-            setTimeout(() => {
-                initCytoscape()
-            }, 500)
-        })
-
-        return () => {
-            if (cyRef.current) {
-                cyRef.current.destroy()
-                cyRef.current = null
-            }
-        }
-    }, [courseId])
 
     // ── Registrar respuesta ───────────────────────────────────────────────────
     const handleAnswer = async (correct: boolean) => {
@@ -205,13 +219,34 @@ export default function GraphView() {
             correct,
             course_id: courseId,
         })
-        // Recargar mastery y actualizar colores sin destruir Cytoscape
         await loadData(true)
-        // Actualizar el panel lateral con nuevos datos
         const updatedMastery = masteryRef.current[selected.id]
         setSelected((prev: any) => ({...prev, masteryData: updatedMastery}))
         setSummary((s: any) => ({...s}))
     }
+
+    // ── Cargar datos al montar ────────────────────────────────────────────────
+    useEffect(() => {
+        const init = async () => {
+            setLoading(true)
+            await loadData(false)
+            setTimeout(() => {
+                initCytoscape()
+            }, 100)
+        }
+
+        init()
+
+        return () => {
+            if (cyRef.current) {
+                cyRef.current.destroy()
+                cyRef.current = null
+            }
+            // Limpiar timeouts pendientes
+            Object.values(saveTimeoutRef.current).forEach(timeout => clearTimeout(timeout))
+            saveTimeoutRef.current = {}
+        }
+    }, [courseId])
 
     if (loading) return <div style={s.center}><p style={s.muted}>Cargando...</p></div>
 
@@ -251,14 +286,7 @@ export default function GraphView() {
             <div style={s.body}>
 
                 {/* Canvas Cytoscape */}
-                <div ref={containerRef} style={{
-                    flex: 1,
-                    background: '#fff',
-                    position: 'relative',
-                    height: '100%',
-                    width: '100%',
-                    minHeight: '400px'
-                }}/>
+                <div ref={containerRef} style={s.graphContainer}/>
 
                 {/* Panel lateral */}
                 <div style={s.panel}>
@@ -269,8 +297,8 @@ export default function GraphView() {
                                 <div style={s.masteryBarLabel}>
                                     <span>Mastery</span>
                                     <span style={{fontWeight: 600}}>
-                    {Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%
-                  </span>
+                                        {Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%
+                                    </span>
                                 </div>
                                 <div style={s.masteryTrack}>
                                     <div style={{
@@ -305,7 +333,7 @@ export default function GraphView() {
                                 <div key={gap.node_id} style={s.gapRow}>
                                     <div style={s.gapLabel}>{gap.label}</div>
                                     <div style={s.gapBar}>
-                                        <div style={{...s.gapFill, width: `${Math.min(gap.severity * 500, 100)}%`}}/>
+                                        <div style={{...s.gapFill, width: `${Math.min(gap.severity * 100, 100)}%`}}/>
                                     </div>
                                 </div>
                             ))}
@@ -360,12 +388,15 @@ const s: Record<string, React.CSSProperties> = {
     statLbl: {fontSize: 11, color: 'rgba(255,255,255,0.6)'},
     body: {
         display: 'flex',
-        flex: '1 1 auto',
+        flex: 1,
         overflow: 'hidden',
-        height: 'calc(100vh - 64px)'
+        minHeight: 0
     },
     graphContainer: {
-        flex: 1, background: '#fff', minHeight: 0, position: 'relative', height: '100%',
+        flex: 1,
+        background: '#fff',
+        position: 'relative',
+        height: '100%',
         width: '100%'
     },
     panel: {

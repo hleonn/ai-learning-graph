@@ -173,3 +173,17 @@ def get_edges(course_id: str):
     """Obtener todas las aristas de un curso"""
     edges_res = supabase.table("concept_edges").select("*").eq("course_id", course_id).execute()
     return {"edges": edges_res.data}
+
+
+@router.put("/{course_id}/nodes/{node_id}/position")
+def update_node_position(course_id: str, node_id: str, position: dict = Body(...)):
+    """Actualizar la posición de un nodo"""
+    result = supabase.table("concept_nodes").update({
+        "position_x": position.get("position_x", 0),
+        "position_y": position.get("position_y", 0),
+    }).eq("id", node_id).eq("course_id", course_id).execute()
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    return result.data[0]
