@@ -9,7 +9,11 @@ export default function Dashboard() {
     const [error, setError]     = useState<string | null>(null)
     const userName = localStorage.getItem('user_name')
     const userPhoto = localStorage.getItem('user_photo')
-
+// Google Classroom state
+    const [googleCourses, setGoogleCourses] = useState<any[]>([])
+    const [showGoogleCourses, setShowGoogleCourses] = useState(false)
+    const [syncing, setSyncing] = useState<string | null>(null)
+    const [loadingGoogle, setLoadingGoogle] = useState(false)
 
     const navigate = useNavigate()
 
@@ -19,6 +23,59 @@ export default function Dashboard() {
             .catch(() => setError('No se pudieron cargar los cursos'))
             .finally(() => setLoading(false))
     }, [])
+
+    const loadGoogleCourses = async () => {
+        const token = localStorage.getItem('google_token')
+        if (!token) {
+            console.log('No google token found')
+            return
+        }
+
+        setLoadingGoogle(true)
+        try {
+            const response = await fetch('https://mygateway.up.railway.app/auth/classroom/courses', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            const data = await response.json()
+            console.log('Google courses:', data)
+            if (data.courses) {
+                setGoogleCourses(data.courses)
+            }
+        } catch (error) {
+            console.error('Error loading Google courses:', error)
+        } finally {
+            setLoadingGoogle(false)
+        }
+    }
+
+    const syncGoogleCourse = async (courseId: string, courseName: string) => {
+        setSyncing(courseId)
+        const token = localStorage.getItem('google_token')
+        try {
+            const response = await fetch(`https://mygateway.up.railway.app/auth/classroom/courses/${courseId}/sync`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            const data = await response.json()
+            if (data.success) {
+                alert(`✅ Curso "${courseName}" sincronizado con ${data.students_synced} estudiantes`)
+                // Recargar cursos locales si es necesario
+                getCourses().then((data) => setCourses(data.courses))
+            } else {
+                alert('Error al sincronizar: ' + (data.error || 'Unknown error'))
+            }
+        } catch (error) {
+            console.error('Sync error:', error)
+            alert('Error al sincronizar el curso')
+        } finally {
+            setSyncing(null)
+        }
+    }
 
     if (loading) return (
         <div style={styles.center}>
@@ -46,6 +103,21 @@ export default function Dashboard() {
                     >
                         + Generar currículo con AI
                     </button>
+
+                    {userName && (
+                        <button
+                            style={styles.googleClassroomBtn}
+                            onClick={() => {
+                                if (!showGoogleCourses && googleCourses.length === 0) {
+                                    loadGoogleCourses()
+                                }
+                                setShowGoogleCourses(!showGoogleCourses)
+                            }}
+                        >
+                            📚 {showGoogleCourses ? 'Ocultar' : 'Mostrar'} Google Classroom
+                        </button>
+                    )}
+
                     {userName ? (
                         <div style={styles.userBadge}>
                             {userPhoto && (
@@ -83,6 +155,43 @@ export default function Dashboard() {
                     ))}
                 </div>
             </div>
+
+            {showGoogleCourses && (
+                <div style={styles.section}>
+                    <h2 style={styles.sectionTitle}>Mis clases de Google Classroom</h2>
+                    {loadingGoogle ? (
+                        <p>Cargando cursos de Google...</p>
+                    ) : googleCourses.length === 0 ? (
+                        <div style={styles.emptyState}>
+                            <p>No se encontraron cursos activos en Google Classroom</p>
+                            <p style={styles.emptySubtext}>Asegúrate de tener cursos activos en Google Classroom</p>
+                        </div>
+                    ) : (
+                        <div style={styles.grid}>
+                            {googleCourses.map((course) => (
+                                <div key={course.id} style={styles.googleCard}>
+                                    <div style={styles.cardDomain}>Google Classroom</div>
+                                    <h3 style={styles.cardTitle}>{course.name}</h3>
+                                    {course.section && <p style={styles.cardDesc}>{course.section}</p>}
+                                    {course.descriptionHeading && (
+                                        <p style={styles.courseDescription}>{course.descriptionHeading}</p>
+                                    )}
+                                    <div style={styles.cardFooter}>
+                                        <button
+                                            style={styles.syncBtn}
+                                            onClick={() => syncGoogleCourse(course.id, course.name)}
+                                            disabled={syncing === course.id}
+                                        >
+                                            {syncing === course.id ? 'Sincronizando...' : '📥 Importar estudiantes →'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
         </div>
     )
 }
@@ -110,4 +219,52 @@ const styles: Record<string, React.CSSProperties> = {
     userName:   { fontSize: 13, fontWeight: 500, color: '#1E3A5F' },
     connected:  { fontSize: 11, color: '#1D9E75', fontWeight: 600 },
     googleBtn:  { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+    googleClassroomBtn: {
+        background: '#fff',
+        color: '#1E3A5F',
+        border: '1px solid #D3D1C7',
+        borderRadius: 8,
+        padding: '10px 18px',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 600,
+        marginLeft: 12
+    },
+    googleCard: {
+        background: '#fff',
+        border: '1px solid #E8E6E1',
+        borderRadius: 12,
+        padding: 24,
+        transition: 'all 0.2s ease'
+    },
+    syncBtn: {
+        background: '#E1F5EE',
+        color: '#1D9E75',
+        border: 'none',
+        borderRadius: 6,
+        padding: '8px 16px',
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        width: '100%',
+        marginTop: 12
+    },
+    emptyState: {
+        background: '#fff',
+        borderRadius: 12,
+        padding: '48px 24px',
+        textAlign: 'center',
+        border: '1px solid #D3D1C7',
+        color: '#6B6E6A'
+    },
+    emptySubtext: {
+        fontSize: 13,
+        marginTop: 8,
+        color: '#888780'
+    },
+    courseDescription: {
+        fontSize: 13,
+        color: '#6B6E6A',
+        margin: '8px 0'
+    }
 }
