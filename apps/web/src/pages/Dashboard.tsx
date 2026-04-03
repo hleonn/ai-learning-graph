@@ -63,11 +63,12 @@ export default function Dashboard() {
             })
             const data = await response.json()
             if (data.success) {
-                alert(`✅ Curso "${courseName}" sincronizado con ${data.students_synced} estudiantes`)
+                alert(`✅ Curso "${courseName}" sincronizado con ${data.students_synced || 0} estudiantes`)
                 // Recargar cursos locales si es necesario
-                getCourses().then((data) => setCourses(data.courses))
+                const coursesData = await getCourses()
+                setCourses(coursesData.courses)
             } else {
-                alert('Error al sincronizar: ' + (data.error || 'Unknown error'))
+                alert('Error al sincronizar: ' + (data.error || data.message || 'Unknown error'))
             }
         } catch (error) {
             console.error('Sync error:', error)
