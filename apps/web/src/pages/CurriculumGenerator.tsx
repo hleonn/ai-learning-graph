@@ -60,6 +60,68 @@ export default function CurriculumGenerator() {
         }
     }
 
+    const handleSaveCourse = async () => {
+        if (!result) return
+
+        setLoading(true)
+        try {
+            // Crear el curso en Supabase
+            const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: form.title,
+                    description: form.description || `Curso de ${form.title}`,
+                    domain: form.domain,
+                })
+            })
+
+            const courseData = await courseResponse.json()
+            const courseId = courseData[0]?.id
+
+            if (!courseId) {
+                throw new Error('No se pudo crear el curso')
+            }
+
+            // Guardar conceptos (nodos)
+            for (const concept of result.concepts) {
+                await fetch(`https://mygateway.up.railway.app/graph/${courseId}/nodes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        label: concept.label,
+                        description: concept.description,
+                        difficulty: concept.difficulty,
+                    })
+                })
+            }
+
+            // Guardar aristas (edges)
+            for (const edge of result.edges) {
+                await fetch(`https://mygateway.up.railway.app/graph/${courseId}/edges`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source: edge.source,
+                        target: edge.target,
+                        prerequisite_strength: edge.strength,
+                    })
+                })
+            }
+
+            alert(`✅ Curso "${form.title}" guardado exitosamente`)
+            navigate('/dashboard')
+
+        } catch (error) {
+            console.error('Error saving course:', error)
+            alert('Error al guardar el curso')
+        } finally {
+            setLoading(false)
+        }
+    }
+
     return (
         <div style={s.page}>
 
@@ -132,12 +194,12 @@ export default function CurriculumGenerator() {
                         onClick={handleGenerate}
                         disabled={loading}
                     >
-                        {loading ? 'Generando con Claude AI...' : 'Generar currículo'}
+                        {loading ? 'Generando con IA...' : 'Generar currículo'}
                     </button>
 
                     {loading && (
                         <div style={s.loadingNote}>
-                            Claude está extrayendo conceptos e infiriendo prerequisitos...
+                            La IA está extrayendo conceptos e infiriendo prerequisitos...
                             <br />Esto tarda ~15 segundos.
                         </div>
                     )}
@@ -158,9 +220,9 @@ export default function CurriculumGenerator() {
                                 <span style={s.statLbl}>Prerequisitos</span>
                             </div>
                             <div style={s.statCard}>
-                <span style={{ ...s.statNum, color: '#1D9E75' }}>
-                  {result.is_valid_dag ? '✓' : '✗'}
-                </span>
+                                <span style={{ ...s.statNum, color: '#1D9E75' }}>
+                                    {result.is_valid_dag ? '✓' : '✗'}
+                                </span>
                                 <span style={s.statLbl}>DAG válido</span>
                             </div>
                             {result.stats.removed_edges > 0 && (
@@ -182,8 +244,8 @@ export default function CurriculumGenerator() {
                                             ...s.diffBadge,
                                             background: diffColor(c.difficulty),
                                         }}>
-                      {diffLabel(c.difficulty)}
-                    </span>
+                                            {diffLabel(c.difficulty)}
+                                        </span>
                                     </div>
                                     <p style={s.conceptDesc}>{c.description}</p>
                                 </div>
@@ -201,7 +263,7 @@ export default function CurriculumGenerator() {
                                     <div style={s.strengthBar}>
                                         <div style={{
                                             ...s.strengthFill,
-                                            width:      `${e.strength * 100}%`,
+                                            width: `${e.strength * 100}%`,
                                             background: e.strength >= 0.8 ? '#1D9E75' : e.strength >= 0.6 ? '#FAC775' : '#D3D1C7',
                                         }} />
                                     </div>
@@ -210,6 +272,14 @@ export default function CurriculumGenerator() {
                             ))}
                         </div>
 
+                        {/* Botón para guardar */}
+                        <button
+                            style={{ ...s.btn, marginTop: 24, background: '#1D9E75' }}
+                            onClick={handleSaveCourse}
+                            disabled={loading}
+                        >
+                            {loading ? 'Guardando...' : '💾 Guardar curso en Supabase'}
+                        </button>
                     </div>
                 )}
             </div>
