@@ -3,7 +3,7 @@ import {useParams, useNavigate} from 'react-router-dom'
 import Cytoscape from 'cytoscape'
 import {getGraph, getStudentMastery, getGaps, recordEvent, updateNodePosition} from '../lib/api'
 
-const TEST_USER_ID = '0d212af1-6c27-4d7b-8fc0-64256b35e563'
+// Eliminamos TEST_USER_ID fijo - ahora se obtiene del token
 
 interface MasteryNode {
     node_id: string
@@ -27,6 +27,19 @@ function masteryColor(score: number): string {
     return '#D3D1C7'
 }
 
+// Función para obtener el usuario actual desde el token
+const getCurrentUserEmail = (): string | null => {
+    const token = localStorage.getItem('google_token')
+    if (!token) return null
+
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        return payload.email
+    } catch {
+        return null
+    }
+}
+
 export default function GraphView() {
     const {courseId} = useParams<{ courseId: string }>()
     const navigate = useNavigate()
@@ -41,6 +54,7 @@ export default function GraphView() {
     const [summary, setSummary] = useState<any>(null)
     const [gaps, setGaps] = useState<Gap[]>([])
     const [loading, setLoading] = useState(true)
+    const [currentUser, setCurrentUser] = useState<string | null>(null)
 
     const autoEnroll = async () => {
         if (!courseId) return
@@ -69,7 +83,6 @@ export default function GraphView() {
     const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
         if (!courseId) return
 
-        // Debounce: esperar a que el usuario termine de mover
         if (saveTimeoutRef.current[nodeId]) {
             clearTimeout(saveTimeoutRef.current[nodeId])
         }
@@ -87,12 +100,12 @@ export default function GraphView() {
 
     // ── Cargar datos ──────────────────────────────────────────────────────────
     const loadData = async (reinitCy = false) => {
-        if (!courseId) return
+        if (!courseId || !currentUser) return
         try {
             const [graphData, masteryData, gapsData] = await Promise.all([
                 getGraph(courseId),
-                getStudentMastery(TEST_USER_ID, courseId),
-                getGaps(TEST_USER_ID, courseId),
+                getStudentMastery(currentUser, courseId),
+                getGaps(currentUser, courseId),
             ])
 
             const map: Record<string, MasteryNode> = {}
@@ -106,7 +119,6 @@ export default function GraphView() {
             setGaps(gapsData.gaps.slice(0, 5))
 
             if (reinitCy && cyRef.current) {
-                // Actualizar colores de nodos sin destruir Cytoscape
                 cyRef.current.nodes().forEach((node: any) => {
                     const nodeId = node.data('id')
                     const score = map[nodeId]?.mastery_score ?? 0
@@ -125,7 +137,6 @@ export default function GraphView() {
     const initCytoscape = () => {
         if (!containerRef.current || !graphRef.current) return
 
-        // Limpiar el container manualmente antes de inicializar
         containerRef.current.innerHTML = ''
 
         if (cyRef.current) {
@@ -204,7 +215,6 @@ export default function GraphView() {
             boxSelectionEnabled: false,
         })
 
-        // Evento: cuando se suelta un nodo después de arrastrar
         cy.on('dragfree', 'node', (event: any) => {
             const node = event.target
             const nodeId = node.data('id')
@@ -212,21 +222,18 @@ export default function GraphView() {
             saveNodePosition(nodeId, position)
         })
 
-        // Evento: clic en nodo
         cy.on('tap', 'node', (evt: any) => {
             const data = evt.target.data()
             const m = masteryRef.current[data.id]
             setSelected({...data, masteryData: m})
         })
 
-        // Evento: clic en fondo
         cy.on('tap', (evt: any) => {
             if (evt.target === cy) setSelected(null)
         })
 
         cyRef.current = cy
 
-        // Ajustar tamaño después de un pequeño retraso
         setTimeout(() => {
             cy.resize()
             cy.fit(undefined, 50)
@@ -235,9 +242,9 @@ export default function GraphView() {
 
     // ── Registrar respuesta ───────────────────────────────────────────────────
     const handleAnswer = async (correct: boolean) => {
-        if (!selected || !courseId) return
+        if (!selected || !courseId || !currentUser) return
         await recordEvent({
-            user_id: TEST_USER_ID,
+            user_id: currentUser,
             node_id: selected.id,
             correct,
             course_id: courseId,
@@ -248,9 +255,20 @@ export default function GraphView() {
         setSummary((s: any) => ({...s}))
     }
 
-    // ── Cargar datos al montar ────────────────────────────────────────────────
+    // ── Verificar autenticación y cargar ───────────────────────────────────────
     useEffect(() => {
         const init = async () => {
+            // Obtener usuario actual
+            const userEmail = getCurrentUserEmail()
+
+            if (!userEmail) {
+                // No hay usuario logueado, redirigir a login
+                console.log('No hay usuario autenticado, redirigiendo...')
+                window.location.href = 'https://mygateway.up.railway.app/auth/google'
+                return
+            }
+
+            setCurrentUser(userEmail)
             setLoading(true)
             await loadData(false)
             await autoEnroll()
@@ -266,7 +284,6 @@ export default function GraphView() {
                 cyRef.current.destroy()
                 cyRef.current = null
             }
-            // Limpiar timeouts pendientes
             Object.values(saveTimeoutRef.current).forEach(timeout => clearTimeout(timeout))
             saveTimeoutRef.current = {}
         }
@@ -278,8 +295,6 @@ export default function GraphView() {
 
     return (
         <div style={s.page}>
-
-            {/* Header */}
             <div style={s.header}>
                 <button onClick={() => navigate('/dashboard')} style={s.back}>← Volver</button>
                 <div style={{flex: 1}}>
@@ -308,11 +323,7 @@ export default function GraphView() {
             </div>
 
             <div style={s.body}>
-
-                {/* Canvas Cytoscape */}
                 <div ref={containerRef} style={s.graphContainer}/>
-
-                {/* Panel lateral */}
                 <div style={s.panel}>
                     {selected ? (
                         <div style={s.nodeCard}>
