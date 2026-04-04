@@ -42,6 +42,29 @@ export default function GraphView() {
     const [gaps, setGaps] = useState<Gap[]>([])
     const [loading, setLoading] = useState(true)
 
+    const autoEnroll = async () => {
+        if (!courseId) return
+
+        const token = localStorage.getItem('google_token')
+        if (!token) return
+
+        try {
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/enroll`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            const data = await response.json()
+            if (data.isNewEnrollment) {
+                console.log('✅ Estudiante inscrito automáticamente')
+            }
+        } catch (error) {
+            console.error('Error en auto-enroll:', error)
+        }
+    }
+
     // ── Guardar posición de un nodo ──────────────────────────────────────────
     const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
         if (!courseId) return
@@ -230,6 +253,7 @@ export default function GraphView() {
         const init = async () => {
             setLoading(true)
             await loadData(false)
+            await autoEnroll()
             setTimeout(() => {
                 initCytoscape()
             }, 100)

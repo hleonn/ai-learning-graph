@@ -6,14 +6,20 @@ import type { Course } from '../types'
 export default function Dashboard() {
     const [courses, setCourses] = useState<Course[]>([])
     const [loading, setLoading] = useState(true)
-    const [error, setError]     = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
     const userName = localStorage.getItem('user_name')
     const userPhoto = localStorage.getItem('user_photo')
-// Google Classroom state
+
+    // Google Classroom state
     const [googleCourses, setGoogleCourses] = useState<any[]>([])
     const [showGoogleCourses, setShowGoogleCourses] = useState(false)
     const [syncing, setSyncing] = useState<string | null>(null)
     const [loadingGoogle, setLoadingGoogle] = useState(false)
+
+    // Students list state
+    const [selectedCourseStudents, setSelectedCourseStudents] = useState<any[]>([])
+    const [showStudentsFor, setShowStudentsFor] = useState<string | null>(null)
+    const [loadingStudents, setLoadingStudents] = useState(false)
 
     const navigate = useNavigate()
 
@@ -64,7 +70,6 @@ export default function Dashboard() {
             const data = await response.json()
             if (data.success) {
                 alert(`✅ Curso "${courseName}" sincronizado con ${data.students_synced || 0} estudiantes`)
-                // Recargar cursos locales si es necesario
                 const coursesData = await getCourses()
                 setCourses(coursesData.courses)
             } else {
@@ -75,6 +80,35 @@ export default function Dashboard() {
             alert('Error al sincronizar el curso')
         } finally {
             setSyncing(null)
+        }
+    }
+
+    const loadCourseStudents = async (courseId: string, courseTitle: string) => {
+        const token = localStorage.getItem('google_token')
+        if (!token) {
+            alert('Debes iniciar sesión con Google para ver los estudiantes')
+            return
+        }
+
+        setLoadingStudents(true)
+        setShowStudentsFor(courseId)
+        try {
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/students`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            const data = await response.json()
+            setSelectedCourseStudents(data.students || [])
+            if (data.students?.length === 0) {
+                alert(`📭 El curso "${courseTitle}" no tiene estudiantes inscritos aún.\n\nComparte el enlace del curso con los estudiantes para que se inscriban automáticamente.`)
+            } else {
+                alert(`👥 Curso "${courseTitle}" tiene ${data.students?.length || 0} estudiantes inscritos`)
+            }
+        } catch (error) {
+            console.error('Error loading students:', error)
+            setSelectedCourseStudents([])
+            alert('Error al cargar los estudiantes')
+        } finally {
+            setLoadingStudents(false)
         }
     }
 
@@ -93,49 +127,47 @@ export default function Dashboard() {
     return (
         <div style={styles.page}>
             <div style={styles.header}>
-                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
                     <div>
                         <h1 style={styles.title}>AI Learning Graph</h1>
                         <p style={styles.subtitle}>Plataforma de conocimiento adaptativo</p>
                     </div>
-                    <button
-                        style={styles.generateBtn}
-                        onClick={() => navigate('/curriculum')}
-                    >
-                        + Generar currículo con AI
-                    </button>
-
-                    {userName && (
-                        <button
-                            style={styles.googleClassroomBtn}
-                            onClick={() => {
-                                if (!showGoogleCourses && googleCourses.length === 0) {
-                                    loadGoogleCourses()
-                                }
-                                setShowGoogleCourses(!showGoogleCourses)
-                            }}
-                        >
-                            📚 {showGoogleCourses ? 'Ocultar' : 'Mostrar'} Google Classroom
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <button style={styles.generateBtn} onClick={() => navigate('/curriculum')}>
+                            + Generar currículo con AI
                         </button>
-                    )}
 
-                    {userName ? (
-                        <div style={styles.userBadge}>
-                            {userPhoto && (
-                                <img src={userPhoto} style={styles.userPhoto} alt={userName} />
-                            )}
-                            <span style={styles.userName}>{userName}</span>
-                            <span style={styles.connected}>✓ Classroom</span>
-                        </div>
-                    ) : (
-                        <button
-                            style={styles.googleBtn}
-                            // onClick={() => window.location.href = 'http://localhost:3000/auth/google'}
-                            onClick={() => window.location.href = 'https://mygateway.up.railway.app/auth/google'}
-                        >
-                            Conectar Google Classroom
-                        </button>
-                    )}
+                        {userName && (
+                            <button
+                                style={styles.googleClassroomBtn}
+                                onClick={() => {
+                                    if (!showGoogleCourses && googleCourses.length === 0) {
+                                        loadGoogleCourses()
+                                    }
+                                    setShowGoogleCourses(!showGoogleCourses)
+                                }}
+                            >
+                                📚 {showGoogleCourses ? 'Ocultar' : 'Mostrar'} Google Classroom
+                            </button>
+                        )}
+
+                        {userName ? (
+                            <div style={styles.userBadge}>
+                                {userPhoto && (
+                                    <img src={userPhoto} style={styles.userPhoto} alt={userName} />
+                                )}
+                                <span style={styles.userName}>{userName}</span>
+                                <span style={styles.connected}>✓ Classroom</span>
+                            </div>
+                        ) : (
+                            <button
+                                style={styles.googleBtn}
+                                onClick={() => window.location.href = 'https://mygateway.up.railway.app/auth/google'}
+                            >
+                                Conectar Google Classroom
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -143,15 +175,25 @@ export default function Dashboard() {
                 <h2 style={styles.sectionTitle}>Cursos disponibles</h2>
                 <div style={styles.grid}>
                     {courses.map((course) => (
-                        <div
-                            key={course.id}
-                            style={styles.card}
-                            onClick={() => navigate(`/graph/${course.id}`)}
-                        >
+                        <div key={course.id} style={styles.card}>
                             <div style={styles.cardDomain}>{course.domain}</div>
                             <h3 style={styles.cardTitle}>{course.title}</h3>
                             <p style={styles.cardDesc}>{course.description}</p>
-                            <div style={styles.cardFooter}>Ver grafo →</div>
+                            <div style={styles.cardFooter}>
+                                <button
+                                    style={styles.viewGraphBtn}
+                                    onClick={() => navigate(`/graph/${course.id}`)}
+                                >
+                                    Ver grafo →
+                                </button>
+                                <button
+                                    style={styles.viewStudentsBtn}
+                                    onClick={() => loadCourseStudents(course.id, course.title)}
+                                    disabled={loadingStudents && showStudentsFor === course.id}
+                                >
+                                    {loadingStudents && showStudentsFor === course.id ? 'Cargando...' : '👥 Ver estudiantes inscritos'}
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -193,33 +235,48 @@ export default function Dashboard() {
                 </div>
             )}
 
+            {/* Modal de estudiantes (opcional - puedes expandirlo después) */}
+            {showStudentsFor && selectedCourseStudents.length > 0 && (
+                <div style={styles.studentsModal}>
+                    <div style={styles.studentsModalContent}>
+                        <h3>Estudiantes inscritos</h3>
+                        <ul>
+                            {selectedCourseStudents.map((student, idx) => (
+                                <li key={idx}>{student.name || student.email}</li>
+                            ))}
+                        </ul>
+                        <button onClick={() => setShowStudentsFor(null)}>Cerrar</button>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-    page:        { maxWidth: 960, margin: '0 auto', padding: '40px 24px', fontFamily: 'system-ui, sans-serif' },
-    header:      { marginBottom: 48 },
-    title:       { fontSize: 32, fontWeight: 700, color: '#1E3A5F', margin: 0 },
-    subtitle:    { fontSize: 16, color: '#888780', marginTop: 8 },
-    section:     { marginBottom: 40 },
-    sectionTitle:{ fontSize: 18, fontWeight: 600, color: '#2C2C2A', marginBottom: 20 },
-    grid:        { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 },
-    card:        { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 24, cursor: 'pointer', transition: 'border-color 0.15s' },
-    cardDomain:  { fontSize: 11, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 },
-    cardTitle:   { fontSize: 18, fontWeight: 600, color: '#1E3A5F', margin: '0 0 8px' },
-    cardDesc:    { fontSize: 14, color: '#888780', lineHeight: 1.5, margin: '0 0 16px' },
-    cardFooter:  { fontSize: 13, color: '#1D9E75', fontWeight: 500 },
-    center:      { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
-    muted:       { color: '#888780', fontSize: 16 },
-    error:       { color: '#A32D2D', fontSize: 16 },
+    page: { maxWidth: 960, margin: '0 auto', padding: '40px 24px', fontFamily: 'system-ui, sans-serif' },
+    header: { marginBottom: 48 },
+    title: { fontSize: 32, fontWeight: 700, color: '#1E3A5F', margin: 0 },
+    subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
+    section: { marginBottom: 40 },
+    sectionTitle: { fontSize: 18, fontWeight: 600, color: '#2C2C2A', marginBottom: 20 },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 },
+    card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 24 },
+    cardDomain: { fontSize: 11, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 },
+    cardTitle: { fontSize: 18, fontWeight: 600, color: '#1E3A5F', margin: '0 0 8px' },
+    cardDesc: { fontSize: 14, color: '#888780', lineHeight: 1.5, margin: '0 0 16px' },
+    cardFooter: { display: 'flex', gap: 8, marginTop: 8 },
+    viewGraphBtn: { flex: 1, background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500 },
+    viewStudentsBtn: { flex: 1, background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500 },
+    center: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
+    muted: { color: '#888780', fontSize: 16 },
+    error: { color: '#A32D2D', fontSize: 16 },
     generateBtn: { background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-    // googleBtn: { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-    userBadge:  { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 8, padding: '6px 12px', border: '1px solid #D3D1C7' },
-    userPhoto:  { width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' as const },
-    userName:   { fontSize: 13, fontWeight: 500, color: '#1E3A5F' },
-    connected:  { fontSize: 11, color: '#1D9E75', fontWeight: 600 },
-    googleBtn:  { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+    userBadge: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 8, padding: '6px 12px', border: '1px solid #D3D1C7' },
+    userPhoto: { width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' as const },
+    userName: { fontSize: 13, fontWeight: 500, color: '#1E3A5F' },
+    connected: { fontSize: 11, color: '#1D9E75', fontWeight: 600 },
+    googleBtn: { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
     googleClassroomBtn: {
         background: '#fff',
         color: '#1E3A5F',
@@ -229,7 +286,6 @@ const styles: Record<string, React.CSSProperties> = {
         cursor: 'pointer',
         fontSize: 13,
         fontWeight: 600,
-        marginLeft: 12
     },
     googleCard: {
         background: '#fff',
@@ -267,5 +323,24 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: 13,
         color: '#6B6E6A',
         margin: '8px 0'
+    },
+    studentsModal: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000
+    },
+    studentsModalContent: {
+        background: '#fff',
+        borderRadius: 12,
+        padding: 24,
+        minWidth: 300,
+        maxWidth: 500
     }
 }
