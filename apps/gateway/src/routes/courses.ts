@@ -205,4 +205,157 @@ router.delete('/:id', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+
+// GET /courses/:courseId/heatmap — Profesor ve el heatmap de la clase
+router.get('/:courseId/heatmap', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization
+    if (!authHeader) {
+        return res.status(401).json({ error: 'No token provided' })
+    }
+
+    try {
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+        const { courseId } = req.params
+
+        console.log(`[Heatmap] Generando heatmap para curso: ${courseId}`)
+
+        // 1. Obtener todos los estudiantes del curso
+        const { data: enrollments, error: enrollError } = await supabase
+            .from('course_enrollments')
+            .select(`
+                user_id,
+                profiles!inner (id, email, full_name)
+            `)
+            .eq('course_id', courseId)
+            .eq('role', 'student')
+
+        if (enrollError) {
+            console.error('[Heatmap] Error en enrollments:', enrollError)
+            throw enrollError
+        }
+
+        if (!enrollments || enrollments.length === 0) {
+            return res.json({
+                students: [],
+                concepts: [],
+                heatmap: [],
+                concept_stats: [],
+                summary: { total_students: 0, total_concepts: 0, avg_class_mastery: 0 },
+                message: 'No hay estudiantes inscritos en este curso'
+            })
+        }
+
+        // 2. Obtener todos los nodos del curso
+        const { data: nodes, error: nodesError } = await supabase
+            .from('concept_nodes')
+            .select('id, label, difficulty')
+            .eq('course_id', courseId)
+            .order('difficulty', { ascending: true })
+
+        if (nodesError) {
+            console.error('[Heatmap] Error en nodes:', nodesError)
+            throw nodesError
+        }
+
+        if (!nodes || nodes.length === 0) {
+            return res.json({
+                students: [],
+                concepts: [],
+                heatmap: [],
+                concept_stats: [],
+                summary: { total_students: enrollments.length, total_concepts: 0, avg_class_mastery: 0 },
+                message: 'El curso no tiene conceptos definidos'
+            })
+        }
+
+        // 3. Obtener mastery de todos los estudiantes
+        const studentIds = enrollments.map(e => e.user_id)
+        const nodeIds = nodes.map(n => n.id)
+
+        const { data: masteryData, error: masteryError } = await supabase
+            .from('student_mastery')
+            .select('user_id, node_id, mastery_score, attempts')
+            .in('user_id', studentIds)
+            .in('node_id', nodeIds)
+
+        if (masteryError) {
+            console.error('[Heatmap] Error en mastery:', masteryError)
+            throw masteryError
+        }
+
+        // 4. Construir mapa de mastery
+        const masteryMap = new Map()
+        masteryData?.forEach(m => {
+            const key = `${m.user_id}|${m.node_id}`
+            masteryMap.set(key, m.mastery_score)
+        })
+
+        // 5. Construir heatmap
+        const heatmap = enrollments.map(enrollment => {
+            // profiles viene como array por la select anidada
+            const profile = Array.isArray(enrollment.profiles) ? enrollment.profiles[0] : enrollment.profiles
+            const studentName = profile?.full_name || profile?.email || 'Estudiante'
+            const studentEmail = profile?.email || ''
+            const studentId = profile?.id || enrollment.user_id
+
+            return {
+                student_id: studentId,
+                student_name: studentName,
+                student_email: studentEmail,
+                mastery: nodes.map(node => ({
+                    node_id: node.id,
+                    node_label: node.label,
+                    score: masteryMap.get(`${enrollment.user_id}|${node.id}`) || 0
+                }))
+            }
+        })
+
+        // 6. Calcular estadísticas por concepto
+        const conceptStats = nodes.map(node => {
+            const scores = heatmap.map(s =>
+                s.mastery.find(m => m.node_id === node.id)?.score || 0
+            )
+            const avgScore = scores.reduce((a, b) => a + b, 0) / (scores.length || 1)
+            const masteredCount = scores.filter(s => s >= 0.8).length
+            const strugglingCount = scores.filter(s => s > 0 && s < 0.8).length
+            const notStartedCount = scores.filter(s => s === 0).length
+
+            return {
+                node_id: node.id,
+                node_label: node.label,
+                difficulty: node.difficulty,
+                avg_mastery: Math.round(avgScore * 100),
+                mastered_count: masteredCount,
+                struggling_count: strugglingCount,
+                not_started_count: notStartedCount
+            }
+        })
+
+        const totalAvgMastery = conceptStats.length > 0
+            ? Math.round(conceptStats.reduce((a, b) => a + b.avg_mastery, 0) / conceptStats.length)
+            : 0
+
+        res.json({
+            students: heatmap.map(s => ({
+                id: s.student_id,
+                name: s.student_name,
+                email: s.student_email
+            })),
+            concepts: nodes,
+            heatmap: heatmap,
+            concept_stats: conceptStats,
+            summary: {
+                total_students: heatmap.length,
+                total_concepts: nodes.length,
+                avg_class_mastery: totalAvgMastery
+            }
+        })
+
+    } catch (error: any) {
+        console.error('[Heatmap] Error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
 export default router

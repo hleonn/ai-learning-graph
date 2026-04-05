@@ -298,6 +298,23 @@ export default function Dashboard() {
                             >
                                 🗑️ Eliminar
                             </button>
+
+                            <button
+                                style={styles.heatmapBtn}
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    // Abrir modal de heatmap
+                                    const heatmapWindow = window.open('', '_blank', 'width=1200,height=800')
+                                    if (heatmapWindow) {
+                                        // Renderizar heatmap en nueva ventana o usar modal
+                                        // Por ahora usamos alert para indicar
+                                        alert('Funcionalidad Heatmap - Próximamente en modal')
+                                    }
+                                }}
+                            >
+                                📊 Heatmap
+                            </button>
+
                         </div>
                     ))}
                 </div>
@@ -310,7 +327,7 @@ export default function Dashboard() {
                         <p>Cargando cursos de Google...</p>
                     ) : googleCourses.length === 0 ? (
                         <div style={styles.emptyState}>
-                            <p>No se encontraron cursos activos en Google Classroom</p>
+                        <p>No se encontraron cursos activos en Google Classroom</p>
                             <p style={styles.emptySubtext}>Asegúrate de tener cursos activos en Google Classroom</p>
                         </div>
                     ) : (
@@ -462,5 +479,16 @@ const styles: Record<string, React.CSSProperties> = {
         fontWeight: 500,
         width: '100%',
         marginTop: 8
+    },
+    heatmapBtn: {
+        background: '#E8E6E1',
+        color: '#1E3A5F',
+        border: 'none',
+        borderRadius: 6,
+        padding: '8px 12px',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        flex: 1
     },
 }
