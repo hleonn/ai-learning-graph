@@ -25,6 +25,21 @@ interface NodeContent {
     correct_answer: number
 }
 
+interface CourseStructure {
+    title: string
+    difficulty_level: string
+    domain: string
+    total_concepts: number
+    topics: Array<{
+        id: string
+        order: number
+        name: string
+        description: string
+        difficulty: number
+        subtopics: string[]
+    }>
+}
+
 function masteryColor(score: number): string {
     if (score >= 0.8) return '#1D9E75'
     if (score >= 0.6) return '#5DCAA5'
@@ -64,6 +79,27 @@ export default function GraphView() {
     const [nodeContent, setNodeContent] = useState<NodeContent | null>(null)
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
     const [showAnswerFeedback, setShowAnswerFeedback] = useState(false)
+    const [showLeftPanel, setShowLeftPanel] = useState(true)
+    const [courseStructure, setCourseStructure] = useState<CourseStructure | null>(null)
+
+    // ── Cargar estructura del curso ──────────────────────────────────────────────
+    const loadCourseStructure = async () => {
+        if (!courseId) return
+        const token = localStorage.getItem('google_token')
+        if (!token) return
+
+        try {
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/structure`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            if (response.ok) {
+                const data = await response.json()
+                setCourseStructure(data)
+            }
+        } catch (error) {
+            console.error('Error loading course structure:', error)
+        }
+    }
 
     const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
         if (!courseId) return
@@ -348,7 +384,6 @@ export default function GraphView() {
                 const userId = userData.id
                 setCurrentUserId(userId)
 
-                // Obtener el rol del usuario
                 const roleResponse = await fetch(`https://mygateway.up.railway.app/api/user/role/${userId}`)
                 if (roleResponse.ok) {
                     const roleData = await roleResponse.json()
@@ -386,6 +421,8 @@ export default function GraphView() {
                 const next = getNextRecommendedConcept(map, graphData)
                 setNextRecommended(next)
 
+                await loadCourseStructure()
+
                 setTimeout(() => {
                     initCytoscape()
                 }, 100)
@@ -414,142 +451,197 @@ export default function GraphView() {
     const isComplete = courseProgress === 100
     const isTeacher = userRole === 'teacher'
 
+    // Obtener progreso por tema
+    const getTopicProgress = (topicId: string): number => {
+        return masteryRef.current[topicId]?.mastery_score || 0
+    }
+
     return (
         <div style={s.page}>
-            <div style={s.header}>
-                <button onClick={() => navigate('/dashboard')} style={s.back}>← Volver</button>
-                <div style={{flex: 1}}>
-                    <h1 style={s.title}>{graphRef.current?.course.title}</h1>
-                    <p style={s.subtitle}>
-                        {graphRef.current?.summary.total_nodes} conceptos
-                        · {graphRef.current?.summary.total_edges} prerequisitos
-                        {isTeacher && <span style={s.teacherBadge}> 👨‍🏫 Modo Profesor</span>}
-                    </p>
-                </div>
-                <div style={s.progressContainer}>
-                    <div style={s.progressBar}>
-                        <div style={{...s.progressFill, width: `${courseProgress}%`}} />
-                    </div>
-                    <span style={s.progressText}>{courseProgress}% completado</span>
-                </div>
-                {summary && (
-                    <div style={s.statsRow}>
-                        <div style={s.stat}>
-                            <span style={s.statNum}>{Math.round(summary.avg_mastery * 100)}%</span>
-                            <span style={s.statLbl}>Mastery</span>
+            {/* Panel izquierdo */}
+            <div style={{...s.leftPanel, width: showLeftPanel ? 320 : 40}}>
+                <button style={s.toggleLeftBtn} onClick={() => setShowLeftPanel(!showLeftPanel)}>
+                    {showLeftPanel ? '◀' : '▶'}
+                </button>
+                {showLeftPanel && (
+                    <div style={s.leftPanelContent}>
+                        <div style={s.courseHeader}>
+                            <h3 style={s.courseTitleLeft}>{graphRef.current?.course.title}</h3>
+                            <div style={s.courseDifficultyLeft}>
+                                {courseStructure?.difficulty_level === 'beginner' && '🔰 Principiante'}
+                                {courseStructure?.difficulty_level === 'intermediate' && '📘 Intermedio'}
+                                {courseStructure?.difficulty_level === 'advanced' && '🚀 Avanzado'}
+                                {courseStructure?.difficulty_level === 'expert' && '🎓 Certificación'}
+                                {!courseStructure?.difficulty_level && '📚 Estándar'}
+                            </div>
+                            <div style={s.totalTopics}>
+                                📚 Total: {courseStructure?.total_concepts || 0} temas
+                            </div>
                         </div>
-                        <div style={s.stat}>
-                            <span style={{...s.statNum, color: '#1D9E75'}}>{summary.mastered}</span>
-                            <span style={s.statLbl}>Dominados</span>
-                        </div>
-                        <div style={s.stat}>
-                            <span style={{...s.statNum, color: '#E24B4A'}}>{summary.not_started}</span>
-                            <span style={s.statLbl}>Sin iniciar</span>
+
+                        <div style={s.topicsList}>
+                            {courseStructure?.topics.map((topic) => {
+                                const topicProgress = getTopicProgress(topic.id)
+                                return (
+                                    <div key={topic.id} style={s.topicItem}>
+                                        <div style={s.topicHeader}>
+                                            <span style={s.topicNumber}>{topic.order}.</span>
+                                            <span style={s.topicName}>{topic.name}</span>
+                                            <span style={s.topicPercent}>{Math.round(topicProgress * 100)}%</span>
+                                        </div>
+                                        <div style={s.topicProgressBar}>
+                                            <div style={{...s.topicProgressFill, width: `${topicProgress * 100}%`}} />
+                                        </div>
+                                        <div style={s.topicDetails}>
+                                            <span>🎯 Nivel Bloom: Por definir</span>
+                                            <span>📈 Skills: Por definir</span>
+                                        </div>
+                                        <div style={s.subtopicsList}>
+                                            <div style={s.subtopicItem}>• {topic.description.substring(0, 80)}...</div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
                         </div>
                     </div>
                 )}
             </div>
 
-            {isComplete && (
-                <div style={s.completeBanner}>
-                    🎓 ¡Felicidades! Has completado el curso "{graphRef.current?.course.title}" al 100%. 🎉
-                </div>
-            )}
-
-            <div style={s.body}>
-                <div ref={containerRef} style={s.graphContainer}/>
-                <div style={s.panel}>
-                    {selected ? (
-                        <div style={s.nodeCard}>
-                            <h2 style={s.nodeTitle}>{selected.label}</h2>
-                            <div style={s.masteryBar}>
-                                <div style={s.masteryBarLabel}>
-                                    <span>Mastery</span>
-                                    <span style={{fontWeight: 600}}>
-                                        {Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%
-                                    </span>
-                                </div>
-                                <div style={s.masteryTrack}>
-                                    <div style={{
-                                        ...s.masteryFill,
-                                        width: `${(selectedMastery?.mastery_score ?? 0) * 100}%`,
-                                        background: masteryColor(selectedMastery?.mastery_score ?? 0),
-                                    }}/>
-                                </div>
-                                <div style={s.masteryLevel}>
-                                    {selectedMastery?.level ?? 'not_started'} · {selectedMastery?.attempts ?? 0} intentos
-                                </div>
-                            </div>
-                            <p style={s.nodeDesc}>{selected.description}</p>
-
-                            {/* Solo estudiantes pueden responder preguntas */}
-                            {!isTeacher && (
-                                <div style={s.answerRow}>
-                                    <p style={s.answerLabel}>¿Respondiste correctamente?</p>
-                                    <div style={s.btnRow}>
-                                        <button style={s.btnCorrect} onClick={() => handleAnswer(true)}>✓ Sí</button>
-                                        <button style={s.btnWrong} onClick={() => handleAnswer(false)}>✗ No</button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {isTeacher && (
-                                <div style={s.teacherNote}>
-                                    👨‍🏫 Como profesor, solo puedes visualizar el progreso. Los estudiantes responden preguntas.
-                                </div>
-                            )}
-
-                            {feedbackMessage && (
-                                <div style={s.feedbackMessage}>
-                                    {feedbackMessage}
-                                </div>
-                            )}
+            {/* Contenido principal */}
+            <div style={s.mainContent}>
+                <div style={s.header}>
+                    <button onClick={() => navigate('/dashboard')} style={s.back}>← Volver</button>
+                    <div style={{flex: 1}}>
+                        <h1 style={s.title}>{graphRef.current?.course.title}</h1>
+                        <p style={s.subtitle}>
+                            {graphRef.current?.summary.total_nodes} conceptos
+                            · {graphRef.current?.summary.total_edges} prerequisitos
+                            {isTeacher && <span style={s.teacherBadge}> 👨‍🏫 Modo Profesor</span>}
+                        </p>
+                    </div>
+                    <div style={s.progressContainer}>
+                        <div style={s.progressBar}>
+                            <div style={{...s.progressFill, width: `${courseProgress}%`}} />
                         </div>
-                    ) : (
-                        <div style={s.panelEmpty}>
-                            <p style={s.muted}>Haz clic en un nodo para ver su mastery</p>
-                            {nextRecommended && !isComplete && (
-                                <div style={s.nextRecommended}>
-                                    📍 Siguiente recomendado: <strong>{nextRecommended.label}</strong>
-                                </div>
-                            )}
-                            {isComplete && (
-                                <div style={s.completedMessage}>
-                                    🎓 ¡Curso completado! Revisa tu progreso en el dashboard.
-                                </div>
-                            )}
+                        <span style={s.progressText}>{courseProgress}% completado</span>
+                    </div>
+                    {summary && (
+                        <div style={s.statsRow}>
+                            <div style={s.stat}>
+                                <span style={s.statNum}>{Math.round(summary.avg_mastery * 100)}%</span>
+                                <span style={s.statLbl}>Mastery</span>
+                            </div>
+                            <div style={s.stat}>
+                                <span style={{...s.statNum, color: '#1D9E75'}}>{summary.mastered}</span>
+                                <span style={s.statLbl}>Dominados</span>
+                            </div>
+                            <div style={s.stat}>
+                                <span style={{...s.statNum, color: '#E24B4A'}}>{summary.not_started}</span>
+                                <span style={s.statLbl}>Sin iniciar</span>
+                            </div>
                         </div>
                     )}
+                </div>
 
-                    {/* Solo profesores ven gaps críticos */}
-                    {isTeacher && gaps.length > 0 && (
-                        <div style={s.gapsSection}>
-                            <h3 style={s.gapsTitle}>Gaps críticos</h3>
-                            {gaps.map((gap) => (
-                                <div key={gap.node_id} style={s.gapRow}>
-                                    <div style={s.gapLabel}>{gap.label}</div>
-                                    <div style={s.gapBar}>
-                                        <div style={{...s.gapFill, width: `${Math.min(gap.severity * 100, 100)}%`}}/>
+                {isComplete && (
+                    <div style={s.completeBanner}>
+                        🎓 ¡Felicidades! Has completado el curso "{graphRef.current?.course.title}" al 100%. 🎉
+                    </div>
+                )}
+
+                <div style={s.body}>
+                    <div ref={containerRef} style={s.graphContainer}/>
+                    <div style={s.panel}>
+                        {selected ? (
+                            <div style={s.nodeCard}>
+                                <h2 style={s.nodeTitle}>{selected.label}</h2>
+                                <div style={s.masteryBar}>
+                                    <div style={s.masteryBarLabel}>
+                                        <span>Mastery</span>
+                                        <span style={{fontWeight: 600}}>
+                                            {Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%
+                                        </span>
                                     </div>
+                                    <div style={s.masteryTrack}>
+                                        <div style={{
+                                            ...s.masteryFill,
+                                            width: `${(selectedMastery?.mastery_score ?? 0) * 100}%`,
+                                            background: masteryColor(selectedMastery?.mastery_score ?? 0),
+                                        }}/>
+                                    </div>
+                                    <div style={s.masteryLevel}>
+                                        {selectedMastery?.level ?? 'not_started'} · {selectedMastery?.attempts ?? 0} intentos
+                                    </div>
+                                </div>
+                                <p style={s.nodeDesc}>{selected.description}</p>
+
+                                {!isTeacher && (
+                                    <div style={s.answerRow}>
+                                        <p style={s.answerLabel}>¿Respondiste correctamente?</p>
+                                        <div style={s.btnRow}>
+                                            <button style={s.btnCorrect} onClick={() => handleAnswer(true)}>✓ Sí</button>
+                                            <button style={s.btnWrong} onClick={() => handleAnswer(false)}>✗ No</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {isTeacher && (
+                                    <div style={s.teacherNote}>
+                                        👨‍🏫 Como profesor, solo puedes visualizar el progreso. Los estudiantes responden preguntas.
+                                    </div>
+                                )}
+
+                                {feedbackMessage && (
+                                    <div style={s.feedbackMessage}>
+                                        {feedbackMessage}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div style={s.panelEmpty}>
+                                <p style={s.muted}>Haz clic en un nodo para ver su mastery</p>
+                                {nextRecommended && !isComplete && (
+                                    <div style={s.nextRecommended}>
+                                        📍 Siguiente recomendado: <strong>{nextRecommended.label}</strong>
+                                    </div>
+                                )}
+                                {isComplete && (
+                                    <div style={s.completedMessage}>
+                                        🎓 ¡Curso completado! Revisa tu progreso en el dashboard.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {isTeacher && gaps.length > 0 && (
+                            <div style={s.gapsSection}>
+                                <h3 style={s.gapsTitle}>Gaps críticos</h3>
+                                {gaps.map((gap) => (
+                                    <div key={gap.node_id} style={s.gapRow}>
+                                        <div style={s.gapLabel}>{gap.label}</div>
+                                        <div style={s.gapBar}>
+                                            <div style={{...s.gapFill, width: `${Math.min(gap.severity * 100, 100)}%`}}/>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div style={s.legend}>
+                            <p style={s.legendTitle}>Mastery</p>
+                            {[
+                                {color: '#D3D1C7', label: 'Sin iniciar'},
+                                {color: '#F0997B', label: 'Iniciado'},
+                                {color: '#FAC775', label: 'En progreso'},
+                                {color: '#5DCAA5', label: 'Aprendiendo'},
+                                {color: '#1D9E75', label: 'Dominado'},
+                            ].map((item) => (
+                                <div key={item.label} style={s.legendRow}>
+                                    <div style={{...s.legendDot, background: item.color}}/>
+                                    <span style={s.legendLabel}>{item.label}</span>
                                 </div>
                             ))}
                         </div>
-                    )}
-
-                    <div style={s.legend}>
-                        <p style={s.legendTitle}>Mastery</p>
-                        {[
-                            {color: '#D3D1C7', label: 'Sin iniciar'},
-                            {color: '#F0997B', label: 'Iniciado'},
-                            {color: '#FAC775', label: 'En progreso'},
-                            {color: '#5DCAA5', label: 'Aprendiendo'},
-                            {color: '#1D9E75', label: 'Dominado'},
-                        ].map((item) => (
-                            <div key={item.label} style={s.legendRow}>
-                                <div style={{...s.legendDot, background: item.color}}/>
-                                <span style={s.legendLabel}>{item.label}</span>
-                            </div>
-                        ))}
                     </div>
                 </div>
             </div>
@@ -619,7 +711,137 @@ export default function GraphView() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-    page: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8', overflow: 'hidden' },
+    page: { display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8', overflow: 'hidden' },
+
+    // Panel izquierdo
+    leftPanel: {
+        background: '#fff',
+        borderRight: '1px solid #D3D1C7',
+        transition: 'width 0.3s ease',
+        overflow: 'hidden',
+        position: 'relative',
+        height: '100%',
+        flexShrink: 0
+    },
+    toggleLeftBtn: {
+        position: 'absolute',
+        top: 20,
+        right: 8,
+        width: 28,
+        height: 28,
+        borderRadius: '50%',
+        background: '#F1EFE8',
+        border: '1px solid #D3D1C7',
+        cursor: 'pointer',
+        zIndex: 10,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 12
+    },
+    leftPanelContent: {
+        padding: 16,
+        height: '100%',
+        overflowY: 'auto'
+    },
+    courseHeader: {
+        marginBottom: 20,
+        paddingBottom: 12,
+        borderBottom: '1px solid #F1EFE8'
+    },
+    courseTitleLeft: {
+        fontSize: 16,
+        fontWeight: 700,
+        color: '#1E3A5F',
+        margin: '0 0 8px'
+    },
+    courseDifficultyLeft: {
+        fontSize: 11,
+        fontWeight: 600,
+        padding: '2px 8px',
+        borderRadius: 12,
+        background: '#E8E6E1',
+        color: '#1E3A5F',
+        display: 'inline-block',
+        marginBottom: 8
+    },
+    totalTopics: {
+        fontSize: 12,
+        color: '#888780',
+        marginTop: 8
+    },
+    topicsList: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16
+    },
+    topicItem: {
+        padding: 12,
+        background: '#F9F9F8',
+        borderRadius: 8,
+        border: '1px solid #E8E6E1'
+    },
+    topicHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8
+    },
+    topicNumber: {
+        fontSize: 12,
+        fontWeight: 600,
+        color: '#1D9E75'
+    },
+    topicName: {
+        fontSize: 13,
+        fontWeight: 500,
+        color: '#1E3A5F',
+        flex: 1,
+        marginLeft: 8
+    },
+    topicPercent: {
+        fontSize: 11,
+        fontWeight: 600,
+        color: '#1D9E75'
+    },
+    topicProgressBar: {
+        height: 4,
+        background: '#F1EFE8',
+        borderRadius: 2,
+        overflow: 'hidden',
+        marginBottom: 8
+    },
+    topicProgressFill: {
+        height: '100%',
+        background: '#1D9E75',
+        borderRadius: 2,
+        transition: 'width 0.3s'
+    },
+    topicDetails: {
+        display: 'flex',
+        gap: 12,
+        fontSize: 10,
+        color: '#888780',
+        marginTop: 8
+    },
+    subtopicsList: {
+        marginTop: 8,
+        paddingLeft: 16,
+        borderLeft: '2px solid #E1F5EE'
+    },
+    subtopicItem: {
+        fontSize: 11,
+        color: '#6B6E6A',
+        marginBottom: 4
+    },
+
+    // Contenido principal
+    mainContent: {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+    },
     header: { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F', flexWrap: 'wrap' },
     back: { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
     title: { fontSize: 18, fontWeight: 700, color: '#fff', margin: 0 },
@@ -633,6 +855,7 @@ const s: Record<string, React.CSSProperties> = {
     stat: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
     statNum: { fontSize: 20, fontWeight: 700, color: '#fff' },
     statLbl: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
+    completeBanner: { background: '#1D9E75', color: '#fff', textAlign: 'center', padding: '8px 16px', fontSize: 14, fontWeight: 600 },
     body: { display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 },
     graphContainer: { flex: 1, background: '#fff', position: 'relative', height: '100%', width: '100%' },
     panel: { width: 280, background: '#fff', borderLeft: '1px solid #D3D1C7', padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' },
@@ -665,7 +888,6 @@ const s: Record<string, React.CSSProperties> = {
     panelEmpty: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 },
     nextRecommended: { fontSize: 12, color: '#1D9E75', textAlign: 'center', marginTop: 16, padding: 8, background: '#E1F5EE', borderRadius: 8 },
     completedMessage: { fontSize: 12, color: '#1D9E75', textAlign: 'center', marginTop: 16, padding: 8, background: '#E1F5EE', borderRadius: 8 },
-    completeBanner: { background: '#1D9E75', color: '#fff', textAlign: 'center', padding: '8px 16px', fontSize: 14, fontWeight: 600 },
     center: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
     muted: { color: '#888780', fontSize: 14, textAlign: 'center' },
     error: { color: '#A32D2D', fontSize: 14 },

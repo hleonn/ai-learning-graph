@@ -463,4 +463,49 @@ router.get('/:id/stats', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+// GET /courses/:id/structure - Obtener estructura del curso (temas y subtemas)
+router.get('/:id/structure', async (req: Request, res: Response) => {
+    const { id } = req.params
+
+    try {
+        // Obtener nodos del curso
+        const { data: nodes, error: nodesError } = await supabase
+            .from('concept_nodes')
+            .select('id, label, description, difficulty, position_x, position_y')
+            .eq('course_id', id)
+            .order('difficulty', { ascending: true })
+
+        if (nodesError) throw nodesError
+
+        // Obtener el nivel de dificultad del curso
+        const { data: course, error: courseError } = await supabase
+            .from('courses')
+            .select('title, difficulty_level, domain')
+            .eq('id', id)
+            .single()
+
+        if (courseError) throw courseError
+
+        // Estructurar la respuesta
+        const structure = {
+            title: course.title,
+            difficulty_level: course.difficulty_level || 'intermediate',
+            domain: course.domain,
+            total_concepts: nodes.length,
+            topics: nodes.map((node, index) => ({
+                id: node.id,
+                order: index + 1,
+                name: node.label,
+                description: node.description,
+                difficulty: node.difficulty,
+                subtopics: [] // Aquí vendrán los subtemas cuando DeepSeek los genere
+            }))
+        }
+
+        res.json(structure)
+    } catch (error: any) {
+        console.error('[Structure] Error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
 export default router

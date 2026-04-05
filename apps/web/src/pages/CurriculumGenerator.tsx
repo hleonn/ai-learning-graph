@@ -344,11 +344,18 @@ export default function CurriculumGenerator() {
                                 <span style={s.statLbl}>Prerequisitos</span>
                             </div>
                             <div style={s.statCard}>
-                                <span style={{ ...s.statNum, color: '#1D9E75' }}>
+                                <span style={{...s.statNum, color: '#1D9E75'}}>
                                     {result.is_valid_dag ? '✓' : '✗'}
                                 </span>
                                 <span style={s.statLbl}>DAG válido</span>
                             </div>
+                            <button
+                                style={{...s.saveBtn, ...s.statCard}}
+                                onClick={handleSaveCourse}
+                                disabled={loading}
+                            >
+                                {loading ? 'Guardando...' : '💾 Guardar Curso'}
+                            </button>
                         </div>
 
                         <h2 style={s.sectionTitle}>Conceptos generados</h2>
@@ -356,7 +363,7 @@ export default function CurriculumGenerator() {
                             {result.concepts.map((c, i) => (
                                 <div key={i} style={s.conceptCard}>
                                     <div style={s.conceptTop}>
-                                        <span style={s.conceptLabel}>{c.label}</span>
+                                    <span style={s.conceptLabel}>{c.label}</span>
                                         <span style={{ ...s.diffBadge, background: diffColor(c.difficulty) }}>
                                             {diffLabel(c.difficulty)}
                                         </span>
@@ -385,13 +392,7 @@ export default function CurriculumGenerator() {
                             ))}
                         </div>
 
-                        <button
-                            style={{ ...s.btn, marginTop: 24, background: '#1D9E75' }}
-                            onClick={handleSaveCourse}
-                            disabled={loading}
-                        >
-                            {loading ? 'Guardando...' : '💾 Guardar curso en Supabase'}
-                        </button>
+
                     </div>
                 )}
             </div>
@@ -438,4 +439,11 @@ const s: Record<string, React.CSSProperties> = {
     strengthBar: { flex: 1, height: 5, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden' },
     strengthFill: { height: '100%', borderRadius: 3 },
     strengthVal: { fontSize: 11, color: '#888780', width: 32, textAlign: 'right', flexShrink: 0 },
+    saveBtn: {
+        background: '#1D9E75',
+        color: '#fff',
+        border: 'none',
+        cursor: 'pointer',
+        transition: 'opacity 0.2s'
+    },
 }
