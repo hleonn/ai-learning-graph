@@ -39,6 +39,7 @@ export default function GraphView() {
     const [summary, setSummary] = useState<any>(null)
     const [gaps, setGaps] = useState<Gap[]>([])
     const [loading, setLoading] = useState(true)
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
     // ── Guardar posición de un nodo ──────────────────────────────────────────
     const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
@@ -168,26 +169,20 @@ export default function GraphView() {
 
     // ── Registrar respuesta ───────────────────────────────────────────────────
     const handleAnswer = async (correct: boolean) => {
-        if (!selected || !courseId) return
+        if (!selected || !courseId || !currentUserId) return
 
-        const token = localStorage.getItem('google_token')
-        if (!token) return
+        await recordEvent({
+            user_id: currentUserId,
+            node_id: selected.id,
+            correct,
+            course_id: courseId,
+        })
 
+        // Recargar datos
         try {
-            const payload = JSON.parse(atob(token.split('.')[1]))
-            const email = payload.email
-
-            await recordEvent({
-                user_id: email,
-                node_id: selected.id,
-                correct,
-                course_id: courseId,
-            })
-
-            // Recargar datos
             const [masteryData, gapsData] = await Promise.all([
-                getStudentMastery(email, courseId),
-                getGaps(email, courseId),
+                getStudentMastery(currentUserId, courseId),
+                getGaps(currentUserId, courseId),
             ])
 
             const map: Record<string, MasteryNode> = {}
@@ -219,7 +214,6 @@ export default function GraphView() {
         const init = async () => {
             const token = localStorage.getItem('google_token')
 
-            // Si no hay token, redirigir a login
             if (!token) {
                 console.log('No hay token, redirigiendo a Google...')
                 window.location.href = 'https://mygateway.up.railway.app/auth/google'
@@ -232,7 +226,17 @@ export default function GraphView() {
 
                 console.log(`Usuario autenticado: ${email}`)
 
-                // Auto-enroll (inscribir al usuario en el curso)
+                // Obtener UUID del usuario
+                const userResponse = await fetch(`https://mygateway.up.railway.app/api/user/by-email/${email}`)
+                if (!userResponse.ok) {
+                    throw new Error('Usuario no encontrado en la base de datos')
+                }
+                const userData = await userResponse.json()
+                const userId = userData.id
+                setCurrentUserId(userId)
+                console.log(`UUID del usuario: ${userId}`)
+
+                // Auto-enroll
                 const enrollResponse = await fetch(`https://mygateway.up.railway.app/enroll/${courseId}`, {
                     method: 'POST',
                     headers: {
@@ -241,9 +245,7 @@ export default function GraphView() {
                     }
                 })
 
-                if (!enrollResponse.ok) {
-                    console.error('Error en auto-enroll:', await enrollResponse.text())
-                } else {
+                if (enrollResponse.ok) {
                     const enrollData = await enrollResponse.json()
                     if (enrollData.isNewEnrollment) {
                         console.log('✅ Usuario inscrito automáticamente')
@@ -256,10 +258,10 @@ export default function GraphView() {
                 const graphData = await getGraph(courseId!)
                 graphRef.current = graphData
 
-                // Cargar mastery y gaps
+                // Cargar mastery y gaps usando UUID
                 const [masteryData, gapsData] = await Promise.all([
-                    getStudentMastery(email, courseId!),
-                    getGaps(email, courseId!),
+                    getStudentMastery(userId, courseId!),
+                    getGaps(userId, courseId!),
                 ])
 
                 const map: Record<string, MasteryNode> = {}

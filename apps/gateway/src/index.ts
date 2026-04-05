@@ -29,13 +29,29 @@ app.use(cors({
 }))
 app.use(express.json())
 
-// ── Routes ────────────────────────────────────────────────────────────────────
-app.use('/health', healthRouter)
+// ── Obtener UUID por email ────────────────────────────────────────────────────
+app.get('/api/user/by-email/:email', async (req: Request, res: Response) => {
+    const { email } = req.params
 
-// ── Auto-enroll directo (DEBE IR ANTES de /courses) ──────────────────────────
+    try {
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .single()
+
+        if (error || !profile) {
+            return res.status(404).json({ error: 'Usuario no encontrado' })
+        }
+
+        res.json({ id: profile.id })
+    } catch (error: any) {
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ── Auto-enroll directo ───────────────────────────────────────────────────────
 app.post('/enroll/:courseId', async (req: Request, res: Response) => {
-    console.log('🔵 /enroll llamado para curso:', req.params.courseId)
-
     const authHeader = req.headers.authorization
     if (!authHeader) {
         return res.status(401).json({ error: 'No token provided' })
@@ -46,25 +62,28 @@ app.post('/enroll/:courseId', async (req: Request, res: Response) => {
         const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
         const { courseId } = req.params
 
-        console.log(`🔵 Usuario: ${decoded.email}, Curso: ${courseId}`)
+        console.log(`[Enroll] Usuario: ${decoded.email}, Curso: ${courseId}`)
 
-        const { data: profile } = await supabase
+        // Obtener UUID del usuario
+        const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('id')
             .eq('email', decoded.email)
             .single()
 
-        if (!profile) {
-            console.error('❌ Perfil no encontrado para:', decoded.email)
-            return res.status(404).json({ error: 'Perfil no encontrado' })
+        if (profileError || !profile) {
+            return res.status(404).json({ error: 'Perfil de usuario no encontrado' })
         }
 
+        // Verificar si ya está inscrito
         const { data: existing } = await supabase
             .from('course_enrollments')
             .select('*')
             .eq('course_id', courseId)
             .eq('user_id', profile.id)
             .maybeSingle()
+
+        let isNewEnrollment = false
 
         if (!existing) {
             await supabase
@@ -75,19 +94,23 @@ app.post('/enroll/:courseId', async (req: Request, res: Response) => {
                     role: 'student',
                     source: 'auto_enroll'
                 })
-            console.log(`✅ Usuario ${decoded.email} inscrito en curso ${courseId}`)
-        } else {
-            console.log(`ℹ️ Usuario ${decoded.email} ya estaba inscrito`)
+            isNewEnrollment = true
+            console.log(`[Enroll] Usuario ${decoded.email} inscrito en curso ${courseId}`)
         }
 
-        res.json({ success: true, message: 'Inscrito correctamente' })
+        res.json({
+            success: true,
+            isNewEnrollment,
+            message: isNewEnrollment ? 'Inscrito correctamente' : 'Ya estabas inscrito'
+        })
     } catch (error: any) {
-        console.error('❌ Error en /enroll:', error)
+        console.error('[Enroll] Error:', error)
         res.status(500).json({ error: error.message })
     }
 })
 
-// ── Routers (DESPUÉS del endpoint específico) ─────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.use('/health', healthRouter)
 app.use('/courses', coursesRouter)
 app.use('/auth', authRouter)
 

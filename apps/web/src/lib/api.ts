@@ -1,8 +1,9 @@
 import axios from 'axios'
+
 const API_URL = import.meta.env.VITE_API_URL || 'https://mygateway.up.railway.app'
-const GATEWAY_URL = import.meta.env.VITE_API_URL || '/api'
+
 const api = axios.create({
-    baseURL: GATEWAY_URL,
+    baseURL: API_URL,
     headers: { 'Content-Type': 'application/json' },
 })
 
@@ -52,9 +53,8 @@ export const saveCurriculum = (courseId: string, payload: {
     num_concepts: number
 }) => api.post(`/ai/curriculum/save/${courseId}`, payload).then((r) => r.data)
 
-// Actualizar posición de un nodo
+// ── Node Position ────────────────────────────────────────────────────────────
 export const updateNodePosition = async (courseId: string, nodeId: string, position: { x: number; y: number }) => {
-
     const response = await fetch(`${API_URL}/graph/${courseId}/nodes/${nodeId}/position`, {
         method: 'PUT',
         headers: {
