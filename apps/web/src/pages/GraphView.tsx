@@ -40,6 +40,7 @@ export default function GraphView() {
     const [gaps, setGaps] = useState<Gap[]>([])
     const [loading, setLoading] = useState(true)
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+    const [nextRecommended, setNextRecommended] = useState<any>(null)
 
     // ── Guardar posición de un nodo ──────────────────────────────────────────
     const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
@@ -60,6 +61,21 @@ export default function GraphView() {
         }, 500)
     }
 
+    // ── Calcular siguiente concepto recomendado ──────────────────────────────
+    const getNextRecommendedConcept = (mastery: Record<string, MasteryNode>, graph: any) => {
+        if (!graph || !graph.nodes) return null
+
+        // Encontrar el primer nodo no dominado con menor orden topológico
+        const notMastered = graph.nodes
+            .filter((n: any) => {
+                const m = mastery[n.data.id]
+                return !m || m.mastery_score < 0.8
+            })
+            .sort((a: any, b: any) => (a.data.topo_order || 999) - (b.data.topo_order || 999))
+
+        return notMastered[0]?.data || null
+    }
+
     // ── Inicializar Cytoscape ──────────────────────────────────────────────────
     const initCytoscape = () => {
         if (!containerRef.current || !graphRef.current) return
@@ -77,14 +93,18 @@ export default function GraphView() {
         const elements = [
             ...graph.nodes.map((n: any) => {
                 const score = mastery[n.data.id]?.mastery_score ?? 0
+                const topoOrder = n.data.topo_order ?? -1
+                const orderLabel = topoOrder >= 0 ? `${topoOrder + 1}. ` : ''
+
                 return {
                     data: {
                         id: n.data.id,
-                        label: n.data.label,
+                        label: `${orderLabel}${n.data.label}`,
                         description: n.data.description,
                         difficulty: n.data.difficulty,
                         pagerank: n.data.pagerank,
                         mastery: score,
+                        topo_order: topoOrder,
                     },
                     position: {x: n.position.x, y: n.position.y},
                 }
@@ -193,6 +213,10 @@ export default function GraphView() {
             setSummary(masteryData.summary)
             setGaps(gapsData.gaps.slice(0, 5))
 
+            // Calcular siguiente recomendado
+            const next = getNextRecommendedConcept(map, graphRef.current)
+            setNextRecommended(next)
+
             if (cyRef.current) {
                 cyRef.current.nodes().forEach((node: any) => {
                     const nodeId = node.data('id')
@@ -204,6 +228,13 @@ export default function GraphView() {
 
             const updatedMastery = masteryRef.current[selected.id]
             setSelected((prev: any) => ({...prev, masteryData: updatedMastery}))
+
+            // Feedback si se alcanzó mastery
+            if (updatedMastery?.mastery_score >= 0.8 && selectedMastery?.mastery_score < 0.8) {
+                setTimeout(() => {
+                    alert(`🎉 ¡Felicidades! Has dominado "${selected.label}". ${next ? `Siguiente: ${next.label}` : '¡Completaste todos los conceptos!'}`)
+                }, 100)
+            }
         } catch (e) {
             console.error('Error recargando datos:', e)
         }
@@ -271,6 +302,10 @@ export default function GraphView() {
                 masteryRef.current = map
                 setSummary(masteryData.summary)
                 setGaps(gapsData.gaps.slice(0, 5))
+
+                // Calcular siguiente recomendado
+                const next = getNextRecommendedConcept(map, graphData)
+                setNextRecommended(next)
 
                 setTimeout(() => {
                     initCytoscape()
@@ -363,6 +398,11 @@ export default function GraphView() {
                     ) : (
                         <div style={s.panelEmpty}>
                             <p style={s.muted}>Haz clic en un nodo para ver su mastery</p>
+                            {nextRecommended && (
+                                <p style={s.nextRecommended}>
+                                    📍 Siguiente recomendado: <strong>{nextRecommended.label}</strong>
+                                </p>
+                            )}
                         </div>
                     )}
 
@@ -500,7 +540,8 @@ const s: Record<string, React.CSSProperties> = {
     legendRow: {display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4},
     legendDot: {width: 10, height: 10, borderRadius: '50%', flexShrink: 0},
     legendLabel: {fontSize: 12, color: '#5F5E5A'},
-    panelEmpty: {flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center'},
+    panelEmpty: {flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16},
+    nextRecommended: {fontSize: 12, color: '#1D9E75', textAlign: 'center', marginTop: 16, padding: 8, background: '#E1F5EE', borderRadius: 8},
     center: {display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'},
     muted: {color: '#888780', fontSize: 14, textAlign: 'center'},
     error: {color: '#A32D2D', fontSize: 14},
