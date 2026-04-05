@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCourses, getStudentMastery } from '../lib/api'
 import type { Course } from '../types'
+import HeatmapView from '../components/HeatmapView'
 
 export default function Dashboard() {
     const [courses, setCourses] = useState<Course[]>([])
@@ -21,6 +22,9 @@ export default function Dashboard() {
     const [selectedCourseStudents, setSelectedCourseStudents] = useState<any[]>([])
     const [showStudentsFor, setShowStudentsFor] = useState<string | null>(null)
     const [loadingStudents, setLoadingStudents] = useState(false)
+
+    // Heatmap state
+    const [heatmapCourse, setHeatmapCourse] = useState<{ id: string; title: string } | null>(null)
 
     const navigate = useNavigate()
 
@@ -162,6 +166,7 @@ export default function Dashboard() {
             setLoadingStudents(false)
         }
     }
+
     const deleteCourse = async (courseId: string, courseTitle: string) => {
         if (!confirm(`¿Eliminar el curso "${courseTitle}"?\n\nSe eliminarán todos los conceptos, aristas y progreso de estudiantes.`)) {
             return
@@ -174,7 +179,6 @@ export default function Dashboard() {
         }
 
         try {
-            // Eliminar el curso (el backend debe eliminar en cascada)
             const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}`, {
                 method: 'DELETE',
                 headers: {
@@ -185,7 +189,6 @@ export default function Dashboard() {
 
             if (response.ok) {
                 alert(`✅ Curso "${courseTitle}" eliminado correctamente`)
-                // Recargar lista de cursos
                 const coursesData = await getCourses()
                 setCourses(coursesData.courses)
             } else {
@@ -197,6 +200,7 @@ export default function Dashboard() {
             alert('Error al eliminar el curso')
         }
     }
+
     if (loading) return (
         <div style={styles.center}>
             <p style={styles.muted}>Cargando cursos...</p>
@@ -273,7 +277,7 @@ export default function Dashboard() {
                                 <span style={styles.progressText}>{courseProgress[course.id] || 0}% completado</span>
                             </div>
 
-                            <div style={styles.cardFooter}>
+                            <div style={styles.buttonGroup}>
                                 <button
                                     style={styles.viewGraphBtn}
                                     onClick={() => navigate(`/graph/${course.id}`)}
@@ -285,39 +289,22 @@ export default function Dashboard() {
                                     onClick={() => loadCourseStudents(course.id, course.title)}
                                     disabled={loadingStudents && showStudentsFor === course.id}
                                 >
-                                    {loadingStudents && showStudentsFor === course.id ? 'Cargando...' : '👥 Ver estudiantes inscritos'}
+                                    {loadingStudents && showStudentsFor === course.id ? 'Cargando...' : '👥 Estudiantes'}
                                 </button>
-
-                            </div>
-                            <div>
-                                <button
-                                    style={styles.deleteBtn}
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        deleteCourse(course.id, course.title)
-                                    }}
-                                >
-                                    🗑️ Eliminar
-                                </button>
-
                                 <button
                                     style={styles.heatmapBtn}
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        // Abrir modal de heatmap
-                                        const heatmapWindow = window.open('', '_blank', 'width=1200,height=800')
-                                        if (heatmapWindow) {
-                                            // Renderizar heatmap en nueva ventana o usar modal
-                                            // Por ahora usamos alert para indicar
-                                            alert('Funcionalidad Heatmap - Próximamente en modal')
-                                        }
-                                    }}
+                                    onClick={() => setHeatmapCourse({ id: course.id, title: course.title })}
                                 >
                                     📊 Heatmap
                                 </button>
                             </div>
 
-
+                            <button
+                                style={styles.deleteBtn}
+                                onClick={() => deleteCourse(course.id, course.title)}
+                            >
+                                🗑️ Eliminar curso
+                            </button>
                         </div>
                     ))}
                 </div>
@@ -373,6 +360,15 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Modal de Heatmap */}
+            {heatmapCourse && (
+                <HeatmapView
+                    courseId={heatmapCourse.id}
+                    courseTitle={heatmapCourse.title}
+                    onClose={() => setHeatmapCourse(null)}
+                />
+            )}
         </div>
     )
 }
@@ -385,7 +381,7 @@ const styles: Record<string, React.CSSProperties> = {
     section: { marginBottom: 40 },
     sectionTitle: { fontSize: 18, fontWeight: 600, color: '#2C2C2A', marginBottom: 20 },
     grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 },
-    card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 24 },
+    card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 24, display: 'flex', flexDirection: 'column' },
     cardDomain: { fontSize: 11, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 },
     cardTitle: { fontSize: 18, fontWeight: 600, color: '#1E3A5F', margin: '0 0 8px' },
     cardDesc: { fontSize: 14, color: '#888780', lineHeight: 1.5, margin: '0 0 16px' },
@@ -393,9 +389,11 @@ const styles: Record<string, React.CSSProperties> = {
     progressBar: { height: 6, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden' },
     progressFill: { height: '100%', background: '#1D9E75', borderRadius: 3, transition: 'width 0.3s' },
     progressText: { fontSize: 11, color: '#888780', marginTop: 4, display: 'block', textAlign: 'center' },
-    cardFooter: { display: 'flex', gap: 8, marginTop: 8 },
-    viewGraphBtn: { flex: 1, background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500 },
-    viewStudentsBtn: { flex: 1, background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500 },
+    buttonGroup: { display: 'flex', gap: 8, marginBottom: 8 },
+    viewGraphBtn: { flex: 1, background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
+    viewStudentsBtn: { flex: 1, background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
+    heatmapBtn: { flex: 1, background: '#E1F5EE', color: '#1D9E75', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
+    deleteBtn: { background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, width: '100%' },
     center: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
     muted: { color: '#888780', fontSize: 16 },
     error: { color: '#A32D2D', fontSize: 16 },
@@ -470,28 +468,5 @@ const styles: Record<string, React.CSSProperties> = {
         padding: 24,
         minWidth: 300,
         maxWidth: 500
-    },
-    deleteBtn: {
-        background: '#FCEBEB',
-        color: '#A32D2D',
-        border: 'none',
-        borderRadius: 6,
-        padding: '8px 12px',
-        cursor: 'pointer',
-        fontSize: 13,
-        fontWeight: 500,
-        width: '100%',
-        marginTop: 8
-    },
-    heatmapBtn: {
-        background: '#E8E6E1',
-        color: '#1E3A5F',
-        border: 'none',
-        borderRadius: 6,
-        padding: '8px 12px',
-        cursor: 'pointer',
-        fontSize: 13,
-        fontWeight: 500,
-        flex: 1
     },
 }
