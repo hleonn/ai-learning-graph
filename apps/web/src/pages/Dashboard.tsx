@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCourses, getStudentMastery } from '../lib/api'
-import type { Course } from '../types'
 import HeatmapView from '../components/HeatmapView'
+
+// Definir el tipo Course localmente
+interface Course {
+    id: string
+    title: string
+    description: string
+    domain: string
+    created_at: string
+    google_classroom_id?: string
+}
 
 export default function Dashboard() {
     const [courses, setCourses] = useState<Course[]>([])
@@ -11,6 +20,8 @@ export default function Dashboard() {
     const userName = localStorage.getItem('user_name')
     const userPhoto = localStorage.getItem('user_photo')
     const [courseProgress, setCourseProgress] = useState<Record<string, number>>({})
+    const [courseStudentsCount, setCourseStudentsCount] = useState<Record<string, number>>({})
+    const [courseEnrolled, setCourseEnrolled] = useState<Record<string, boolean>>({})
 
     // Google Classroom state
     const [googleCourses, setGoogleCourses] = useState<any[]>([])
@@ -47,9 +58,29 @@ export default function Dashboard() {
         }
     }
 
+    // Cargar estadísticas de un curso
+    const loadCourseStats = async (courseId: string) => {
+        const token = localStorage.getItem('google_token')
+        if (!token) return { students: 0, isEnrolled: false }
+
+        try {
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/stats`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            if (response.ok) {
+                return await response.json()
+            }
+        } catch (error) {
+            console.error('Error loading course stats:', error)
+        }
+        return { students: 0, isEnrolled: false }
+    }
+
     // Cargar progreso de cada curso
     const loadCourseProgress = async (userId: string) => {
         const progressMap: Record<string, number> = {}
+        const studentsMap: Record<string, number> = {}
+        const enrolledMap: Record<string, boolean> = {}
 
         for (const course of courses) {
             try {
@@ -57,12 +88,20 @@ export default function Dashboard() {
                 const masteredCount = masteryData.nodes?.filter((n: any) => n.mastery_score >= 0.8).length || 0
                 const totalNodes = masteryData.summary?.total_nodes || 1
                 progressMap[course.id] = Math.round((masteredCount / totalNodes) * 100)
+
+                const stats = await loadCourseStats(course.id)
+                studentsMap[course.id] = stats.students || 0
+                enrolledMap[course.id] = stats.isEnrolled || false
             } catch (e) {
                 progressMap[course.id] = 0
+                studentsMap[course.id] = 0
+                enrolledMap[course.id] = false
             }
         }
 
         setCourseProgress(progressMap)
+        setCourseStudentsCount(studentsMap)
+        setCourseEnrolled(enrolledMap)
     }
 
     useEffect(() => {
@@ -265,7 +304,19 @@ export default function Dashboard() {
                 <div style={styles.grid}>
                     {courses.map((course) => (
                         <div key={course.id} style={styles.card}>
-                            <div style={styles.cardDomain}>{course.domain}</div>
+                            <div style={styles.cardHeader}>
+                                <div style={styles.cardDomain}>{course.domain}</div>
+                                <div style={styles.cardDifficulty}>
+                                    {course.title.toLowerCase().includes('python') && '🐍 Python'}
+                                    {course.title.toLowerCase().includes('data science') && '📊 Data Science'}
+                                    {course.title.toLowerCase().includes('javascript') && '🟨 JavaScript'}
+                                    {course.title.toLowerCase().includes('programming') && '💻 Programación'}
+                                    {!course.title.toLowerCase().includes('python') &&
+                                        !course.title.toLowerCase().includes('data science') &&
+                                        !course.title.toLowerCase().includes('javascript') &&
+                                        !course.title.toLowerCase().includes('programming') && '📚 Curso'}
+                                </div>
+                            </div>
                             <h3 style={styles.cardTitle}>{course.title}</h3>
                             <p style={styles.cardDesc}>{course.description}</p>
 
@@ -275,6 +326,13 @@ export default function Dashboard() {
                                     <div style={{...styles.progressFill, width: `${courseProgress[course.id] || 0}%`}}/>
                                 </div>
                                 <span style={styles.progressText}>{courseProgress[course.id] || 0}% completado</span>
+                            </div>
+
+                            {/* Estadísticas del curso */}
+                            <div style={styles.courseStats}>
+                                <span>📊 {courseProgress[course.id] || 0}% promedio</span>
+                                <span>👥 {courseStudentsCount[course.id] || 0} estudiantes</span>
+                                <span>{courseEnrolled[course.id] ? '🔓 Inscrito' : '🔒 No inscrito'}</span>
                             </div>
 
                             <div style={styles.buttonGroup}>
@@ -380,15 +438,18 @@ const styles: Record<string, React.CSSProperties> = {
     subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
     section: { marginBottom: 40 },
     sectionTitle: { fontSize: 18, fontWeight: 600, color: '#2C2C2A', marginBottom: 20 },
-    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 },
-    card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 24, display: 'flex', flexDirection: 'column' },
-    cardDomain: { fontSize: 11, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 },
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 },
+    card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 20, display: 'flex', flexDirection: 'column' },
+    cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    cardDomain: { fontSize: 11, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em' },
+    cardDifficulty: { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: '#E8E6E1', color: '#1E3A5F' },
     cardTitle: { fontSize: 18, fontWeight: 600, color: '#1E3A5F', margin: '0 0 8px' },
-    cardDesc: { fontSize: 14, color: '#888780', lineHeight: 1.5, margin: '0 0 16px' },
-    progressContainer: { marginBottom: 16 },
+    cardDesc: { fontSize: 13, color: '#6B6E6A', lineHeight: 1.4, margin: '0 0 16px' },
+    progressContainer: { marginBottom: 12 },
     progressBar: { height: 6, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden' },
     progressFill: { height: '100%', background: '#1D9E75', borderRadius: 3, transition: 'width 0.3s' },
     progressText: { fontSize: 11, color: '#888780', marginTop: 4, display: 'block', textAlign: 'center' },
+    courseStats: { display: 'flex', gap: 12, justifyContent: 'space-between', fontSize: 11, color: '#888780', marginBottom: 12, padding: '8px 0', borderTop: '1px solid #F1EFE8', borderBottom: '1px solid #F1EFE8' },
     buttonGroup: { display: 'flex', gap: 8, marginBottom: 8 },
     viewGraphBtn: { flex: 1, background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
     viewStudentsBtn: { flex: 1, background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
@@ -417,7 +478,7 @@ const styles: Record<string, React.CSSProperties> = {
         background: '#fff',
         border: '1px solid #E8E6E1',
         borderRadius: 12,
-        padding: 24,
+        padding: 20,
         transition: 'all 0.2s ease'
     },
     syncBtn: {

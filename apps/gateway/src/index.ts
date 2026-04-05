@@ -49,7 +49,26 @@ app.get('/api/user/by-email/:email', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+// ── Obtener rol del usuario ────────────────────────────────────────────────────
+app.get('/api/user/role/:userId', async (req: Request, res: Response) => {
+    const { userId } = req.params
 
+    try {
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single()
+
+        if (error || !profile) {
+            return res.status(404).json({ error: 'Usuario no encontrado' })
+        }
+
+        res.json({ role: profile.role })
+    } catch (error: any) {
+        res.status(500).json({ error: error.message })
+    }
+})
 // ── Auto-enroll directo ───────────────────────────────────────────────────────
 app.post('/enroll/:courseId', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization

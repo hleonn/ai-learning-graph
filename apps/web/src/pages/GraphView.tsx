@@ -56,6 +56,7 @@ export default function GraphView() {
     const [gaps, setGaps] = useState<Gap[]>([])
     const [loading, setLoading] = useState(true)
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+    const [userRole, setUserRole] = useState<string>('student')
     const [nextRecommended, setNextRecommended] = useState<any>(null)
     const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
     const [courseProgress, setCourseProgress] = useState<number>(0)
@@ -106,7 +107,6 @@ export default function GraphView() {
             setShowAnswerFeedback(false)
         } catch (error) {
             console.error('Error loading node content:', error)
-            // Fallback content
             setNodeContent({
                 explanation: `Este es el concepto "${nodeLabel}". Practica para mejorarlo.`,
                 example: `Ejemplo práctico de "${nodeLabel}".`,
@@ -348,6 +348,13 @@ export default function GraphView() {
                 const userId = userData.id
                 setCurrentUserId(userId)
 
+                // Obtener el rol del usuario
+                const roleResponse = await fetch(`https://mygateway.up.railway.app/api/user/role/${userId}`)
+                if (roleResponse.ok) {
+                    const roleData = await roleResponse.json()
+                    setUserRole(roleData.role || 'student')
+                }
+
                 await fetch(`https://mygateway.up.railway.app/enroll/${courseId}`, {
                     method: 'POST',
                     headers: {
@@ -405,6 +412,7 @@ export default function GraphView() {
 
     const selectedMastery = selected?.masteryData
     const isComplete = courseProgress === 100
+    const isTeacher = userRole === 'teacher'
 
     return (
         <div style={s.page}>
@@ -415,6 +423,7 @@ export default function GraphView() {
                     <p style={s.subtitle}>
                         {graphRef.current?.summary.total_nodes} conceptos
                         · {graphRef.current?.summary.total_edges} prerequisitos
+                        {isTeacher && <span style={s.teacherBadge}> 👨‍🏫 Modo Profesor</span>}
                     </p>
                 </div>
                 <div style={s.progressContainer}>
@@ -472,6 +481,24 @@ export default function GraphView() {
                                 </div>
                             </div>
                             <p style={s.nodeDesc}>{selected.description}</p>
+
+                            {/* Solo estudiantes pueden responder preguntas */}
+                            {!isTeacher && (
+                                <div style={s.answerRow}>
+                                    <p style={s.answerLabel}>¿Respondiste correctamente?</p>
+                                    <div style={s.btnRow}>
+                                        <button style={s.btnCorrect} onClick={() => handleAnswer(true)}>✓ Sí</button>
+                                        <button style={s.btnWrong} onClick={() => handleAnswer(false)}>✗ No</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isTeacher && (
+                                <div style={s.teacherNote}>
+                                    👨‍🏫 Como profesor, solo puedes visualizar el progreso. Los estudiantes responden preguntas.
+                                </div>
+                            )}
+
                             {feedbackMessage && (
                                 <div style={s.feedbackMessage}>
                                     {feedbackMessage}
@@ -494,7 +521,8 @@ export default function GraphView() {
                         </div>
                     )}
 
-                    {gaps.length > 0 && (
+                    {/* Solo profesores ven gaps críticos */}
+                    {isTeacher && gaps.length > 0 && (
                         <div style={s.gapsSection}>
                             <h3 style={s.gapsTitle}>Gaps críticos</h3>
                             {gaps.map((gap) => (
@@ -554,23 +582,28 @@ export default function GraphView() {
                                             value={idx}
                                             checked={selectedAnswer === idx}
                                             onChange={() => setSelectedAnswer(idx)}
-                                            disabled={showAnswerFeedback}
+                                            disabled={showAnswerFeedback || isTeacher}
                                         />
                                         {opt}
                                     </label>
                                 ))}
                             </div>
-                            {!showAnswerFeedback ? (
+                            {!showAnswerFeedback && !isTeacher ? (
                                 <button style={s.submitBtn} onClick={handleAnswerQuestion}>
                                     Verificar respuesta
                                 </button>
-                            ) : (
+                            ) : showAnswerFeedback && (
                                 <div style={s.answerFeedback}>
                                     {selectedAnswer === nodeContent.correct_answer ? (
                                         <p style={s.correctFeedback}>✅ ¡Correcto! Bien hecho.</p>
                                     ) : (
                                         <p style={s.wrongFeedback}>❌ Incorrecto. La respuesta correcta es: {nodeContent.options[nodeContent.correct_answer]}</p>
                                     )}
+                                </div>
+                            )}
+                            {isTeacher && (
+                                <div style={s.teacherNote}>
+                                    👨‍🏫 Modo profesor: Las preguntas son para estudiantes.
                                 </div>
                             )}
                         </div>
@@ -591,6 +624,7 @@ const s: Record<string, React.CSSProperties> = {
     back: { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
     title: { fontSize: 18, fontWeight: 700, color: '#fff', margin: 0 },
     subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: '2px 0 0' },
+    teacherBadge: { background: '#1D9E75', padding: '2px 8px', borderRadius: 12, fontSize: 10, marginLeft: 8 },
     progressContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 100 },
     progressBar: { width: 100, height: 6, background: 'rgba(255,255,255,0.3)', borderRadius: 3, overflow: 'hidden' },
     progressFill: { height: '100%', background: '#1D9E75', borderRadius: 3, transition: 'width 0.3s' },
@@ -610,6 +644,12 @@ const s: Record<string, React.CSSProperties> = {
     masteryTrack: { height: 8, background: '#F1EFE8', borderRadius: 4, overflow: 'hidden' },
     masteryFill: { height: '100%', borderRadius: 4, transition: 'width 0.3s' },
     masteryLevel: { fontSize: 11, color: '#888780' },
+    answerRow: { borderTop: '1px solid #F1EFE8', paddingTop: 10 },
+    answerLabel: { fontSize: 12, color: '#5F5E5A', margin: '0 0 8px' },
+    btnRow: { display: 'flex', gap: 8 },
+    btnCorrect: { flex: 1, padding: '8px 0', background: '#E1F5EE', color: '#085041', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+    btnWrong: { flex: 1, padding: '8px 0', background: '#FAECE7', color: '#712B13', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: 13 },
+    teacherNote: { fontSize: 12, color: '#1D9E75', background: '#E1F5EE', padding: '8px 12px', borderRadius: 8, textAlign: 'center' },
     feedbackMessage: { fontSize: 12, color: '#1D9E75', background: '#E1F5EE', padding: '10px 12px', borderRadius: 8, marginTop: 10, textAlign: 'center' },
     gapsSection: { borderTop: '1px solid #F1EFE8', paddingTop: 12 },
     gapsTitle: { fontSize: 12, fontWeight: 600, color: '#888780', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px' },

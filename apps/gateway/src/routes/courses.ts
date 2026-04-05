@@ -357,5 +357,46 @@ router.get('/:courseId/heatmap', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+// GET /courses/:id/stats - Obtener estadísticas del curso
+router.get('/:id/stats', async (req: Request, res: Response) => {
+    const { id } = req.params
 
+    try {
+        // Contar estudiantes inscritos
+        const { count: studentsCount, error: countError } = await supabase
+            .from('course_enrollments')
+            .select('*', { count: 'exact', head: true })
+            .eq('course_id', id)
+            .eq('role', 'student')
+
+        if (countError) throw countError
+
+        // Verificar si el usuario actual está inscrito
+        let isEnrolled = false
+        const authHeader = req.headers.authorization
+        if (authHeader) {
+            const token = authHeader.split(' ')[1]
+            const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('email', decoded.email)
+                .single()
+
+            if (profile) {
+                const { count } = await supabase
+                    .from('course_enrollments')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('course_id', id)
+                    .eq('user_id', profile.id)
+                isEnrolled = (count || 0) > 0
+            }
+        }
+
+        res.json({ students: studentsCount || 0, isEnrolled })
+    } catch (error: any) {
+        console.error('[Stats] Error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
 export default router
