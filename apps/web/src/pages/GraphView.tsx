@@ -25,6 +25,14 @@ function masteryColor(score: number): string {
     return '#D3D1C7'
 }
 
+function getMasteryMessage(score: number, label: string): string {
+    if (score >= 0.8) return `🎉 ¡Excelente! Has dominado "${label}". ¡Sigue así!`
+    if (score >= 0.6) return `📚 Vas muy bien con "${label}". ¡Continúa practicando!`
+    if (score >= 0.3) return `📖 Estás progresando en "${label}". ¡Sigue adelante!`
+    if (score > 0) return `🌱 Has comenzado con "${label}". ¡Cada paso cuenta!`
+    return `⭐ ¡Comienza con "${label}"! Es un concepto fundamental.`
+}
+
 export default function GraphView() {
     const {courseId} = useParams<{ courseId: string }>()
     const navigate = useNavigate()
@@ -41,6 +49,8 @@ export default function GraphView() {
     const [loading, setLoading] = useState(true)
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
     const [nextRecommended, setNextRecommended] = useState<any>(null)
+    const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null)
+    const [courseProgress, setCourseProgress] = useState<number>(0)
 
     // ── Guardar posición de un nodo ──────────────────────────────────────────
     const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
@@ -61,11 +71,17 @@ export default function GraphView() {
         }, 500)
     }
 
+    // ── Calcular progreso del curso ──────────────────────────────────────────
+    const calculateProgress = (mastery: Record<string, MasteryNode>, totalNodes: number) => {
+        if (totalNodes === 0) return 0
+        const masteredCount = Object.values(mastery).filter(m => m.mastery_score >= 0.8).length
+        return Math.round((masteredCount / totalNodes) * 100)
+    }
+
     // ── Calcular siguiente concepto recomendado ──────────────────────────────
     const getNextRecommendedConcept = (mastery: Record<string, MasteryNode>, graph: any) => {
         if (!graph || !graph.nodes) return null
 
-        // Encontrar el primer nodo no dominado con menor orden topológico
         const notMastered = graph.nodes
             .filter((n: any) => {
                 const m = mastery[n.data.id]
@@ -149,6 +165,13 @@ export default function GraphView() {
                         'border-color': '#1E3A5F',
                     },
                 },
+                {
+                    selector: 'node.mastered',
+                    style: {
+                        'border-width': 2,
+                        'border-color': '#1D9E75',
+                    },
+                },
             ],
             layout: {
                 name: 'preset',
@@ -173,10 +196,14 @@ export default function GraphView() {
             const data = evt.target.data()
             const m = masteryRef.current[data.id]
             setSelected({...data, masteryData: m})
+            setFeedbackMessage(getMasteryMessage(m?.mastery_score ?? 0, data.label))
         })
 
         cy.on('tap', (evt: any) => {
-            if (evt.target === cy) setSelected(null)
+            if (evt.target === cy) {
+                setSelected(null)
+                setFeedbackMessage(null)
+            }
         })
 
         cyRef.current = cy
@@ -190,6 +217,8 @@ export default function GraphView() {
     // ── Registrar respuesta ───────────────────────────────────────────────────
     const handleAnswer = async (correct: boolean) => {
         if (!selected || !courseId || !currentUserId) return
+
+        const previousScore = selected.masteryData?.mastery_score ?? 0
 
         await recordEvent({
             user_id: currentUserId,
@@ -213,6 +242,10 @@ export default function GraphView() {
             setSummary(masteryData.summary)
             setGaps(gapsData.gaps.slice(0, 5))
 
+            // Actualizar progreso
+            const progress = calculateProgress(map, graphRef.current?.summary.total_nodes || 0)
+            setCourseProgress(progress)
+
             // Calcular siguiente recomendado
             const next = getNextRecommendedConcept(map, graphRef.current)
             setNextRecommended(next)
@@ -223,17 +256,36 @@ export default function GraphView() {
                     const score = map[nodeId]?.mastery_score ?? 0
                     node.data('mastery', score)
                     node.style('background-color', masteryColor(score))
+                    if (score >= 0.8) {
+                        node.addClass('mastered')
+                    } else {
+                        node.removeClass('mastered')
+                    }
                 })
             }
 
             const updatedMastery = masteryRef.current[selected.id]
+            const newScore = updatedMastery?.mastery_score ?? 0
             setSelected((prev: any) => ({...prev, masteryData: updatedMastery}))
 
-            // Feedback si se alcanzó mastery
-            if (updatedMastery?.mastery_score >= 0.8 && selectedMastery?.mastery_score < 0.8) {
+            // Feedback cuando se alcanza mastery (80% o más) y antes estaba por debajo
+            if (newScore >= 0.8 && previousScore < 0.8) {
+                const masteredCount = Object.values(map).filter(m => m.mastery_score >= 0.8).length
+                const totalNodes = graphRef.current?.summary.total_nodes || 0
+                const isComplete = masteredCount === totalNodes
+
+                let message = `🎉 ¡Felicidades! Has dominado "${selected.label}". `
+                if (next && !isComplete) {
+                    message += `Siguiente concepto recomendado: "${next.label}".`
+                } else if (isComplete) {
+                    message += `🎓 ¡Felicidades! Has completado TODOS los conceptos del curso. ¡Excelente trabajo!`
+                }
+                setFeedbackMessage(message)
                 setTimeout(() => {
-                    alert(`🎉 ¡Felicidades! Has dominado "${selected.label}". ${next ? `Siguiente: ${next.label}` : '¡Completaste todos los conceptos!'}`)
+                    alert(message)
                 }, 100)
+            } else {
+                setFeedbackMessage(getMasteryMessage(newScore, selected.label))
             }
         } catch (e) {
             console.error('Error recargando datos:', e)
@@ -303,6 +355,10 @@ export default function GraphView() {
                 setSummary(masteryData.summary)
                 setGaps(gapsData.gaps.slice(0, 5))
 
+                // Calcular progreso del curso
+                const progress = calculateProgress(map, graphData.summary.total_nodes)
+                setCourseProgress(progress)
+
                 // Calcular siguiente recomendado
                 const next = getNextRecommendedConcept(map, graphData)
                 setNextRecommended(next)
@@ -332,6 +388,7 @@ export default function GraphView() {
     if (loading) return <div style={s.center}><p style={s.muted}>Cargando...</p></div>
 
     const selectedMastery = selected?.masteryData
+    const isComplete = courseProgress === 100
 
     return (
         <div style={s.page}>
@@ -343,6 +400,12 @@ export default function GraphView() {
                         {graphRef.current?.summary.total_nodes} conceptos
                         · {graphRef.current?.summary.total_edges} prerequisitos
                     </p>
+                </div>
+                <div style={s.progressContainer}>
+                    <div style={s.progressBar}>
+                        <div style={{...s.progressFill, width: `${courseProgress}%`}} />
+                    </div>
+                    <span style={s.progressText}>{courseProgress}% completado</span>
                 </div>
                 {summary && (
                     <div style={s.statsRow}>
@@ -361,6 +424,12 @@ export default function GraphView() {
                     </div>
                 )}
             </div>
+
+            {isComplete && (
+                <div style={s.completeBanner}>
+                    🎓 ¡Felicidades! Has completado el curso "{graphRef.current?.course.title}" al 100%. 🎉
+                </div>
+            )}
 
             <div style={s.body}>
                 <div ref={containerRef} style={s.graphContainer}/>
@@ -394,14 +463,24 @@ export default function GraphView() {
                                     <button style={s.btnWrong} onClick={() => handleAnswer(false)}>✗ No</button>
                                 </div>
                             </div>
+                            {feedbackMessage && (
+                                <div style={s.feedbackMessage}>
+                                    {feedbackMessage}
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div style={s.panelEmpty}>
                             <p style={s.muted}>Haz clic en un nodo para ver su mastery</p>
-                            {nextRecommended && (
-                                <p style={s.nextRecommended}>
+                            {nextRecommended && !isComplete && (
+                                <div style={s.nextRecommended}>
                                     📍 Siguiente recomendado: <strong>{nextRecommended.label}</strong>
-                                </p>
+                                </div>
+                            )}
+                            {isComplete && (
+                                <div style={s.completedMessage}>
+                                    🎓 ¡Curso completado! Revisa tu progreso en el dashboard.
+                                </div>
                             )}
                         </div>
                     )}
@@ -450,7 +529,7 @@ const s: Record<string, React.CSSProperties> = {
         background: '#F1EFE8',
         overflow: 'hidden'
     },
-    header: {display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F'},
+    header: {display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F', flexWrap: 'wrap'},
     back: {
         background: 'none',
         border: '1px solid rgba(255,255,255,0.3)',
@@ -462,6 +541,10 @@ const s: Record<string, React.CSSProperties> = {
     },
     title: {fontSize: 18, fontWeight: 700, color: '#fff', margin: 0},
     subtitle: {fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: '2px 0 0'},
+    progressContainer: {display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 100},
+    progressBar: {width: 100, height: 6, background: 'rgba(255,255,255,0.3)', borderRadius: 3, overflow: 'hidden'},
+    progressFill: {height: '100%', background: '#1D9E75', borderRadius: 3, transition: 'width 0.3s'},
+    progressText: {fontSize: 11, color: 'rgba(255,255,255,0.7)'},
     statsRow: {display: 'flex', gap: 20},
     stat: {display: 'flex', flexDirection: 'column', alignItems: 'center'},
     statNum: {fontSize: 20, fontWeight: 700, color: '#fff'},
@@ -522,6 +605,15 @@ const s: Record<string, React.CSSProperties> = {
         fontWeight: 600,
         fontSize: 13
     },
+    feedbackMessage: {
+        fontSize: 12,
+        color: '#1D9E75',
+        background: '#E1F5EE',
+        padding: '10px 12px',
+        borderRadius: 8,
+        marginTop: 10,
+        textAlign: 'center'
+    },
     gapsSection: {borderTop: '1px solid #F1EFE8', paddingTop: 12},
     gapsTitle: {
         fontSize: 12,
@@ -542,6 +634,15 @@ const s: Record<string, React.CSSProperties> = {
     legendLabel: {fontSize: 12, color: '#5F5E5A'},
     panelEmpty: {flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16},
     nextRecommended: {fontSize: 12, color: '#1D9E75', textAlign: 'center', marginTop: 16, padding: 8, background: '#E1F5EE', borderRadius: 8},
+    completedMessage: {fontSize: 12, color: '#1D9E75', textAlign: 'center', marginTop: 16, padding: 8, background: '#E1F5EE', borderRadius: 8},
+    completeBanner: {
+        background: '#1D9E75',
+        color: '#fff',
+        textAlign: 'center',
+        padding: '8px 16px',
+        fontSize: 14,
+        fontWeight: 600
+    },
     center: {display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh'},
     muted: {color: '#888780', fontSize: 14, textAlign: 'center'},
     error: {color: '#A32D2D', fontSize: 14},

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCourses } from '../lib/api'
+import { getCourses, getStudentMastery } from '../lib/api'
 import type { Course } from '../types'
 
 export default function Dashboard() {
@@ -9,6 +9,7 @@ export default function Dashboard() {
     const [error, setError] = useState<string | null>(null)
     const userName = localStorage.getItem('user_name')
     const userPhoto = localStorage.getItem('user_photo')
+    const [courseProgress, setCourseProgress] = useState<Record<string, number>>({})
 
     // Google Classroom state
     const [googleCourses, setGoogleCourses] = useState<any[]>([])
@@ -23,11 +24,61 @@ export default function Dashboard() {
 
     const navigate = useNavigate()
 
+    // Obtener el userId actual
+    const getCurrentUserId = async (): Promise<string | null> => {
+        const token = localStorage.getItem('google_token')
+        if (!token) return null
+
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]))
+            const email = payload.email
+            const response = await fetch(`https://mygateway.up.railway.app/api/user/by-email/${email}`)
+            if (response.ok) {
+                const data = await response.json()
+                return data.id
+            }
+            return null
+        } catch {
+            return null
+        }
+    }
+
+    // Cargar progreso de cada curso
+    const loadCourseProgress = async (userId: string) => {
+        const progressMap: Record<string, number> = {}
+
+        for (const course of courses) {
+            try {
+                const masteryData = await getStudentMastery(userId, course.id)
+                const masteredCount = masteryData.nodes?.filter((n: any) => n.mastery_score >= 0.8).length || 0
+                const totalNodes = masteryData.summary?.total_nodes || 1
+                progressMap[course.id] = Math.round((masteredCount / totalNodes) * 100)
+            } catch (e) {
+                progressMap[course.id] = 0
+            }
+        }
+
+        setCourseProgress(progressMap)
+    }
+
     useEffect(() => {
-        getCourses()
-            .then((data) => setCourses(data.courses))
-            .catch(() => setError('No se pudieron cargar los cursos'))
-            .finally(() => setLoading(false))
+        const init = async () => {
+            try {
+                const coursesData = await getCourses()
+                setCourses(coursesData.courses)
+
+                const userId = await getCurrentUserId()
+                if (userId && coursesData.courses.length > 0) {
+                    await loadCourseProgress(userId)
+                }
+            } catch (err) {
+                setError('No se pudieron cargar los cursos')
+            } finally {
+                setLoading(false)
+            }
+        }
+
+        init()
     }, [])
 
     const loadGoogleCourses = async () => {
@@ -179,6 +230,15 @@ export default function Dashboard() {
                             <div style={styles.cardDomain}>{course.domain}</div>
                             <h3 style={styles.cardTitle}>{course.title}</h3>
                             <p style={styles.cardDesc}>{course.description}</p>
+
+                            {/* Barra de progreso */}
+                            <div style={styles.progressContainer}>
+                                <div style={styles.progressBar}>
+                                    <div style={{...styles.progressFill, width: `${courseProgress[course.id] || 0}%`}} />
+                                </div>
+                                <span style={styles.progressText}>{courseProgress[course.id] || 0}% completado</span>
+                            </div>
+
                             <div style={styles.cardFooter}>
                                 <button
                                     style={styles.viewGraphBtn}
@@ -235,7 +295,7 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* Modal de estudiantes (opcional - puedes expandirlo después) */}
+            {/* Modal de estudiantes */}
             {showStudentsFor && selectedCourseStudents.length > 0 && (
                 <div style={styles.studentsModal}>
                     <div style={styles.studentsModalContent}>
@@ -265,6 +325,10 @@ const styles: Record<string, React.CSSProperties> = {
     cardDomain: { fontSize: 11, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 },
     cardTitle: { fontSize: 18, fontWeight: 600, color: '#1E3A5F', margin: '0 0 8px' },
     cardDesc: { fontSize: 14, color: '#888780', lineHeight: 1.5, margin: '0 0 16px' },
+    progressContainer: { marginBottom: 16 },
+    progressBar: { height: 6, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden' },
+    progressFill: { height: '100%', background: '#1D9E75', borderRadius: 3, transition: 'width 0.3s' },
+    progressText: { fontSize: 11, color: '#888780', marginTop: 4, display: 'block', textAlign: 'center' },
     cardFooter: { display: 'flex', gap: 8, marginTop: 8 },
     viewGraphBtn: { flex: 1, background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500 },
     viewStudentsBtn: { flex: 1, background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500 },
