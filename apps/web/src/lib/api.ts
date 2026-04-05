@@ -72,3 +72,19 @@ export const updateNodePosition = async (courseId: string, nodeId: string, posit
 
     return response.json()
 }
+
+export const getNodeContent = async (courseId: string, nodeId: string, nodeLabel: string): Promise<any> => {
+    const response = await fetch(`https://mygateway.up.railway.app/ai/node-content/${courseId}/${nodeId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ node_label: nodeLabel })
+    })
+
+    if (!response.ok) {
+        throw new Error('Error fetching node content')
+    }
+
+    return response.json()
+}

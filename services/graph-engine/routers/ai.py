@@ -188,26 +188,29 @@ class CurriculumRequest(BaseModel):
     description:  str
     domain:       str = "generic"
     num_concepts: int = 8
+    difficulty_level: str = "intermediate"
 
 
 @router.post("/curriculum/generate")
 def create_curriculum(req: CurriculumRequest):
     """
     Genera un currículo completo desde título + descripción.
-    Usa Claude para extraer conceptos e inferir prerequisitos.
+    Usa DeepSeek para extraer conceptos, contenido educativo e inferir prerequisitos.
     """
-    logger.info(f"Generando currículo: {req.title}")
+    logger.info(f"Generando currículo: {req.title} (nivel: {req.difficulty_level})")
 
     result = generate_curriculum(
         title        = req.title,
         description  = req.description,
         domain       = req.domain,
         num_concepts = req.num_concepts,
+        difficulty_level = req.difficulty_level,
     )
 
     return {
         "title":        req.title,
         "domain":       req.domain,
+        "difficulty_level": req.difficulty_level,
         "curriculum":   result,
         "preview": {
             "concepts": [

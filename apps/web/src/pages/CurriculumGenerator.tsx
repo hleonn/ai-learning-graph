@@ -26,7 +26,6 @@ const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
 
 // Función para calcular posiciones automáticas basadas en orden topológico
 function calculatePositions(concepts: Concept[], edges: Edge[]) {
-    // Crear un mapa de nodos y sus dependencias
     const nodeMap = new Map<string, { label: string, inDegree: number, outDegree: number, level: number }>()
 
     concepts.forEach(concept => {
@@ -38,7 +37,6 @@ function calculatePositions(concepts: Concept[], edges: Edge[]) {
         })
     })
 
-    // Calcular grados
     edges.forEach(edge => {
         const source = nodeMap.get(edge.source)
         const target = nodeMap.get(edge.target)
@@ -46,7 +44,6 @@ function calculatePositions(concepts: Concept[], edges: Edge[]) {
         if (target) target.inDegree++
     })
 
-    // Calcular niveles (topological levels)
     let level = 0
     let remaining = new Set(nodeMap.keys())
 
@@ -63,8 +60,6 @@ function calculatePositions(concepts: Concept[], edges: Edge[]) {
             if (node) {
                 node.level = level
                 remaining.delete(label)
-
-                // Reducir inDegree de los targets
                 edges.forEach(edge => {
                     if (edge.source === label) {
                         const target = nodeMap.get(edge.target)
@@ -76,13 +71,11 @@ function calculatePositions(concepts: Concept[], edges: Edge[]) {
         level++
     }
 
-    // Si hay nodos que quedaron sin nivel (ciclos), asignar nivel 0
     remaining.forEach(label => {
         const node = nodeMap.get(label)
         if (node) node.level = 0
     })
 
-    // Calcular posiciones basadas en nivel
     const positions: Record<string, { x: number, y: number }> = {}
     const nodesPerLevel: Record<number, string[]> = {}
 
@@ -112,20 +105,23 @@ export default function CurriculumGenerator() {
     const navigate = useNavigate()
 
     const [form, setForm] = useState({
-        title:        '',
-        description:  '',
-        domain:       'generic',
+        title: '',
+        description: '',
+        domain: 'generic',
         num_concepts: 8,
+        difficulty_level: 'intermediate',
+        include_examples: true,
+        include_questions: true,
     })
 
-    const [result,   setResult]   = useState<{
+    const [result, setResult] = useState<{
         concepts: Concept[];
         edges: Edge[];
-        is_valid_dag:boolean;
+        is_valid_dag: boolean;
         stats: any
     } | null>(null)
-    const [loading,  setLoading]  = useState(false)
-    const [error,    setError]    = useState<string | null>(null)
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
     const handleGenerate = async () => {
         if (!form.title.trim()) {
@@ -153,11 +149,9 @@ export default function CurriculumGenerator() {
         setError(null)
 
         try {
-            // Calcular posiciones automáticas
             const positions = calculatePositions(result.concepts, result.edges)
             console.log('Posiciones calculadas:', positions)
 
-            // 1. Crear el curso en Supabase via Gateway
             const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                 method: 'POST',
                 headers: {
@@ -167,6 +161,7 @@ export default function CurriculumGenerator() {
                     title: form.title,
                     description: form.description || `Curso de ${form.title}`,
                     domain: form.domain,
+                    difficulty_level: form.difficulty_level,
                 })
             })
 
@@ -183,11 +178,10 @@ export default function CurriculumGenerator() {
 
             console.log('Curso creado con ID:', courseId)
 
-            // 2. Guardar conceptos (nodos) con posiciones calculadas
             for (const concept of result.concepts) {
                 const pos = positions[concept.label] || { x: 100, y: 100 }
 
-                const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
+                await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -198,15 +192,10 @@ export default function CurriculumGenerator() {
                         position_y: pos.y,
                     })
                 })
-
-                if (!nodeResponse.ok) {
-                    console.error(`Error saving node ${concept.label}:`, await nodeResponse.text())
-                }
             }
 
-            // 3. Guardar aristas (edges) en el Graph Engine
             for (const edge of result.edges) {
-                const edgeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
+                await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -215,10 +204,6 @@ export default function CurriculumGenerator() {
                         prerequisite_strength: edge.strength,
                     })
                 })
-
-                if (!edgeResponse.ok) {
-                    console.error(`Error saving edge ${edge.source}->${edge.target}:`, await edgeResponse.text())
-                }
             }
 
             alert(`✅ Curso "${form.title}" guardado exitosamente con ${result.concepts.length} conceptos y ${result.edges.length} relaciones`)
@@ -281,6 +266,22 @@ export default function CurriculumGenerator() {
                         </div>
 
                         <div style={{ ...s.field, flex: 1 }}>
+                            <label style={s.label}>Nivel de dificultad</label>
+                            <select
+                                style={s.select}
+                                value={form.difficulty_level}
+                                onChange={e => setForm(f => ({ ...f, difficulty_level: e.target.value }))}
+                            >
+                                <option value="beginner">Principiante</option>
+                                <option value="intermediate">Intermedio</option>
+                                <option value="advanced">Avanzado</option>
+                                <option value="expert">Experto / Certificación</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style={s.row}>
+                        <div style={{ ...s.field, flex: 1 }}>
                             <label style={s.label}>Número de conceptos</label>
                             <select
                                 style={s.select}
@@ -292,6 +293,25 @@ export default function CurriculumGenerator() {
                                 ))}
                             </select>
                         </div>
+                    </div>
+
+                    <div style={s.checkboxRow}>
+                        <label style={s.checkboxLabel}>
+                            <input
+                                type="checkbox"
+                                checked={form.include_examples}
+                                onChange={e => setForm(f => ({ ...f, include_examples: e.target.checked }))}
+                            />
+                            Incluir ejemplos prácticos
+                        </label>
+                        <label style={s.checkboxLabel}>
+                            <input
+                                type="checkbox"
+                                checked={form.include_questions}
+                                onChange={e => setForm(f => ({ ...f, include_questions: e.target.checked }))}
+                            />
+                            Incluir preguntas de práctica
+                        </label>
                     </div>
 
                     {error && <p style={s.error}>{error}</p>}
@@ -380,40 +400,42 @@ export default function CurriculumGenerator() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-    page:         { display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8' },
-    header:       { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F' },
-    back:         { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
-    title:        { fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 },
-    subtitle:     { fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: '2px 0 0' },
-    body:         { display: 'flex', gap: 24, padding: 24, alignItems: 'flex-start', flexWrap: 'wrap' },
-    formPanel:    { background: '#fff', borderRadius: 12, border: '0.5px solid #D3D1C7', padding: 24, width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 },
-    field:        { display: 'flex', flexDirection: 'column', gap: 6 },
-    label:        { fontSize: 13, fontWeight: 500, color: '#2C2C2A' },
-    input:        { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', outline: 'none' },
-    textarea:     { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', outline: 'none', resize: 'vertical' },
-    select:       { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', background: '#fff', outline: 'none' },
-    row:          { display: 'flex', gap: 12 },
-    btn:          { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
-    loadingNote:  { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
-    error:        { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
-    resultPanel:  { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 },
-    statsRow:     { display: 'flex', gap: 12 },
-    statCard:     { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
-    statNum:      { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
-    statLbl:      { fontSize: 11, color: '#888780' },
+    page: { display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8' },
+    header: { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F' },
+    back: { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
+    title: { fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 },
+    subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: '2px 0 0' },
+    body: { display: 'flex', gap: 24, padding: 24, alignItems: 'flex-start', flexWrap: 'wrap' },
+    formPanel: { background: '#fff', borderRadius: 12, border: '0.5px solid #D3D1C7', padding: 24, width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 },
+    field: { display: 'flex', flexDirection: 'column', gap: 6 },
+    label: { fontSize: 13, fontWeight: 500, color: '#2C2C2A' },
+    input: { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', outline: 'none' },
+    textarea: { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', outline: 'none', resize: 'vertical' },
+    select: { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', background: '#fff', outline: 'none' },
+    row: { display: 'flex', gap: 12 },
+    checkboxRow: { display: 'flex', gap: 16, marginTop: 8 },
+    checkboxLabel: { fontSize: 13, color: '#2C2C2A', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' },
+    btn: { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
+    loadingNote: { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
+    error: { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
+    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 },
+    statsRow: { display: 'flex', gap: 12 },
+    statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
+    statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
+    statLbl: { fontSize: 11, color: '#888780' },
     sectionTitle: { fontSize: 15, fontWeight: 600, color: '#2C2C2A', margin: 0 },
-    conceptGrid:  { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 },
-    conceptCard:  { background: '#fff', borderRadius: 10, border: '0.5px solid #D3D1C7', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 },
-    conceptTop:   { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    conceptGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 },
+    conceptCard: { background: '#fff', borderRadius: 10, border: '0.5px solid #D3D1C7', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 },
+    conceptTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
     conceptLabel: { fontSize: 13, fontWeight: 600, color: '#1E3A5F' },
-    diffBadge:    { fontSize: 10, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 20 },
-    conceptDesc:  { fontSize: 12, color: '#5F5E5A', lineHeight: 1.5, margin: 0 },
-    edgeList:     { display: 'flex', flexDirection: 'column', gap: 8 },
-    edgeRow:      { display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '8px 14px' },
-    edgeSrc:      { fontSize: 12, fontWeight: 500, color: '#1E3A5F', width: 160, flexShrink: 0 },
-    edgeArrow:    { fontSize: 14, color: '#1D9E75', fontWeight: 700 },
-    edgeTgt:      { fontSize: 12, fontWeight: 500, color: '#534AB7', width: 160, flexShrink: 0 },
-    strengthBar:  { flex: 1, height: 5, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden' },
+    diffBadge: { fontSize: 10, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 20 },
+    conceptDesc: { fontSize: 12, color: '#5F5E5A', lineHeight: 1.5, margin: 0 },
+    edgeList: { display: 'flex', flexDirection: 'column', gap: 8 },
+    edgeRow: { display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '8px 14px' },
+    edgeSrc: { fontSize: 12, fontWeight: 500, color: '#1E3A5F', width: 160, flexShrink: 0 },
+    edgeArrow: { fontSize: 14, color: '#1D9E75', fontWeight: 700 },
+    edgeTgt: { fontSize: 12, fontWeight: 500, color: '#534AB7', width: 160, flexShrink: 0 },
+    strengthBar: { flex: 1, height: 5, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden' },
     strengthFill: { height: '100%', borderRadius: 3 },
-    strengthVal:  { fontSize: 11, color: '#888780', width: 32, textAlign: 'right', flexShrink: 0 },
+    strengthVal: { fontSize: 11, color: '#888780', width: 32, textAlign: 'right', flexShrink: 0 },
 }
