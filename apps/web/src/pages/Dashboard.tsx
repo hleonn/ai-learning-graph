@@ -289,31 +289,34 @@ export default function Dashboard() {
                                 </button>
 
                             </div>
-                            <button
-                                style={styles.deleteBtn}
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    deleteCourse(course.id, course.title)
-                                }}
-                            >
-                                🗑️ Eliminar
-                            </button>
+                            <div>
+                                <button
+                                    style={styles.deleteBtn}
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        deleteCourse(course.id, course.title)
+                                    }}
+                                >
+                                    🗑️ Eliminar
+                                </button>
 
-                            <button
-                                style={styles.heatmapBtn}
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    // Abrir modal de heatmap
-                                    const heatmapWindow = window.open('', '_blank', 'width=1200,height=800')
-                                    if (heatmapWindow) {
-                                        // Renderizar heatmap en nueva ventana o usar modal
-                                        // Por ahora usamos alert para indicar
-                                        alert('Funcionalidad Heatmap - Próximamente en modal')
-                                    }
-                                }}
-                            >
-                                📊 Heatmap
-                            </button>
+                                <button
+                                    style={styles.heatmapBtn}
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        // Abrir modal de heatmap
+                                        const heatmapWindow = window.open('', '_blank', 'width=1200,height=800')
+                                        if (heatmapWindow) {
+                                            // Renderizar heatmap en nueva ventana o usar modal
+                                            // Por ahora usamos alert para indicar
+                                            alert('Funcionalidad Heatmap - Próximamente en modal')
+                                        }
+                                    }}
+                                >
+                                    📊 Heatmap
+                                </button>
+                            </div>
+
 
                         </div>
                     ))}
@@ -327,7 +330,7 @@ export default function Dashboard() {
                         <p>Cargando cursos de Google...</p>
                     ) : googleCourses.length === 0 ? (
                         <div style={styles.emptyState}>
-                        <p>No se encontraron cursos activos en Google Classroom</p>
+                            <p>No se encontraron cursos activos en Google Classroom</p>
                             <p style={styles.emptySubtext}>Asegúrate de tener cursos activos en Google Classroom</p>
                         </div>
                     ) : (
