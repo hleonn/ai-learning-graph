@@ -25,14 +25,6 @@ function masteryColor(score: number): string {
     return '#D3D1C7'
 }
 
-// UUID fijo del usuario para pruebas (reemplazar con el ID real de Supabase)
-const CURRENT_USER_ID = '0d212af1-6c27-4d7b-8fc0-64256b35e563'
-
-// Función para obtener el usuario actual (ahora devuelve UUID)
-const getCurrentUserId = (): string | null => {
-    return CURRENT_USER_ID
-}
-
 export default function GraphView() {
     const {courseId} = useParams<{ courseId: string }>()
     const navigate = useNavigate()
@@ -178,21 +170,24 @@ export default function GraphView() {
     const handleAnswer = async (correct: boolean) => {
         if (!selected || !courseId) return
 
-        const userId = getCurrentUserId()
-        if (!userId) return
+        const token = localStorage.getItem('google_token')
+        if (!token) return
 
-        await recordEvent({
-            user_id: userId,
-            node_id: selected.id,
-            correct,
-            course_id: courseId,
-        })
-
-        // Recargar datos
         try {
+            const payload = JSON.parse(atob(token.split('.')[1]))
+            const email = payload.email
+
+            await recordEvent({
+                user_id: email,
+                node_id: selected.id,
+                correct,
+                course_id: courseId,
+            })
+
+            // Recargar datos
             const [masteryData, gapsData] = await Promise.all([
-                getStudentMastery(userId, courseId),
-                getGaps(userId, courseId),
+                getStudentMastery(email, courseId),
+                getGaps(email, courseId),
             ])
 
             const map: Record<string, MasteryNode> = {}
@@ -222,28 +217,49 @@ export default function GraphView() {
     // ── Verificar autenticación y cargar ───────────────────────────────────────
     useEffect(() => {
         const init = async () => {
-            // Obtener usuario actual (UUID)
-            const userId = getCurrentUserId()
+            const token = localStorage.getItem('google_token')
 
-            if (!userId) {
-                console.log('No hay usuario autenticado, redirigiendo...')
+            // Si no hay token, redirigir a login
+            if (!token) {
+                console.log('No hay token, redirigiendo a Google...')
                 window.location.href = 'https://mygateway.up.railway.app/auth/google'
                 return
             }
 
-            if (!courseId) return
-
             try {
+                const payload = JSON.parse(atob(token.split('.')[1]))
+                const email = payload.email
+
+                console.log(`Usuario autenticado: ${email}`)
+
+                // Auto-enroll (inscribir al usuario en el curso)
+                const enrollResponse = await fetch(`https://mygateway.up.railway.app/enroll/${courseId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+
+                if (!enrollResponse.ok) {
+                    console.error('Error en auto-enroll:', await enrollResponse.text())
+                } else {
+                    const enrollData = await enrollResponse.json()
+                    if (enrollData.isNewEnrollment) {
+                        console.log('✅ Usuario inscrito automáticamente')
+                    }
+                }
+
                 setLoading(true)
 
                 // Cargar grafo
-                const graphData = await getGraph(courseId)
+                const graphData = await getGraph(courseId!)
                 graphRef.current = graphData
 
-                // Cargar mastery y gaps usando UUID
+                // Cargar mastery y gaps
                 const [masteryData, gapsData] = await Promise.all([
-                    getStudentMastery(userId, courseId),
-                    getGaps(userId, courseId),
+                    getStudentMastery(email, courseId!),
+                    getGaps(email, courseId!),
                 ])
 
                 const map: Record<string, MasteryNode> = {}
@@ -254,31 +270,11 @@ export default function GraphView() {
                 setSummary(masteryData.summary)
                 setGaps(gapsData.gaps.slice(0, 5))
 
-                // Auto-enroll
-                const token = localStorage.getItem('google_token')
-                if (token) {
-                    try {
-                        const response = await fetch(`https://mygateway.up.railway.app/enroll/${courseId}`, {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            }
-                        })
-                        const data = await response.json()
-                        if (data.isNewEnrollment) {
-                            console.log('✅ Estudiante inscrito automáticamente')
-                        }
-                    } catch (error) {
-                        console.error('Error en auto-enroll:', error)
-                    }
-                }
-
                 setTimeout(() => {
                     initCytoscape()
                 }, 100)
-            } catch (e) {
-                console.error('Error cargando datos:', e)
+            } catch (error) {
+                console.error('Error cargando datos:', error)
             } finally {
                 setLoading(false)
             }
