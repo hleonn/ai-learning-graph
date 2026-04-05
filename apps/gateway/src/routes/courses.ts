@@ -20,7 +20,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // POST /courses — crear un nuevo curso
 router.post('/', async (req: Request, res: Response) => {
-    const { title, description, domain, google_classroom_id } = req.body
+    const { title, description, domain, google_classroom_id, difficulty_level } = req.body
 
     if (!title) {
         return res.status(400).json({ error: 'El título es requerido' })
@@ -33,6 +33,7 @@ router.post('/', async (req: Request, res: Response) => {
             description: description || '',
             domain: domain || 'generic',
             google_classroom_id: google_classroom_id || null,
+            difficulty_level: difficulty_level || 'intermediate',
         })
         .select()
 
@@ -161,7 +162,70 @@ router.get('/:courseId/students', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+// GET /courses/:courseId/avg-progress - Progreso promedio de la clase
+router.get('/:courseId/avg-progress', async (req: Request, res: Response) => {
+    const { courseId } = req.params
 
+    try {
+        // 1. Obtener todos los estudiantes del curso
+        const { data: enrollments, error: enrollError } = await supabase
+            .from('course_enrollments')
+            .select('user_id')
+            .eq('course_id', courseId)
+            .eq('role', 'student')
+
+        if (enrollError) throw enrollError
+
+        if (!enrollments || enrollments.length === 0) {
+            return res.json({ avgProgress: 0, totalStudents: 0 })
+        }
+
+        // 2. Obtener todos los nodos del curso
+        const { data: nodes, error: nodesError } = await supabase
+            .from('concept_nodes')
+            .select('id')
+            .eq('course_id', courseId)
+
+        if (nodesError) throw nodesError
+
+        if (!nodes || nodes.length === 0) {
+            return res.json({ avgProgress: 0, totalStudents: enrollments.length })
+        }
+
+        const studentIds = enrollments.map(e => e.user_id)
+        const nodeIds = nodes.map(n => n.id)
+
+        // 3. Obtener mastery de todos los estudiantes
+        const { data: masteryData, error: masteryError } = await supabase
+            .from('student_mastery')
+            .select('user_id, mastery_score')
+            .in('user_id', studentIds)
+            .in('node_id', nodeIds)
+
+        if (masteryError) throw masteryError
+
+        // 4. Calcular progreso promedio por estudiante
+        const studentProgress: Record<string, number> = {}
+        studentIds.forEach(id => { studentProgress[id] = 0 })
+
+        masteryData?.forEach(m => {
+            studentProgress[m.user_id] = (studentProgress[m.user_id] || 0) + (m.mastery_score || 0)
+        })
+
+        let totalProgress = 0
+        studentIds.forEach(id => {
+            const avgForStudent = studentProgress[id] / nodes.length
+            totalProgress += avgForStudent
+        })
+
+        const avgProgress = studentIds.length > 0 ? Math.round((totalProgress / studentIds.length) * 100) : 0
+
+        res.json({ avgProgress, totalStudents: studentIds.length })
+    } catch (error: any) {
+        console.error('[AvgProgress] Error:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
 // GET /courses/:id — obtiene un curso por ID (DEBE IR AL FINAL)
 router.get('/:id', async (req: Request, res: Response) => {
     const { id } = req.params

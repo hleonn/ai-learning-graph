@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { getCourses, getStudentMastery } from '../lib/api'
 import HeatmapView from '../components/HeatmapView'
 
-// Definir el tipo Course localmente
 interface Course {
     id: string
     title: string
     description: string
     domain: string
+    difficulty_level?: string
     created_at: string
     google_classroom_id?: string
 }
@@ -21,7 +21,8 @@ export default function Dashboard() {
     const userPhoto = localStorage.getItem('user_photo')
     const [courseProgress, setCourseProgress] = useState<Record<string, number>>({})
     const [courseStudentsCount, setCourseStudentsCount] = useState<Record<string, number>>({})
-    const [courseEnrolled, setCourseEnrolled] = useState<Record<string, boolean>>({})
+    const [courseAvgProgress, setCourseAvgProgress] = useState<Record<string, number>>({})
+    const [userRole, setUserRole] = useState<string>('teacher')
 
     // Google Classroom state
     const [googleCourses, setGoogleCourses] = useState<any[]>([])
@@ -39,8 +40,8 @@ export default function Dashboard() {
 
     const navigate = useNavigate()
 
-    // Obtener el userId actual
-    const getCurrentUserId = async (): Promise<string | null> => {
+    // Obtener el userId actual y rol
+    const getCurrentUser = async (): Promise<{ id: string; role: string } | null> => {
         const token = localStorage.getItem('google_token')
         if (!token) return null
 
@@ -49,8 +50,13 @@ export default function Dashboard() {
             const email = payload.email
             const response = await fetch(`https://mygateway.up.railway.app/api/user/by-email/${email}`)
             if (response.ok) {
-                const data = await response.json()
-                return data.id
+                const userData = await response.json()
+                const roleResponse = await fetch(`https://mygateway.up.railway.app/api/user/role/${userData.id}`)
+                if (roleResponse.ok) {
+                    const roleData = await roleResponse.json()
+                    return { id: userData.id, role: roleData.role }
+                }
+                return { id: userData.id, role: 'student' }
             }
             return null
         } catch {
@@ -61,47 +67,72 @@ export default function Dashboard() {
     // Cargar estadísticas de un curso
     const loadCourseStats = async (courseId: string) => {
         const token = localStorage.getItem('google_token')
-        if (!token) return { students: 0, isEnrolled: false }
+        if (!token) return { students: 0 }
 
         try {
-            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/stats`, {
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/students`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             if (response.ok) {
-                return await response.json()
+                const data = await response.json()
+                return { students: data.total || 0 }
             }
         } catch (error) {
             console.error('Error loading course stats:', error)
         }
-        return { students: 0, isEnrolled: false }
+        return { students: 0 }
     }
 
-    // Cargar progreso de cada curso
-    const loadCourseProgress = async (userId: string) => {
+    // Cargar progreso promedio de la clase
+    const loadAvgClassProgress = async (courseId: string) => {
+        const token = localStorage.getItem('google_token')
+        if (!token) return 0
+
+        try {
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/avg-progress`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            if (response.ok) {
+                const data = await response.json()
+                return data.avgProgress || 0
+            }
+        } catch (error) {
+            console.error('Error loading avg progress:', error)
+        }
+        return 0
+    }
+
+    // Cargar datos de todos los cursos
+    const loadAllCoursesData = async (userId: string) => {
         const progressMap: Record<string, number> = {}
         const studentsMap: Record<string, number> = {}
-        const enrolledMap: Record<string, boolean> = {}
+        const avgProgressMap: Record<string, number> = {}
 
         for (const course of courses) {
             try {
+                // Progreso individual del usuario (para estudiantes)
                 const masteryData = await getStudentMastery(userId, course.id)
                 const masteredCount = masteryData.nodes?.filter((n: any) => n.mastery_score >= 0.8).length || 0
                 const totalNodes = masteryData.summary?.total_nodes || 1
                 progressMap[course.id] = Math.round((masteredCount / totalNodes) * 100)
 
+                // Estadísticas del curso
                 const stats = await loadCourseStats(course.id)
                 studentsMap[course.id] = stats.students || 0
-                enrolledMap[course.id] = stats.isEnrolled || false
+
+                // Progreso promedio de la clase (para profesores)
+                const avgProgress = await loadAvgClassProgress(course.id)
+                avgProgressMap[course.id] = avgProgress
             } catch (e) {
                 progressMap[course.id] = 0
                 studentsMap[course.id] = 0
-                enrolledMap[course.id] = false
+                avgProgressMap[course.id] = 0
             }
         }
 
         setCourseProgress(progressMap)
         setCourseStudentsCount(studentsMap)
-        setCourseEnrolled(enrolledMap)
+        setCourseAvgProgress(avgProgressMap)
     }
 
     useEffect(() => {
@@ -110,9 +141,12 @@ export default function Dashboard() {
                 const coursesData = await getCourses()
                 setCourses(coursesData.courses)
 
-                const userId = await getCurrentUserId()
-                if (userId && coursesData.courses.length > 0) {
-                    await loadCourseProgress(userId)
+                const user = await getCurrentUser()
+                if (user) {
+                    setUserRole(user.role)
+                    if (coursesData.courses.length > 0) {
+                        await loadAllCoursesData(user.id)
+                    }
                 }
             } catch (err) {
                 setError('No se pudieron cargar los cursos')
@@ -252,6 +286,8 @@ export default function Dashboard() {
         </div>
     )
 
+    const isTeacher = userRole === 'teacher'
+
     return (
         <div style={styles.page}>
             <div style={styles.header}>
@@ -285,7 +321,7 @@ export default function Dashboard() {
                                     <img src={userPhoto} style={styles.userPhoto} alt={userName} />
                                 )}
                                 <span style={styles.userName}>{userName}</span>
-                                <span style={styles.connected}>✓ Classroom</span>
+                                <span style={styles.connected}>✓ {isTeacher ? 'Profesor' : 'Classroom'}</span>
                             </div>
                         ) : (
                             <button
@@ -302,69 +338,71 @@ export default function Dashboard() {
             <div style={styles.section}>
                 <h2 style={styles.sectionTitle}>Cursos disponibles</h2>
                 <div style={styles.grid}>
-                    {courses.map((course) => (
-                        <div key={course.id} style={styles.card}>
-                            <div style={styles.cardHeader}>
-                                <div style={styles.cardDomain}>{course.domain}</div>
-                                <div style={styles.cardDifficulty}>
-                                    {course.title.toLowerCase().includes('python') && '🐍 Python'}
-                                    {course.title.toLowerCase().includes('data science') && '📊 Data Science'}
-                                    {course.title.toLowerCase().includes('javascript') && '🟨 JavaScript'}
-                                    {course.title.toLowerCase().includes('programming') && '💻 Programación'}
-                                    {!course.title.toLowerCase().includes('python') &&
-                                        !course.title.toLowerCase().includes('data science') &&
-                                        !course.title.toLowerCase().includes('javascript') &&
-                                        !course.title.toLowerCase().includes('programming') && '📚 Curso'}
+                    {courses.map((course) => {
+                        const displayProgress = isTeacher ? courseAvgProgress[course.id] || 0 : courseProgress[course.id] || 0
+                        const progressLabel = isTeacher ? 'promedio clase' : 'completado'
+
+                        return (
+                            <div key={course.id} style={styles.card}>
+                                <div style={styles.cardHeader}>
+                                    <div style={styles.cardDomain}>{course.domain}</div>
+                                    <div style={styles.cardDifficulty}>
+                                        {course.difficulty_level === 'beginner' && '🔰 Principiante'}
+                                        {course.difficulty_level === 'intermediate' && '📘 Intermedio'}
+                                        {course.difficulty_level === 'advanced' && '🚀 Avanzado'}
+                                        {course.difficulty_level === 'expert' && '🎓 Certificación'}
+                                        {!course.difficulty_level && '📚 Estándar'}
+                                    </div>
                                 </div>
-                            </div>
-                            <h3 style={styles.cardTitle}>{course.title}</h3>
-                            <p style={styles.cardDesc}>{course.description}</p>
+                                <h3 style={styles.cardTitle}>{course.title}</h3>
+                                <p style={styles.cardDesc}>{course.description}</p>
 
-                            {/* Barra de progreso */}
-                            <div style={styles.progressContainer}>
-                                <div style={styles.progressBar}>
-                                    <div style={{...styles.progressFill, width: `${courseProgress[course.id] || 0}%`}}/>
+                                {/* Barra de progreso */}
+                                <div style={styles.progressContainer}>
+                                    <div style={styles.progressBar}>
+                                        <div style={{...styles.progressFill, width: `${displayProgress}%`}}/>
+                                    </div>
+                                    <span style={styles.progressText}>{displayProgress}% {progressLabel}</span>
                                 </div>
-                                <span style={styles.progressText}>{courseProgress[course.id] || 0}% completado</span>
-                            </div>
 
-                            {/* Estadísticas del curso */}
-                            <div style={styles.courseStats}>
-                                <span>📊 {courseProgress[course.id] || 0}% promedio</span>
-                                <span>👥 {courseStudentsCount[course.id] || 0} estudiantes</span>
-                                <span>{courseEnrolled[course.id] ? '🔓 Inscrito' : '🔒 No inscrito'}</span>
-                            </div>
+                                {/* Estadísticas del curso */}
+                                <div style={styles.courseStats}>
+                                    <span>📊 {displayProgress}% {progressLabel}</span>
+                                    <span>👥 {courseStudentsCount[course.id] || 0} estudiantes</span>
+                                    <span>{isTeacher ? '👨‍🏫 Profesor' : (courseStudentsCount[course.id] ? '🔓 Inscrito' : '🔒 No inscrito')}</span>
+                                </div>
 
-                            <div style={styles.buttonGroup}>
+                                <div style={styles.buttonGroup}>
+                                    <button
+                                        style={styles.viewGraphBtn}
+                                        onClick={() => navigate(`/graph/${course.id}`)}
+                                    >
+                                        Ver grafo →
+                                    </button>
+                                    <button
+                                        style={styles.viewStudentsBtn}
+                                        onClick={() => loadCourseStudents(course.id, course.title)}
+                                        disabled={loadingStudents && showStudentsFor === course.id}
+                                    >
+                                        {loadingStudents && showStudentsFor === course.id ? 'Cargando...' : '👥 Estudiantes'}
+                                    </button>
+                                    <button
+                                        style={styles.heatmapBtn}
+                                        onClick={() => setHeatmapCourse({ id: course.id, title: course.title })}
+                                    >
+                                        📊 Heatmap
+                                    </button>
+                                </div>
+
                                 <button
-                                    style={styles.viewGraphBtn}
-                                    onClick={() => navigate(`/graph/${course.id}`)}
+                                    style={styles.deleteBtn}
+                                    onClick={() => deleteCourse(course.id, course.title)}
                                 >
-                                    Ver grafo →
-                                </button>
-                                <button
-                                    style={styles.viewStudentsBtn}
-                                    onClick={() => loadCourseStudents(course.id, course.title)}
-                                    disabled={loadingStudents && showStudentsFor === course.id}
-                                >
-                                    {loadingStudents && showStudentsFor === course.id ? 'Cargando...' : '👥 Estudiantes'}
-                                </button>
-                                <button
-                                    style={styles.heatmapBtn}
-                                    onClick={() => setHeatmapCourse({ id: course.id, title: course.title })}
-                                >
-                                    📊 Heatmap
+                                    🗑️ Eliminar curso
                                 </button>
                             </div>
-
-                            <button
-                                style={styles.deleteBtn}
-                                onClick={() => deleteCourse(course.id, course.title)}
-                            >
-                                🗑️ Eliminar curso
-                            </button>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             </div>
 
@@ -462,7 +500,7 @@ const styles: Record<string, React.CSSProperties> = {
     userBadge: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 8, padding: '6px 12px', border: '1px solid #D3D1C7' },
     userPhoto: { width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' as const },
     userName: { fontSize: 13, fontWeight: 500, color: '#1E3A5F' },
-    connected: { fontSize: 11, color: '#1D9E75', fontWeight: 600 },
+    connected: { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: '#E1F5EE', color: '#1D9E75' },
     googleBtn: { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
     googleClassroomBtn: {
         background: '#fff',
