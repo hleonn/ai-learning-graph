@@ -1,15 +1,14 @@
-import express, {Request, Response} from 'express'
+import express, { Request, Response } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import dotenv from 'dotenv'
 import axios from 'axios'
+import jwt from 'jsonwebtoken'
 
 import healthRouter from './routes/health'
 import coursesRouter from './routes/courses'
 import { errorHandler } from './middleware/errorHandler'
 import authRouter from './routes/auth'
-
-import jwt from 'jsonwebtoken'
 import { supabase } from './lib/supabase'
 
 dotenv.config()
@@ -31,8 +30,9 @@ app.use(cors({
 app.use(express.json())
 
 // ── Routes ────────────────────────────────────────────────────────────────────
-app.use('/health',  healthRouter)
-// ── Auto-enroll directo (evita problemas con el router de courses) ──────────
+app.use('/health', healthRouter)
+
+// ── Auto-enroll directo (DEBE IR ANTES de /courses) ──────────────────────────
 app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization
     if (!authHeader) {
@@ -46,7 +46,6 @@ app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response)
 
         console.log(`[Enroll-Direct] Usuario: ${decoded.email}, Curso: ${courseId}`)
 
-        // Buscar el perfil del usuario
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('id')
@@ -57,7 +56,6 @@ app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response)
             return res.status(404).json({ error: 'Perfil de usuario no encontrado' })
         }
 
-        // Verificar si ya está inscrito
         const { data: existing } = await supabase
             .from('course_enrollments')
             .select('*')
@@ -77,6 +75,7 @@ app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response)
                     source: 'auto_enroll'
                 })
             isNewEnrollment = true
+            console.log(`[Enroll-Direct] Usuario ${decoded.email} inscrito en curso ${courseId}`)
         }
 
         res.json({
@@ -89,33 +88,32 @@ app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response)
         res.status(500).json({ error: error.message })
     }
 })
+
+// ── Routers (DESPUÉS del endpoint específico) ─────────────────────────────────
 app.use('/courses', coursesRouter)
 app.use('/auth', authRouter)
 
-
 // ── Proxy → Graph Engine ──────────────────────────────────────────────────────
-// Redirige /graph/* y /mastery/* al Graph Engine en Python
 async function proxyToGraphEngine(req: express.Request, res: express.Response, prefix: string) {
     try {
         const url = `${GRAPH_ENGINE_URL}/${prefix}${req.path}`
         const response = await axios({
-            method:  req.method,
+            method: req.method,
             url,
-            data:    req.body,
+            data: req.body,
             headers: { 'Content-Type': 'application/json' },
         })
         res.json(response.data)
     } catch (error: any) {
-        const status  = error.response?.status || 500
-        const message = error.response?.data   || { error: 'Graph Engine no disponible' }
+        const status = error.response?.status || 500
+        const message = error.response?.data || { error: 'Graph Engine no disponible' }
         res.status(status).json(message)
     }
 }
 
-app.use('/graph',   (req, res) => proxyToGraphEngine(req, res, 'graph'))
+app.use('/graph', (req, res) => proxyToGraphEngine(req, res, 'graph'))
 app.use('/mastery', (req, res) => proxyToGraphEngine(req, res, 'mastery'))
-app.use('/ai',      (req, res) => proxyToGraphEngine(req, res, 'ai'))
-
+app.use('/ai', (req, res) => proxyToGraphEngine(req, res, 'ai'))
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use(errorHandler)
