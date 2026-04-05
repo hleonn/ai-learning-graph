@@ -350,11 +350,19 @@ export default function CurriculumGenerator() {
                                 <span style={s.statLbl}>DAG válido</span>
                             </div>
                             <button
-                                style={{...s.saveBtn, ...s.statCard}}
+                                style={{
+                                    ...s.btn,
+                                    marginTop: 24,
+                                    background: '#1D9E75',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8
+                                }}
                                 onClick={handleSaveCourse}
                                 disabled={loading}
                             >
-                                {loading ? 'Guardando...' : '💾 Guardar Curso'}
+                                {loading ? 'Guardando...' : '💾 Guardar curso en Supabase'}
                             </button>
                         </div>
 
@@ -362,7 +370,7 @@ export default function CurriculumGenerator() {
                         <div style={s.conceptGrid}>
                             {result.concepts.map((c, i) => (
                                 <div key={i} style={s.conceptCard}>
-                                    <div style={s.conceptTop}>
+                                <div style={s.conceptTop}>
                                     <span style={s.conceptLabel}>{c.label}</span>
                                         <span style={{ ...s.diffBadge, background: diffColor(c.difficulty) }}>
                                             {diffLabel(c.difficulty)}

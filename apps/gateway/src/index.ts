@@ -69,6 +69,53 @@ app.get('/api/user/role/:userId', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+// ── Obtener cursos en los que está inscrito un estudiante ─────────────────────
+app.get('/api/user/:userId/enrolled-courses', async (req: Request, res: Response) => {
+    const { userId } = req.params
+
+    try {
+        const { data: enrollments, error } = await supabase
+            .from('course_enrollments')
+            .select('course_id')
+            .eq('user_id', userId)
+            .eq('role', 'student')
+
+        if (error) throw error
+
+        const courseIds = enrollments.map(e => e.course_id)
+
+        const { data: courses, error: coursesError } = await supabase
+            .from('courses')
+            .select('*')
+            .in('id', courseIds)
+
+        if (coursesError) throw coursesError
+
+        res.json({ courses })
+    } catch (error: any) {
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ── Obtener IDs de cursos inscritos ───────────────────────────────────────────
+app.get('/api/user/:userId/enrollments', async (req: Request, res: Response) => {
+    const { userId } = req.params
+
+    try {
+        const { data: enrollments, error } = await supabase
+            .from('course_enrollments')
+            .select('course_id')
+            .eq('user_id', userId)
+            .eq('role', 'student')
+
+        if (error) throw error
+
+        const enrolledCourseIds = enrollments.map(e => e.course_id)
+        res.json({ enrolledCourseIds })
+    } catch (error: any) {
+        res.status(500).json({ error: error.message })
+    }
+})
 // ── Auto-enroll directo ───────────────────────────────────────────────────────
 app.post('/enroll/:courseId', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization

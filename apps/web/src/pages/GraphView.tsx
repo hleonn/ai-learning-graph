@@ -79,7 +79,7 @@ export default function GraphView() {
     const [nodeContent, setNodeContent] = useState<NodeContent | null>(null)
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
     const [showAnswerFeedback, setShowAnswerFeedback] = useState(false)
-    const [showLeftPanel, setShowLeftPanel] = useState(true)
+    const [showLeftPanel, setShowLeftPanel] = useState(false)
     const [courseStructure, setCourseStructure] = useState<CourseStructure | null>(null)
 
     // ── Cargar estructura del curso ──────────────────────────────────────────────
