@@ -33,7 +33,7 @@ app.use(express.json())
 app.use('/health', healthRouter)
 
 // ── Auto-enroll directo (DEBE IR ANTES de /courses) ──────────────────────────
-app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response) => {
+app.post('/api/enroll/:courseId', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization
     if (!authHeader) {
         return res.status(401).json({ error: 'No token provided' })
@@ -44,7 +44,7 @@ app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response)
         const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
         const { courseId } = req.params
 
-        console.log(`[Enroll-Direct] Usuario: ${decoded.email}, Curso: ${courseId}`)
+        console.log(`[Enroll] Usuario: ${decoded.email}, Curso: ${courseId}`)
 
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
@@ -75,7 +75,7 @@ app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response)
                     source: 'auto_enroll'
                 })
             isNewEnrollment = true
-            console.log(`[Enroll-Direct] Usuario ${decoded.email} inscrito en curso ${courseId}`)
+            console.log(`[Enroll] Usuario ${decoded.email} inscrito en curso ${courseId}`)
         }
 
         res.json({
@@ -84,7 +84,7 @@ app.post('/courses/:courseId/enroll-direct', async (req: Request, res: Response)
             message: isNewEnrollment ? 'Inscrito correctamente' : 'Ya estabas inscrito'
         })
     } catch (error: any) {
-        console.error('[Enroll-Direct] Error:', error)
+        console.error('[Enroll] Error:', error)
         res.status(500).json({ error: error.message })
     }
 })

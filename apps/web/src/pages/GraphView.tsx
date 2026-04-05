@@ -63,7 +63,7 @@ export default function GraphView() {
         if (!token) return
 
         try {
-            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/enroll-direct`, {
+            const response = await fetch(`https://mygateway.up.railway.app/api/enroll/${courseId}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
