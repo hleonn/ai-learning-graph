@@ -3,8 +3,6 @@ import {useParams, useNavigate} from 'react-router-dom'
 import Cytoscape from 'cytoscape'
 import {getGraph, getStudentMastery, getGaps, recordEvent, updateNodePosition} from '../lib/api'
 
-// Eliminamos TEST_USER_ID fijo - ahora se obtiene del token
-
 interface MasteryNode {
     node_id: string
     label: string
@@ -54,30 +52,6 @@ export default function GraphView() {
     const [summary, setSummary] = useState<any>(null)
     const [gaps, setGaps] = useState<Gap[]>([])
     const [loading, setLoading] = useState(true)
-    const [currentUser, setCurrentUser] = useState<string | null>(null)
-
-    const autoEnroll = async () => {
-        if (!courseId) return
-
-        const token = localStorage.getItem('google_token')
-        if (!token) return
-
-        try {
-            const response = await fetch(`https://mygateway.up.railway.app/enroll/${courseId}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            const data = await response.json()
-            if (data.isNewEnrollment) {
-                console.log('✅ Estudiante inscrito automáticamente')
-            }
-        } catch (error) {
-            console.error('Error en auto-enroll:', error)
-        }
-    }
 
     // ── Guardar posición de un nodo ──────────────────────────────────────────
     const saveNodePosition = async (nodeId: string, position: { x: number; y: number }) => {
@@ -96,41 +70,6 @@ export default function GraphView() {
             }
             delete saveTimeoutRef.current[nodeId]
         }, 500)
-    }
-
-    // ── Cargar datos ──────────────────────────────────────────────────────────
-    const loadData = async (reinitCy = false) => {
-        if (!courseId || !currentUser) return
-        try {
-            const [graphData, masteryData, gapsData] = await Promise.all([
-                getGraph(courseId),
-                getStudentMastery(currentUser, courseId),
-                getGaps(currentUser, courseId),
-            ])
-
-            const map: Record<string, MasteryNode> = {}
-            masteryData.nodes.forEach((n: MasteryNode) => {
-                map[n.node_id] = n
-            })
-            masteryRef.current = map
-
-            graphRef.current = graphData
-            setSummary(masteryData.summary)
-            setGaps(gapsData.gaps.slice(0, 5))
-
-            if (reinitCy && cyRef.current) {
-                cyRef.current.nodes().forEach((node: any) => {
-                    const nodeId = node.data('id')
-                    const score = map[nodeId]?.mastery_score ?? 0
-                    node.data('mastery', score)
-                    node.style('background-color', masteryColor(score))
-                })
-            }
-        } catch (e) {
-            console.error('Error cargando datos:', e)
-        } finally {
-            setLoading(false)
-        }
     }
 
     // ── Inicializar Cytoscape ──────────────────────────────────────────────────
@@ -242,17 +181,47 @@ export default function GraphView() {
 
     // ── Registrar respuesta ───────────────────────────────────────────────────
     const handleAnswer = async (correct: boolean) => {
-        if (!selected || !courseId || !currentUser) return
+        if (!selected || !courseId) return
+
+        const userEmail = getCurrentUserEmail()
+        if (!userEmail) return
+
         await recordEvent({
-            user_id: currentUser,
+            user_id: userEmail,
             node_id: selected.id,
             correct,
             course_id: courseId,
         })
-        await loadData(true)
-        const updatedMastery = masteryRef.current[selected.id]
-        setSelected((prev: any) => ({...prev, masteryData: updatedMastery}))
-        setSummary((s: any) => ({...s}))
+
+        // Recargar datos
+        try {
+            const [masteryData, gapsData] = await Promise.all([
+                getStudentMastery(userEmail, courseId),
+                getGaps(userEmail, courseId),
+            ])
+
+            const map: Record<string, MasteryNode> = {}
+            masteryData.nodes.forEach((n: MasteryNode) => {
+                map[n.node_id] = n
+            })
+            masteryRef.current = map
+            setSummary(masteryData.summary)
+            setGaps(gapsData.gaps.slice(0, 5))
+
+            if (cyRef.current) {
+                cyRef.current.nodes().forEach((node: any) => {
+                    const nodeId = node.data('id')
+                    const score = map[nodeId]?.mastery_score ?? 0
+                    node.data('mastery', score)
+                    node.style('background-color', masteryColor(score))
+                })
+            }
+
+            const updatedMastery = masteryRef.current[selected.id]
+            setSelected((prev: any) => ({...prev, masteryData: updatedMastery}))
+        } catch (e) {
+            console.error('Error recargando datos:', e)
+        }
     }
 
     // ── Verificar autenticación y cargar ───────────────────────────────────────
@@ -262,19 +231,62 @@ export default function GraphView() {
             const userEmail = getCurrentUserEmail()
 
             if (!userEmail) {
-                // No hay usuario logueado, redirigir a login
                 console.log('No hay usuario autenticado, redirigiendo...')
                 window.location.href = 'https://mygateway.up.railway.app/auth/google'
                 return
             }
 
-            setCurrentUser(userEmail)
-            setLoading(true)
-            await loadData(false)
-            await autoEnroll()
-            setTimeout(() => {
-                initCytoscape()
-            }, 100)
+            if (!courseId) return
+
+            try {
+                setLoading(true)
+
+                // Cargar grafo
+                const graphData = await getGraph(courseId)
+                graphRef.current = graphData
+
+                // Cargar mastery y gaps
+                const [masteryData, gapsData] = await Promise.all([
+                    getStudentMastery(userEmail, courseId),
+                    getGaps(userEmail, courseId),
+                ])
+
+                const map: Record<string, MasteryNode> = {}
+                masteryData.nodes.forEach((n: MasteryNode) => {
+                    map[n.node_id] = n
+                })
+                masteryRef.current = map
+                setSummary(masteryData.summary)
+                setGaps(gapsData.gaps.slice(0, 5))
+
+                // Auto-enroll
+                const token = localStorage.getItem('google_token')
+                if (token) {
+                    try {
+                        const response = await fetch(`https://mygateway.up.railway.app/enroll/${courseId}`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        })
+                        const data = await response.json()
+                        if (data.isNewEnrollment) {
+                            console.log('✅ Estudiante inscrito automáticamente')
+                        }
+                    } catch (error) {
+                        console.error('Error en auto-enroll:', error)
+                    }
+                }
+
+                setTimeout(() => {
+                    initCytoscape()
+                }, 100)
+            } catch (e) {
+                console.error('Error cargando datos:', e)
+            } finally {
+                setLoading(false)
+            }
         }
 
         init()
