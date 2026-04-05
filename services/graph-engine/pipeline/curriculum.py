@@ -12,6 +12,7 @@ Dado el título y descripción de un curso, usa DeepSeek para:
 
 import os
 import json
+import re
 import networkx as nx
 import openai
 from loguru import logger
@@ -24,6 +25,58 @@ deepseek_client = openai.OpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com"
 )
+
+
+def _clean_json_response(raw: str) -> str:
+    """Limpia la respuesta de la API para obtener JSON válido"""
+    # Eliminar markdown
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+
+    # Eliminar caracteres no imprimibles
+    raw = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', raw)
+
+    return raw
+
+
+def _generate_fallback_concepts(title: str, num_concepts: int, difficulty_level: str) -> list[dict]:
+    """Genera conceptos de fallback si la API falla"""
+    logger.warning(f"Usando fallback para {title}")
+
+    level_multiplier = {
+        "beginner": 1,
+        "intermediate": 2,
+        "advanced": 3,
+        "expert": 4
+    }.get(difficulty_level, 2)
+
+    concepts = []
+    base_topics = [
+        "Introducción", "Fundamentos", "Conceptos Básicos",
+        "Aplicaciones Prácticas", "Casos de Estudio",
+        "Mejores Prácticas", "Técnicas Avanzadas", "Optimización"
+    ]
+
+    for i in range(min(num_concepts, len(base_topics))):
+        difficulty = min(level_multiplier + (i // 2), 5)
+        concepts.append({
+            "label": f"{base_topics[i]} de {title}",
+            "description": f"Exploración del concepto {base_topics[i].lower()} aplicado a {title}",
+            "difficulty": difficulty,
+            "content": f"Este es el contenido educativo para el concepto '{base_topics[i]} de {title}'. " +
+                      f"En este módulo aprenderás los aspectos fundamentales y avanzados de este tema. " +
+                      f"El nivel de dificultad es {difficulty} de 5.",
+            "examples": [
+                f"Ejemplo práctico 1 de {base_topics[i].lower()}",
+                f"Ejemplo práctico 2 de {base_topics[i].lower()}",
+                f"Ejemplo práctico 3 de {base_topics[i].lower()}"
+            ]
+        })
+
+    return concepts
 
 
 def extract_concepts_with_content(
@@ -50,63 +103,64 @@ def extract_concepts_with_content(
 
     level_description = difficulty_map.get(difficulty_level, difficulty_map["intermediate"])
 
-    prompt = f"""You are an expert curriculum designer. Extract exactly {num_concepts} key concepts from this course.
+    # Prompt simplificado para evitar JSON mal formado
+    prompt = f"""Extract {num_concepts} key concepts for a course.
 
 Course title: {title}
 Course description: {description}
 Domain: {domain}
-Difficulty level: {level_description}
+Level: {level_description}
 
-For EACH concept, provide:
-1. label: Short name (max 3 words)
-2. description: One sentence summary (what the student will learn)
-3. difficulty: Integer 1-5 (1=basic, 5=expert)
-4. content: Detailed explanation of the concept (2-3 paragraphs, comprehensive, educational)
-5. examples: 2-3 practical examples or use cases (as an array of strings)
+For each concept, provide exactly these fields:
+- label: short name (2-4 words)
+- description: one sentence explanation
+- difficulty: integer 1-5
+- content: detailed explanation (2-3 sentences)
+- examples: array of 2-3 strings
 
-The content should be like a textbook section - thorough, educational, and appropriate for the difficulty level.
-For beginner: focus on fundamentals, simple language
-For intermediate: add depth, real-world context
-For advanced: include technical details, best practices
-For expert: professional-level insights, edge cases, certification prep
-
-Return ONLY a JSON array. No explanation, no markdown, just the JSON.
-
-Example format:
+Return ONLY valid JSON array. Example:
 [
-  {{
-    "label": "Variables",
-    "description": "Learn how to declare and assign values to variables",
-    "difficulty": 1,
-    "content": "A variable is a named container that stores data in memory. In programming, variables allow you to store, modify, and retrieve information throughout your program. Variables have a name (identifier) and a value. For example, in Python, you can write `age = 25` to store the number 25 in a variable called 'age'...",
-    "examples": ["`name = 'John'` stores a text value", "`count = count + 1` increments a counter", "`total = price * quantity` calculates a total"]
-  }}
-]"""
+  {{"label": "Variables", "description": "Store and manage data", "difficulty": 1, "content": "Variables are containers for storing data values...", "examples": ["x = 5", "name = 'John'"]}}
+]
+
+IMPORTANT: Use double quotes. No trailing commas. Escape quotes with backslash."""
 
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=2000
+            temperature=0.5,
+            max_tokens=1500
         )
 
         raw = response.choices[0].message.content.strip()
+        logger.debug(f"Respuesta raw: {raw[:200]}...")
 
-        # Limpiar posibles backticks
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
+        cleaned = _clean_json_response(raw)
+        concepts = json.loads(cleaned)
 
-        concepts = json.loads(raw)
-        logger.info(f"Conceptos extraídos con contenido: {len(concepts)}")
-        return concepts
+        # Validar y mapear conceptos
+        mapped_concepts = []
+        for i, c in enumerate(concepts):
+            mapped_concepts.append({
+                "label": c.get("label", f"Concepto {i+1}"),
+                "description": c.get("description", f"Descripción del concepto {i+1}"),
+                "difficulty": min(max(c.get("difficulty", 3), 1), 5),
+                "content": c.get("content", f"Contenido educativo para {c.get('label', f'concepto {i+1}')}"),
+                "examples": c.get("examples", ["Ejemplo 1", "Ejemplo 2"])
+            })
+
+        logger.info(f"Conceptos extraídos correctamente: {len(mapped_concepts)}")
+        return mapped_concepts
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decodificando JSON: {e}")
+        logger.error(f"Respuesta problemática: {raw[:500]}...")
+        return _generate_fallback_concepts(title, num_concepts, difficulty_level)
 
     except Exception as e:
         logger.error(f"Error en extract_concepts_with_content: {e}")
-        raise
+        return _generate_fallback_concepts(title, num_concepts, difficulty_level)
 
 
 def infer_prerequisites(concepts: list[dict]) -> list[dict]:
@@ -120,46 +174,45 @@ def infer_prerequisites(concepts: list[dict]) -> list[dict]:
 
     concept_labels = [c["label"] for c in concepts]
 
-    prompt = f"""You are an expert curriculum designer. Given these concepts, determine which ones are prerequisites for others.
+    prompt = f"""Given these concepts, determine prerequisites.
 
 Concepts: {json.dumps(concept_labels)}
 
 Rules:
 - source must be learned BEFORE target
-- strength: 0.9 = essential prerequisite, 0.7 = helpful, 0.5 = loosely related
-- Only create edges where there is a clear learning dependency
-- Do NOT create cycles (A→B→A)
-- Return ONLY a JSON array, no explanation, no markdown
+- strength: 0.9=essential, 0.7=helpful, 0.5=related
+- No cycles
+- Return ONLY JSON array
 
-Example format:
-[
-  {{"source": "Variables", "target": "Functions", "strength": 0.9}},
-  {{"source": "Variables", "target": "Loops", "strength": 0.85}}
-]"""
+Example: [{{"source": "Variables", "target": "Functions", "strength": 0.9}}]"""
 
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=1000
+            temperature=0.5,
+            max_tokens=800
         )
 
         raw = response.choices[0].message.content.strip()
+        cleaned = _clean_json_response(raw)
+        edges = json.loads(cleaned)
 
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
-
-        edges = json.loads(raw)
         logger.info(f"Prerequisitos inferidos: {len(edges)} edges")
         return edges
 
     except Exception as e:
         logger.error(f"Error en infer_prerequisites: {e}")
-        raise
+        # Generar edges básicos basados en dificultad
+        fallback_edges = []
+        sorted_concepts = sorted(concepts, key=lambda x: x["difficulty"])
+        for i in range(len(sorted_concepts) - 1):
+            fallback_edges.append({
+                "source": sorted_concepts[i]["label"],
+                "target": sorted_concepts[i + 1]["label"],
+                "strength": 0.8
+            })
+        return fallback_edges
 
 
 def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[dict]]:
@@ -177,8 +230,8 @@ def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[di
 
     clean_edges = []
     for edge in edges:
-        src = label_to_idx.get(edge["source"])
-        tgt = label_to_idx.get(edge["target"])
+        src = label_to_idx.get(edge.get("source"))
+        tgt = label_to_idx.get(edge.get("target"))
 
         if src is None or tgt is None:
             continue
@@ -186,7 +239,7 @@ def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[di
         G.add_edge(src, tgt)
         if not nx.is_directed_acyclic_graph(G):
             G.remove_edge(src, tgt)
-            logger.warning(f"Edge eliminado por ciclo: {edge['source']} → {edge['target']}")
+            logger.warning(f"Edge eliminado por ciclo: {edge.get('source')} → {edge.get('target')}")
         else:
             clean_edges.append(edge)
 
