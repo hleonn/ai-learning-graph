@@ -33,7 +33,9 @@ app.use(express.json())
 app.use('/health', healthRouter)
 
 // ── Auto-enroll directo (DEBE IR ANTES de /courses) ──────────────────────────
-app.post('/api/enroll/:courseId', async (req: Request, res: Response) => {
+app.post('/enroll/:courseId', async (req: Request, res: Response) => {
+    console.log('🔵 /enroll llamado para curso:', req.params.courseId)
+
     const authHeader = req.headers.authorization
     if (!authHeader) {
         return res.status(401).json({ error: 'No token provided' })
@@ -44,16 +46,17 @@ app.post('/api/enroll/:courseId', async (req: Request, res: Response) => {
         const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
         const { courseId } = req.params
 
-        console.log(`[Enroll] Usuario: ${decoded.email}, Curso: ${courseId}`)
+        console.log(`🔵 Usuario: ${decoded.email}, Curso: ${courseId}`)
 
-        const { data: profile, error: profileError } = await supabase
+        const { data: profile } = await supabase
             .from('profiles')
             .select('id')
             .eq('email', decoded.email)
             .single()
 
-        if (profileError || !profile) {
-            return res.status(404).json({ error: 'Perfil de usuario no encontrado' })
+        if (!profile) {
+            console.error('❌ Perfil no encontrado para:', decoded.email)
+            return res.status(404).json({ error: 'Perfil no encontrado' })
         }
 
         const { data: existing } = await supabase
@@ -62,8 +65,6 @@ app.post('/api/enroll/:courseId', async (req: Request, res: Response) => {
             .eq('course_id', courseId)
             .eq('user_id', profile.id)
             .maybeSingle()
-
-        let isNewEnrollment = false
 
         if (!existing) {
             await supabase
@@ -74,17 +75,14 @@ app.post('/api/enroll/:courseId', async (req: Request, res: Response) => {
                     role: 'student',
                     source: 'auto_enroll'
                 })
-            isNewEnrollment = true
-            console.log(`[Enroll] Usuario ${decoded.email} inscrito en curso ${courseId}`)
+            console.log(`✅ Usuario ${decoded.email} inscrito en curso ${courseId}`)
+        } else {
+            console.log(`ℹ️ Usuario ${decoded.email} ya estaba inscrito`)
         }
 
-        res.json({
-            success: true,
-            isNewEnrollment,
-            message: isNewEnrollment ? 'Inscrito correctamente' : 'Ya estabas inscrito'
-        })
+        res.json({ success: true, message: 'Inscrito correctamente' })
     } catch (error: any) {
-        console.error('[Enroll] Error:', error)
+        console.error('❌ Error en /enroll:', error)
         res.status(500).json({ error: error.message })
     }
 })
