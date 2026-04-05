@@ -1,6 +1,6 @@
 from pipeline.curriculum import generate_curriculum
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from loguru import logger
 from db.client import supabase
 from algorithms.gap_detector import build_graph, compute_pagerank
@@ -234,6 +234,7 @@ def save_curriculum(course_id: str, req: CurriculumRequest):
         description  = req.description,
         domain       = req.domain,
         num_concepts = req.num_concepts,
+        difficulty_level = req.difficulty_level,
     )
 
     concepts  = result["concepts"]
@@ -247,6 +248,8 @@ def save_curriculum(course_id: str, req: CurriculumRequest):
             "label":       c["label"],
             "description": c["description"],
             "difficulty":  c["difficulty"],
+            "content":     c.get("content", ""),
+            "examples":    c.get("examples", []),
             "position_x":  (i % 4) * spacing + 100,
             "position_y":  (i // 4) * spacing + 100,
         }
@@ -290,4 +293,53 @@ def save_curriculum(course_id: str, req: CurriculumRequest):
             {"id": label_to_id.get(c["label"]), "label": c["label"], "difficulty": c["difficulty"]}
             for c in concepts
         ]
+    }
+
+
+@router.post("/node-content/{course_id}/{node_id}")
+def get_node_content(course_id: str, node_id: str, request: dict = Body(...)):
+    """
+    Genera o recupera contenido educativo para un nodo específico.
+    """
+    node_label = request.get("node_label", "")
+    logger.info(f"Solicitando contenido para nodo: {node_label} (curso: {course_id})")
+
+    # Buscar el nodo en la base de datos
+    node_res = supabase.table("concept_nodes").select("*").eq("id", node_id).eq("course_id", course_id).execute()
+
+    if not node_res.data:
+        # Si no existe, devolver contenido genérico
+        return {
+            "explanation": f"Este es el concepto '{node_label}'. Practica para mejorarlo.",
+            "example": f"Ejemplo práctico de '{node_label}'.",
+            "question": f"¿Qué aprendiste sobre '{node_label}'?",
+            "options": ["Opción 1", "Opción 2", "Opción 3", "Opción 4"],
+            "correct_answer": 0
+        }
+
+    node = node_res.data[0]
+
+    # Si el nodo tiene contenido educativo guardado, usarlo
+    if node.get("content"):
+        examples = node.get("examples", [])
+        return {
+            "explanation": node["content"],
+            "example": examples[0] if examples else "Ejemplo no disponible",
+            "question": f"¿Cuál es la característica principal de '{node['label']}'?",
+            "options": [
+                f"Opción 1 sobre {node['label']}",
+                f"Opción 2 sobre {node['label']}",
+                f"Opción 3 sobre {node['label']}",
+                f"Opción 4 sobre {node['label']}"
+            ],
+            "correct_answer": 0
+        }
+
+    # Si no, devolver contenido genérico
+    return {
+        "explanation": f"Este es el concepto '{node['label']}'. {node.get('description', 'Practica para mejorarlo.')}",
+        "example": f"Ejemplo práctico de '{node['label']}'.",
+        "question": f"¿Qué aprendiste sobre '{node['label']}'?",
+        "options": ["Opción 1", "Opción 2", "Opción 3", "Opción 4"],
+        "correct_answer": 0
     }
