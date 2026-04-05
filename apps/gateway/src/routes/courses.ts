@@ -178,5 +178,31 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     res.json(data)
 })
+// DELETE /courses/:id — elimina un curso y todos sus datos relacionados
+router.delete('/:id', async (req: Request, res: Response) => {
+    const { id } = req.params
 
+    // Verificar autenticación (opcional: solo profesores)
+    const authHeader = req.headers.authorization
+    if (!authHeader) {
+        return res.status(401).json({ error: 'No autorizado' })
+    }
+
+    try {
+        // Supabase eliminará en cascada por las FK con ON DELETE CASCADE
+        const { error } = await supabase
+            .from('courses')
+            .delete()
+            .eq('id', id)
+
+        if (error) {
+            throw error
+        }
+
+        res.json({ success: true, message: 'Curso eliminado' })
+    } catch (error: any) {
+        console.error('Error deleting course:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
 export default router

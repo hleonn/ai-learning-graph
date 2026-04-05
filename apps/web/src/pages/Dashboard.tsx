@@ -162,7 +162,41 @@ export default function Dashboard() {
             setLoadingStudents(false)
         }
     }
+    const deleteCourse = async (courseId: string, courseTitle: string) => {
+        if (!confirm(`¿Eliminar el curso "${courseTitle}"?\n\nSe eliminarán todos los conceptos, aristas y progreso de estudiantes.`)) {
+            return
+        }
 
+        const token = localStorage.getItem('google_token')
+        if (!token) {
+            alert('Debes iniciar sesión')
+            return
+        }
+
+        try {
+            // Eliminar el curso (el backend debe eliminar en cascada)
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+
+            if (response.ok) {
+                alert(`✅ Curso "${courseTitle}" eliminado correctamente`)
+                // Recargar lista de cursos
+                const coursesData = await getCourses()
+                setCourses(coursesData.courses)
+            } else {
+                const error = await response.json()
+                alert(`Error al eliminar: ${error.error || 'Unknown error'}`)
+            }
+        } catch (error) {
+            console.error('Error deleting course:', error)
+            alert('Error al eliminar el curso')
+        }
+    }
     if (loading) return (
         <div style={styles.center}>
             <p style={styles.muted}>Cargando cursos...</p>
@@ -234,7 +268,7 @@ export default function Dashboard() {
                             {/* Barra de progreso */}
                             <div style={styles.progressContainer}>
                                 <div style={styles.progressBar}>
-                                    <div style={{...styles.progressFill, width: `${courseProgress[course.id] || 0}%`}} />
+                                    <div style={{...styles.progressFill, width: `${courseProgress[course.id] || 0}%`}}/>
                                 </div>
                                 <span style={styles.progressText}>{courseProgress[course.id] || 0}% completado</span>
                             </div>
@@ -253,7 +287,17 @@ export default function Dashboard() {
                                 >
                                     {loadingStudents && showStudentsFor === course.id ? 'Cargando...' : '👥 Ver estudiantes inscritos'}
                                 </button>
+
                             </div>
+                            <button
+                                style={styles.deleteBtn}
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    deleteCourse(course.id, course.title)
+                                }}
+                            >
+                                🗑️ Eliminar
+                            </button>
                         </div>
                     ))}
                 </div>
@@ -406,5 +450,17 @@ const styles: Record<string, React.CSSProperties> = {
         padding: 24,
         minWidth: 300,
         maxWidth: 500
-    }
+    },
+    deleteBtn: {
+        background: '#FCEBEB',
+        color: '#A32D2D',
+        border: 'none',
+        borderRadius: 6,
+        padding: '8px 12px',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        width: '100%',
+        marginTop: 8
+    },
 }
