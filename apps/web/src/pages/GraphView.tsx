@@ -25,17 +25,12 @@ function masteryColor(score: number): string {
     return '#D3D1C7'
 }
 
-// Función para obtener el usuario actual desde el token
-const getCurrentUserEmail = (): string | null => {
-    const token = localStorage.getItem('google_token')
-    if (!token) return null
+// UUID fijo del usuario para pruebas (reemplazar con el ID real de Supabase)
+const CURRENT_USER_ID = '0d212af1-6c27-4d7b-8fc0-64256b35e563'
 
-    try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        return payload.email
-    } catch {
-        return null
-    }
+// Función para obtener el usuario actual (ahora devuelve UUID)
+const getCurrentUserId = (): string | null => {
+    return CURRENT_USER_ID
 }
 
 export default function GraphView() {
@@ -183,11 +178,11 @@ export default function GraphView() {
     const handleAnswer = async (correct: boolean) => {
         if (!selected || !courseId) return
 
-        const userEmail = getCurrentUserEmail()
-        if (!userEmail) return
+        const userId = getCurrentUserId()
+        if (!userId) return
 
         await recordEvent({
-            user_id: userEmail,
+            user_id: userId,
             node_id: selected.id,
             correct,
             course_id: courseId,
@@ -196,8 +191,8 @@ export default function GraphView() {
         // Recargar datos
         try {
             const [masteryData, gapsData] = await Promise.all([
-                getStudentMastery(userEmail, courseId),
-                getGaps(userEmail, courseId),
+                getStudentMastery(userId, courseId),
+                getGaps(userId, courseId),
             ])
 
             const map: Record<string, MasteryNode> = {}
@@ -227,10 +222,10 @@ export default function GraphView() {
     // ── Verificar autenticación y cargar ───────────────────────────────────────
     useEffect(() => {
         const init = async () => {
-            // Obtener usuario actual
-            const userEmail = getCurrentUserEmail()
+            // Obtener usuario actual (UUID)
+            const userId = getCurrentUserId()
 
-            if (!userEmail) {
+            if (!userId) {
                 console.log('No hay usuario autenticado, redirigiendo...')
                 window.location.href = 'https://mygateway.up.railway.app/auth/google'
                 return
@@ -245,10 +240,10 @@ export default function GraphView() {
                 const graphData = await getGraph(courseId)
                 graphRef.current = graphData
 
-                // Cargar mastery y gaps
+                // Cargar mastery y gaps usando UUID
                 const [masteryData, gapsData] = await Promise.all([
-                    getStudentMastery(userEmail, courseId),
-                    getGaps(userEmail, courseId),
+                    getStudentMastery(userId, courseId),
+                    getGaps(userId, courseId),
                 ])
 
                 const map: Record<string, MasteryNode> = {}
