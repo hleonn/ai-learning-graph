@@ -40,8 +40,8 @@ function diffLabel(d: number): string {
     return ['', 'Introductorio', 'Básico', 'Intermedio', 'Avanzado', 'Experto'][d] ?? ''
 }
 
-const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
-
+// const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
+const API_URL = 'https://mygateway.up.railway.app'
 // Función para calcular posiciones basadas en el orden topológico
 function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x: number; y: number }> {
     const positions: Record<string, { x: number; y: number }> = {}
@@ -212,7 +212,8 @@ export default function CurriculumGenerator() {
                         const pos = positions[subtopic.label] || { x: 100, y: 100 }
 
                         // Crear nodo con posición
-                        const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
+                        // const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
+                        const nodeResponse = await fetch(`${API_URL}/graph/${courseId}/nodes`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -237,7 +238,9 @@ export default function CurriculumGenerator() {
 
                         // Crear edges para prerrequisitos
                         for (const prereq of subtopic.prerequisites) {
-                            const edgeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
+                            //const edgeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
+                            const edgeResponse = await fetch(`${API_URL}/graph/${courseId}/edges`, {
+
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
