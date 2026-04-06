@@ -42,6 +42,75 @@ function diffLabel(d: number): string {
 
 const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
 
+// Función para calcular posiciones basadas en el orden topológico
+function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x: number; y: number }> {
+    const positions: Record<string, { x: number; y: number }> = {}
+
+    // Recopilar todos los subtemas con sus prerrequisitos
+    const allSubtopics: { label: string; prerequisites: string[]; phase: number }[] = []
+    for (const phase of roadmap.phases) {
+        for (const topic of phase.topics) {
+            for (const subtopic of topic.subtopics) {
+                allSubtopics.push({
+                    label: subtopic.label,
+                    prerequisites: subtopic.prerequisites,
+                    phase: phase.phase_number
+                })
+            }
+        }
+    }
+
+    // Calcular niveles (BFS desde nodos sin prerrequisitos)
+    const levels: Record<string, number> = {}
+    const processed = new Set<string>()
+    let currentLevel = 0
+
+    // Inicializar: nodos sin prerrequisitos están en nivel 0
+    let currentNodes = allSubtopics.filter(s => s.prerequisites.length === 0).map(s => s.label)
+    currentNodes.forEach(label => { levels[label] = 0; processed.add(label) })
+
+    // Asignar niveles progresivamente
+    while (currentNodes.length > 0) {
+        const nextNodes: string[] = []
+        for (const nodeLabel of currentNodes) {
+            // Buscar nodos que tienen este como prerrequisito
+            for (const subtopic of allSubtopics) {
+                if (!processed.has(subtopic.label) && subtopic.prerequisites.includes(nodeLabel)) {
+                    if (!nextNodes.includes(subtopic.label)) {
+                        nextNodes.push(subtopic.label)
+                    }
+                }
+            }
+        }
+        currentLevel++
+        nextNodes.forEach(label => { levels[label] = currentLevel; processed.add(label) })
+        currentNodes = nextNodes
+    }
+
+    // Calcular posiciones basadas en nivel
+    const nodesPerLevel: Record<number, string[]> = {}
+    Object.entries(levels).forEach(([label, level]) => {
+        if (!nodesPerLevel[level]) nodesPerLevel[level] = []
+        nodesPerLevel[level].push(label)
+    })
+
+    Object.entries(nodesPerLevel).forEach(([levelStr, labels]) => {
+        const levelNum = parseInt(levelStr)
+        const y = 100 + levelNum * 120
+        const total = labels.length
+        const startX = 400 - (total - 1) * 80
+
+        labels.forEach((label, idx) => {
+            positions[label] = {
+                x: startX + idx * 160,
+                y: y
+            }
+        })
+    })
+
+    return positions
+}
+
 export default function CurriculumGenerator() {
     const navigate = useNavigate()
 
@@ -102,6 +171,11 @@ export default function CurriculumGenerator() {
         setError(null)
 
         try {
+            // Calcular posiciones automáticas basadas en orden topológico
+            const positions = calculatePositionsFromRoadmap(roadmap)
+            console.log('Posiciones calculadas:', positions)
+
+            // 1. Crear el curso en Supabase via Gateway
             const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                 method: 'POST',
                 headers: {
@@ -135,6 +209,9 @@ export default function CurriculumGenerator() {
             for (const phase of roadmap.phases) {
                 for (const topic of phase.topics) {
                     for (const subtopic of topic.subtopics) {
+                        const pos = positions[subtopic.label] || { x: 100, y: 100 }
+
+                        // Crear nodo con posición
                         const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -147,13 +224,18 @@ export default function CurriculumGenerator() {
                                 bloom_levels: phase.bloom_levels,
                                 expected_outcomes: phase.expected_outcomes,
                                 skills: phase.skills,
+                                position_x: pos.x,
+                                position_y: pos.y,
                             })
                         })
 
                         if (nodeResponse.ok) {
                             nodeCount++
+                        } else {
+                            console.error(`Error creating node ${subtopic.label}:`, await nodeResponse.text())
                         }
 
+                        // Crear edges para prerrequisitos
                         for (const prereq of subtopic.prerequisites) {
                             const edgeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
                                 method: 'POST',
