@@ -29,16 +29,12 @@ deepseek_client = openai.OpenAI(
 
 def _clean_json_response(raw: str) -> str:
     """Limpia la respuesta de la API para obtener JSON válido"""
-    # Eliminar markdown
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
     raw = raw.strip()
-
-    # Eliminar caracteres no imprimibles
     raw = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', raw)
-
     return raw
 
 
@@ -86,12 +82,7 @@ def extract_concepts_with_content(
     num_concepts: int = 8,
     difficulty_level: str = "intermediate",
 ) -> list[dict]:
-    """
-    Usa DeepSeek para extraer conceptos clave de un curso con contenido educativo.
-
-    Returns:
-        lista de {label, description, difficulty (1-5), content, examples}
-    """
+    """Usa DeepSeek para extraer conceptos clave de un curso con contenido educativo."""
     logger.info(f"Extrayendo {num_concepts} conceptos para: {title} (nivel: {difficulty_level})")
 
     difficulty_map = {
@@ -103,7 +94,6 @@ def extract_concepts_with_content(
 
     level_description = difficulty_map.get(difficulty_level, difficulty_map["intermediate"])
 
-    # Prompt simplificado para evitar JSON mal formado
     prompt = f"""Extract {num_concepts} key concepts for a course.
 
 Course title: {title}
@@ -120,7 +110,7 @@ For each concept, provide exactly these fields:
 
 Return ONLY valid JSON array. Example:
 [
-  {{"label": "Variables", "description": "Store and manage data", "difficulty": 1, "content": "Variables are containers for storing data values...", "examples": ["x = 5", "name = 'John'"]}}
+  {{"label": "Variables", "description": "Store and manage data", "difficulty": 1, "content": "Variables are containers...", "examples": ["x = 5", "name = 'John'"]}}
 ]
 
 IMPORTANT: Use double quotes. No trailing commas. Escape quotes with backslash."""
@@ -139,7 +129,6 @@ IMPORTANT: Use double quotes. No trailing commas. Escape quotes with backslash."
         cleaned = _clean_json_response(raw)
         concepts = json.loads(cleaned)
 
-        # Validar y mapear conceptos
         mapped_concepts = []
         for i, c in enumerate(concepts):
             mapped_concepts.append({
@@ -157,19 +146,13 @@ IMPORTANT: Use double quotes. No trailing commas. Escape quotes with backslash."
         logger.error(f"Error decodificando JSON: {e}")
         logger.error(f"Respuesta problemática: {raw[:500]}...")
         return _generate_fallback_concepts(title, num_concepts, difficulty_level)
-
     except Exception as e:
         logger.error(f"Error en extract_concepts_with_content: {e}")
         return _generate_fallback_concepts(title, num_concepts, difficulty_level)
 
 
 def infer_prerequisites(concepts: list[dict]) -> list[dict]:
-    """
-    Usa DeepSeek para inferir prerequisitos entre conceptos.
-
-    Returns:
-        lista de {source (label), target (label), strength (0.0-1.0)}
-    """
+    """Usa DeepSeek para inferir prerequisitos entre conceptos."""
     logger.info(f"Infiriendo prerequisitos para {len(concepts)} conceptos")
 
     concept_labels = [c["label"] for c in concepts]
@@ -203,7 +186,6 @@ Example: [{{"source": "Variables", "target": "Functions", "strength": 0.9}}]"""
 
     except Exception as e:
         logger.error(f"Error en infer_prerequisites: {e}")
-        # Generar edges básicos basados en dificultad
         fallback_edges = []
         sorted_concepts = sorted(concepts, key=lambda x: x["difficulty"])
         for i in range(len(sorted_concepts) - 1):
@@ -216,13 +198,7 @@ Example: [{{"source": "Variables", "target": "Functions", "strength": 0.9}}]"""
 
 
 def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[dict]]:
-    """
-    Verifica que el grafo es un DAG válido (sin ciclos).
-    Si hay ciclos, los elimina hasta que sea un DAG.
-
-    Returns:
-        (is_valid, clean_edges)
-    """
+    """Verifica que el grafo es un DAG válido (sin ciclos)."""
     label_to_idx = {c["label"]: i for i, c in enumerate(concepts)}
 
     G = nx.DiGraph()
@@ -255,18 +231,11 @@ def generate_curriculum(
     num_concepts: int = 8,
     difficulty_level: str = "intermediate",
 ) -> dict:
-    """
-    Pipeline completo: título → grafo de conocimiento validado con contenido educativo.
-    """
+    """Pipeline completo: título → grafo de conocimiento validado con contenido educativo."""
     logger.info(f"Generando currículum: '{title}' (nivel: {difficulty_level})")
 
-    # Paso 1: extraer conceptos con contenido educativo
     concepts = extract_concepts_with_content(title, description, domain, num_concepts, difficulty_level)
-
-    # Paso 2: inferir prerequisitos
     edges = infer_prerequisites(concepts)
-
-    # Paso 3: validar DAG
     is_valid, clean_edges = validate_dag(concepts, edges)
 
     logger.success(
@@ -275,15 +244,61 @@ def generate_curriculum(
     )
 
     return {
-        "concepts":     concepts,
-        "edges":        clean_edges,
+        "concepts": concepts,
+        "edges": clean_edges,
         "is_valid_dag": is_valid,
         "stats": {
             "total_concepts": len(concepts),
-            "total_edges":    len(clean_edges),
-            "removed_edges":  len(edges) - len(clean_edges),
+            "total_edges": len(clean_edges),
+            "removed_edges": len(edges) - len(clean_edges),
         }
     }
+
+
+def _validate_and_repair_dag(roadmap: dict) -> dict:
+    """Valida y repara el DAG para asegurar conectividad"""
+
+    # Recopilar todos los subtemas
+    all_subtopics = []
+    for phase in roadmap.get("phases", []):
+        for topic in phase.get("topics", []):
+            for subtopic in topic.get("subtopics", []):
+                all_subtopics.append({
+                    "label": subtopic["label"],
+                    "prerequisites": subtopic.get("prerequisites", []),
+                    "phase": phase.get("phase_number", 1),
+                    "topic": topic.get("topic_name", "")
+                })
+
+    # Identificar nodos aislados (sin prerrequisitos y sin dependientes)
+    has_prereq = set()
+    is_prereq_for = set()
+
+    for s in all_subtopics:
+        for prereq in s["prerequisites"]:
+            has_prereq.add(s["label"])
+            is_prereq_for.add(prereq)
+
+    isolated = []
+    for s in all_subtopics:
+        if s["label"] not in has_prereq and s["label"] not in is_prereq_for:
+            isolated.append(s["label"])
+
+    # Conectar nodos aislados
+    if isolated and len(all_subtopics) > 1:
+        for i, label in enumerate(isolated):
+            if i == 0:
+                continue
+            for phase in roadmap.get("phases", []):
+                for topic in phase.get("topics", []):
+                    for subtopic in topic.get("subtopics", []):
+                        if subtopic["label"] == label:
+                            if "prerequisites" not in subtopic:
+                                subtopic["prerequisites"] = []
+                            subtopic["prerequisites"].append(isolated[i-1])
+                            logger.info(f"Reparado: {label} ahora depende de {isolated[i-1]}")
+
+    return roadmap
 
 
 def generate_roadmap(
@@ -292,11 +307,8 @@ def generate_roadmap(
     domain: str = "generic",
     difficulty_level: str = "intermediate",
 ) -> dict:
-    """
-    Genera un roadmap de aprendizaje estructurado por fases Bloom.
-    """
+    """Genera un roadmap de aprendizaje estructurado por fases Bloom con un DAG coherente."""
 
-    # Mapeo de niveles a duración
     duration_map = {
         "beginner": 2,
         "intermediate": 4,
@@ -305,105 +317,29 @@ def generate_roadmap(
     }
     duration_months = duration_map.get(difficulty_level, 4)
 
-    # Configuración específica por nivel
-    if difficulty_level == "expert":
-        # Prompt específico para nivel Expert (Certificación)
-        prompt = f"""Generate a certification-level learning roadmap for: {title}
+    # Prompt mejorado para forzar relaciones de prerrequisito
+    prompt = f"""Generate a COMPLETE and CONNECTED learning roadmap for: {title}
 
 Description: {description}
 Domain: {domain}
-Level: EXPERT / CERTIFICATION (professional level)
-Duration: 6 months
-
-This is for professional certification preparation. Create a comprehensive roadmap.
-
-Return ONLY valid JSON. Use this structure:
-
-{{
-  "title": "{title}",
-  "duration_months": 6,
-  "phases": [
-    {{
-      "phase_number": 1,
-      "name": "Fundamentos Avanzados",
-      "months": "1-2",
-      "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
-      "objective": "Master the fundamental concepts at professional level",
-      "expected_outcomes": ["Outcome 1", "Outcome 2", "Outcome 3"],
-      "skills": ["Skill 1", "Skill 2", "Skill 3"],
-      "tech_stack": ["Tool 1", "Tool 2", "Tool 3"],
-      "topics": [
-        {{
-          "topic_name": "Topic Name",
-          "subtopics": [
-            {{"label": "Subtopic 1", "description": "Description", "difficulty": 3, "prerequisites": []}},
-            {{"label": "Subtopic 2", "description": "Description", "difficulty": 4, "prerequisites": ["Subtopic 1"]}}
-          ]
-        }}
-      ]
-    }},
-    {{
-      "phase_number": 2,
-      "name": "Arquitectura y Diseño",
-      "months": "3-4",
-      "bloom_levels": ["Analizar", "Evaluar"],
-      "objective": "Design scalable and robust systems",
-      "expected_outcomes": ["Outcome 1", "Outcome 2"],
-      "skills": ["Skill 1", "Skill 2"],
-      "tech_stack": ["Tool 1", "Tool 2"],
-      "topics": [
-        {{
-          "topic_name": "Topic Name",
-          "subtopics": [
-            {{"label": "Subtopic 1", "description": "Description", "difficulty": 4, "prerequisites": []}},
-            {{"label": "Subtopic 2", "description": "Description", "difficulty": 5, "prerequisites": ["Subtopic 1"]}}
-          ]
-        }}
-      ]
-    }},
-    {{
-      "phase_number": 3,
-      "name": "Optimización y Certificación",
-      "months": "5-6",
-      "bloom_levels": ["Crear", "Sintetizar"],
-      "objective": "Prepare for certification and real-world scenarios",
-      "expected_outcomes": ["Outcome 1", "Outcome 2"],
-      "skills": ["Skill 1", "Skill 2"],
-      "tech_stack": ["Tool 1", "Tool 2"],
-      "topics": [
-        {{
-          "topic_name": "Topic Name",
-          "subtopics": [
-            {{"label": "Subtopic 1", "description": "Description", "difficulty": 4, "prerequisites": []}},
-            {{"label": "Subtopic 2", "description": "Description", "difficulty": 5, "prerequisites": ["Subtopic 1"]}}
-          ]
-        }}
-      ]
-    }}
-  ]
-}}
-
-Rules:
-- Phase 1: Advanced fundamentals (difficulty 3-4)
-- Phase 2: Architecture and design patterns (difficulty 4-5)
-- Phase 3: Optimization and certification prep (difficulty 5)
-- Each phase: 2-3 topics, each topic: 2-4 subtopics
-- Subtopics must have prerequisite relationships
-- Use real, professional terminology
-- Focus on practical, industry-relevant content
-
-Generate certification-level roadmap for {title}:"""
-
-    else:
-        # Prompt para niveles beginner, intermediate, advanced
-        prompt = f"""Generate a JSON learning roadmap for: {title}
-
-Description: {description}
-Domain: {domain}
-Level: {difficulty_level}
+Level: {difficulty_level.upper()}
 Duration: {duration_months} months
 
-Return ONLY valid JSON. Use this exact structure:
+CRITICAL REQUIREMENTS FOR A VALID DAG (Directed Acyclic Graph):
+
+1. EVERY subtopic (except the first ones) MUST have at least ONE prerequisite from a previous phase or within the same phase.
+2. Create a CHAIN of dependencies: Subtopic A → Subtopic B → Subtopic C
+3. The graph MUST be fully connected - no isolated nodes or disconnected clusters
+4. Each phase builds upon the previous phase's subtopics
+5. Within each topic, subtopics should form a learning sequence (1 → 2 → 3)
+
+Example of GOOD prerequisite structure:
+- Subtopic 1.1: "Fundamentos" (no prerequisites)
+- Subtopic 1.2: "Conceptos Básicos" (prerequisite: "Fundamentos")
+- Subtopic 1.3: "Aplicaciones Prácticas" (prerequisite: "Conceptos Básicos")
+- Subtopic 2.1: "Técnicas Avanzadas" (prerequisite: "Aplicaciones Prácticas")
+
+Return ONLY valid JSON with this exact structure:
 
 {{
   "title": "{title}",
@@ -411,29 +347,20 @@ Return ONLY valid JSON. Use this exact structure:
   "phases": [
     {{
       "phase_number": 1,
-      "name": "Fundamentos",
+      "name": "Nombre de la Fase",
       "months": "1-2",
-      "bloom_levels": ["Recordar", "Comprender"],
+      "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
       "objective": "Objetivo de la fase",
-      "expected_outcomes": ["Resultado 1", "Resultado 2"],
-      "skills": ["Skill 1", "Skill 2"],
-      "tech_stack": ["Tool 1", "Tool 2"],
+      "expected_outcomes": ["Resultado 1", "Resultado 2", "Resultado 3"],
+      "skills": ["Skill 1", "Skill 2", "Skill 3"],
+      "tech_stack": ["Tool 1", "Tool 2", "Tool 3"],
       "topics": [
         {{
-          "topic_name": "Tema 1",
+          "topic_name": "Nombre del Tema",
           "subtopics": [
-            {{
-              "label": "Subtema 1",
-              "description": "Descripción corta",
-              "difficulty": 1,
-              "prerequisites": []
-            }},
-            {{
-              "label": "Subtema 2",
-              "description": "Descripción corta",
-              "difficulty": 2,
-              "prerequisites": ["Subtema 1"]
-            }}
+            {{"label": "Subtema 1", "description": "Descripción", "difficulty": 1, "prerequisites": []}},
+            {{"label": "Subtema 2", "description": "Descripción", "difficulty": 2, "prerequisites": ["Subtema 1"]}},
+            {{"label": "Subtema 3", "description": "Descripción", "difficulty": 3, "prerequisites": ["Subtema 2"]}}
           ]
         }}
       ]
@@ -441,39 +368,39 @@ Return ONLY valid JSON. Use this exact structure:
   ]
 }}
 
-Rules:
-- For beginner level: 1 phase only (months "1-2")
-- For intermediate: 2 phases (months "1-2" and "3-4")
-- For advanced/expert: 3 phases (months "1-2", "3-4", "5-6")
-- Each phase has 2-3 topics
-- Each topic has 2-4 subtopics
-- Subtopics must have prerequisite relationships
-- Difficulty: 1=beginner, 2=easy, 3=medium, 4=hard, 5=expert
+RULES FOR PREREQUISITES (MANDATORY):
+- Each phase must have 2-3 topics
+- Each topic must have 3-5 subtopics
+- Subtopics within a topic MUST form a chain: subtopic_n depends on subtopic_n-1
+- Subtopics can also depend on subtopics from PREVIOUS phases
+- NO circular dependencies
+- The ENTIRE graph must be a single connected component
+- Difficulty increases with each phase and subtopic number
 
-Generate roadmap for {title}:"""
+Generate a well-structured, fully connected roadmap for {title}:"""
 
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=2500
+            max_tokens=3000
         )
 
         raw = response.choices[0].message.content.strip()
 
-        # Limpiar markdown
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
         raw = raw.strip()
-
-        # Intentar reparar JSON común
         raw = raw.replace('\\"', '"')
 
         roadmap = json.loads(raw)
         logger.info(f"Roadmap generado: {len(roadmap.get('phases', []))} fases")
+
+        roadmap = _validate_and_repair_dag(roadmap)
+
         return roadmap
 
     except json.JSONDecodeError as e:
@@ -490,35 +417,48 @@ def _generate_fallback_roadmap(title: str, difficulty_level: str, duration_month
     num_phases = 3 if difficulty_level in ["advanced", "expert"] else (2 if difficulty_level == "intermediate" else 1)
 
     phases = []
+    previous_subtopics = []
+
     for i in range(num_phases):
         phase_num = i + 1
         start_month = i * 2 + 1
         end_month = start_month + 1
+
+        # Crear temas y subtemas con dependencias
+        topics = []
+        for j in range(2):
+            topic_name = f"Tema {phase_num}.{j+1}"
+            subtopics = []
+            for k in range(3):
+                subtopic_label = f"Subtema {phase_num}.{j+1}.{k+1}"
+                prereqs = []
+                if k > 0:
+                    prereqs.append(f"Subtema {phase_num}.{j+1}.{k}")
+                if i > 0 and j == 0 and k == 0 and previous_subtopics:
+                    prereqs.append(previous_subtopics[-1])
+                subtopics.append({
+                    "label": subtopic_label,
+                    "description": f"Descripción de {subtopic_label}",
+                    "difficulty": phase_num + j + k,
+                    "prerequisites": prereqs
+                })
+                if k == 2:
+                    previous_subtopics.append(subtopic_label)
+            topics.append({
+                "topic_name": topic_name,
+                "subtopics": subtopics
+            })
+
         phases.append({
             "phase_number": phase_num,
-            "name": f"Fase {phase_num}",
+            "name": f"Fase {phase_num}: {title}",
             "months": f"{start_month}-{end_month}",
             "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
-            "objective": f"Objetivo de la fase {phase_num} de {title}",
-            "expected_outcomes": [f"Resultado esperado {phase_num}.1", f"Resultado esperado {phase_num}.2"],
+            "objective": f"Objetivo de la fase {phase_num}",
+            "expected_outcomes": [f"Resultado {phase_num}.1", f"Resultado {phase_num}.2"],
             "skills": [f"Habilidad {phase_num}.1", f"Habilidad {phase_num}.2"],
             "tech_stack": [f"Herramienta {phase_num}.1", f"Herramienta {phase_num}.2"],
-            "topics": [
-                {
-                    "topic_name": f"Tema {phase_num}.1",
-                    "subtopics": [
-                        {"label": f"Subtema {phase_num}.1.1", "description": f"Descripción de Subtema {phase_num}.1.1", "difficulty": 1, "prerequisites": []},
-                        {"label": f"Subtema {phase_num}.1.2", "description": f"Descripción de Subtema {phase_num}.1.2", "difficulty": 2, "prerequisites": [f"Subtema {phase_num}.1.1"]}
-                    ]
-                },
-                {
-                    "topic_name": f"Tema {phase_num}.2",
-                    "subtopics": [
-                        {"label": f"Subtema {phase_num}.2.1", "description": f"Descripción de Subtema {phase_num}.2.1", "difficulty": 2, "prerequisites": []},
-                        {"label": f"Subtema {phase_num}.2.2", "description": f"Descripción de Subtema {phase_num}.2.2", "difficulty": 3, "prerequisites": [f"Subtema {phase_num}.2.1"]}
-                    ]
-                }
-            ]
+            "topics": topics
         })
 
     return {
