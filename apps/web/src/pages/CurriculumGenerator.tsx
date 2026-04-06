@@ -1,17 +1,35 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { generateCurriculum } from '../lib/api'
+import { generateRoadmap } from '../lib/api'
 
-interface Concept {
+interface Subtopic {
     label: string
     description: string
     difficulty: number
+    prerequisites: string[]
 }
 
-interface Edge {
-    source: string
-    target: string
-    strength: number
+interface Topic {
+    topic_name: string
+    subtopics: Subtopic[]
+}
+
+interface Phase {
+    phase_number: number
+    name: string
+    months: string
+    bloom_levels: string[]
+    objective: string
+    expected_outcomes: string[]
+    skills: string[]
+    tech_stack: string[]
+    topics: Topic[]
+}
+
+interface RoadmapData {
+    title: string
+    duration_months: number
+    phases: Phase[]
 }
 
 function diffColor(d: number): string {
@@ -24,83 +42,6 @@ function diffLabel(d: number): string {
 
 const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
 
-// Función para calcular posiciones automáticas basadas en orden topológico
-function calculatePositions(concepts: Concept[], edges: Edge[]) {
-    const nodeMap = new Map<string, { label: string, inDegree: number, outDegree: number, level: number }>()
-
-    concepts.forEach(concept => {
-        nodeMap.set(concept.label, {
-            label: concept.label,
-            inDegree: 0,
-            outDegree: 0,
-            level: 0
-        })
-    })
-
-    edges.forEach(edge => {
-        const source = nodeMap.get(edge.source)
-        const target = nodeMap.get(edge.target)
-        if (source) source.outDegree++
-        if (target) target.inDegree++
-    })
-
-    let level = 0
-    let remaining = new Set(nodeMap.keys())
-
-    while (remaining.size > 0) {
-        const currentLevel = Array.from(remaining).filter(label => {
-            const node = nodeMap.get(label)
-            return node && node.inDegree === 0
-        })
-
-        if (currentLevel.length === 0) break
-
-        currentLevel.forEach(label => {
-            const node = nodeMap.get(label)
-            if (node) {
-                node.level = level
-                remaining.delete(label)
-                edges.forEach(edge => {
-                    if (edge.source === label) {
-                        const target = nodeMap.get(edge.target)
-                        if (target) target.inDegree--
-                    }
-                })
-            }
-        })
-        level++
-    }
-
-    remaining.forEach(label => {
-        const node = nodeMap.get(label)
-        if (node) node.level = 0
-    })
-
-    const positions: Record<string, { x: number, y: number }> = {}
-    const nodesPerLevel: Record<number, string[]> = {}
-
-    nodeMap.forEach((node, label) => {
-        if (!nodesPerLevel[node.level]) nodesPerLevel[node.level] = []
-        nodesPerLevel[node.level].push(label)
-    })
-
-    Object.entries(nodesPerLevel).forEach(([levelStr, labels]) => {
-        const levelNum = parseInt(levelStr)
-        const y = 80 + levelNum * 100
-        const total = labels.length
-        const startX = 400 - (total - 1) * 80
-
-        labels.forEach((label, idx) => {
-            positions[label] = {
-                x: startX + idx * 160,
-                y: y
-            }
-        })
-    })
-
-    return positions
-}
-
 export default function CurriculumGenerator() {
     const navigate = useNavigate()
 
@@ -108,20 +49,14 @@ export default function CurriculumGenerator() {
         title: '',
         description: '',
         domain: 'generic',
-        num_concepts: 8,
         difficulty_level: 'intermediate',
-        include_examples: true,
-        include_questions: true,
     })
 
-    const [result, setResult] = useState<{
-        concepts: Concept[];
-        edges: Edge[];
-        is_valid_dag: boolean;
-        stats: any
-    } | null>(null)
+    const [roadmap, setRoadmap] = useState<RoadmapData | null>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [expandedPhases, setExpandedPhases] = useState<Record<number, boolean>>({})
+    const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({})
 
     const handleGenerate = async () => {
         if (!form.title.trim()) {
@@ -130,28 +65,43 @@ export default function CurriculumGenerator() {
         }
         setLoading(true)
         setError(null)
-        setResult(null)
+        setRoadmap(null)
 
         try {
-            const data = await generateCurriculum(form)
-            setResult(data.curriculum)
+            const data = await generateRoadmap(form)
+            setRoadmap(data)
+            if (data.phases && data.phases.length > 0) {
+                setExpandedPhases({ [data.phases[0].phase_number]: true })
+            }
         } catch (e) {
-            setError('Error generando el currículo. Verifica que el servidor está activo.')
+            setError('Error generando el roadmap. Verifica que el servidor está activo.')
+            console.error(e)
         } finally {
             setLoading(false)
         }
     }
 
+    const togglePhase = (phaseNumber: number) => {
+        setExpandedPhases(prev => ({
+            ...prev,
+            [phaseNumber]: !prev[phaseNumber]
+        }))
+    }
+
+    const toggleTopic = (topicKey: string) => {
+        setExpandedTopics(prev => ({
+            ...prev,
+            [topicKey]: !prev[topicKey]
+        }))
+    }
+
     const handleSaveCourse = async () => {
-        if (!result) return
+        if (!roadmap) return
 
         setLoading(true)
         setError(null)
 
         try {
-            const positions = calculatePositions(result.concepts, result.edges)
-            console.log('Posiciones calculadas:', positions)
-
             const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                 method: 'POST',
                 headers: {
@@ -162,6 +112,7 @@ export default function CurriculumGenerator() {
                     description: form.description || `Curso de ${form.title}`,
                     domain: form.domain,
                     difficulty_level: form.difficulty_level,
+                    roadmap: roadmap,
                 })
             })
 
@@ -178,35 +129,51 @@ export default function CurriculumGenerator() {
 
             console.log('Curso creado con ID:', courseId)
 
-            for (const concept of result.concepts) {
-                const pos = positions[concept.label] || { x: 100, y: 100 }
+            let nodeCount = 0
+            let edgeCount = 0
 
-                await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        label: concept.label,
-                        description: concept.description,
-                        difficulty: concept.difficulty,
-                        position_x: pos.x,
-                        position_y: pos.y,
-                    })
-                })
+            for (const phase of roadmap.phases) {
+                for (const topic of phase.topics) {
+                    for (const subtopic of topic.subtopics) {
+                        const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                label: subtopic.label,
+                                description: subtopic.description,
+                                difficulty: subtopic.difficulty,
+                                phase: phase.phase_number,
+                                topic: topic.topic_name,
+                                bloom_levels: phase.bloom_levels,
+                                expected_outcomes: phase.expected_outcomes,
+                                skills: phase.skills,
+                            })
+                        })
+
+                        if (nodeResponse.ok) {
+                            nodeCount++
+                        }
+
+                        for (const prereq of subtopic.prerequisites) {
+                            const edgeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    source: prereq,
+                                    target: subtopic.label,
+                                    prerequisite_strength: 0.9,
+                                })
+                            })
+
+                            if (edgeResponse.ok) {
+                                edgeCount++
+                            }
+                        }
+                    }
+                }
             }
 
-            for (const edge of result.edges) {
-                await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        source: edge.source,
-                        target: edge.target,
-                        prerequisite_strength: edge.strength,
-                    })
-                })
-            }
-
-            alert(`✅ Curso "${form.title}" guardado exitosamente con ${result.concepts.length} conceptos y ${result.edges.length} relaciones`)
+            alert(`✅ Curso "${form.title}" guardado exitosamente con ${nodeCount} conceptos y ${edgeCount} relaciones`)
             navigate('/dashboard')
 
         } catch (error: any) {
@@ -224,7 +191,7 @@ export default function CurriculumGenerator() {
                 <button onClick={() => navigate('/dashboard')} style={s.back}>← Volver</button>
                 <div>
                     <h1 style={s.title}>AI Curriculum Generator</h1>
-                    <p style={s.subtitle}>Genera un grafo de conocimiento desde el título de tu curso</p>
+                    <p style={s.subtitle}>Genera un roadmap de aprendizaje estructurado por fases</p>
                 </div>
             </div>
 
@@ -234,7 +201,7 @@ export default function CurriculumGenerator() {
                         <label style={s.label}>Título del curso *</label>
                         <input
                             style={s.input}
-                            placeholder="ej. Data Science"
+                            placeholder="ej. Arquitectura de Software"
                             value={form.title}
                             onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                         />
@@ -260,8 +227,11 @@ export default function CurriculumGenerator() {
                                 onChange={e => setForm(f => ({ ...f, domain: e.target.value }))}
                             >
                                 <option value="generic">Genérico</option>
-                                <option value="math_k12">Matemáticas K-12</option>
-                                <option value="digital_twins">Digital Twins</option>
+                                <option value="programming">Programación</option>
+                                <option value="data-science">Ciencia de Datos</option>
+                                <option value="cloud">Cloud Computing</option>
+                                <option value="devops">DevOps</option>
+                                <option value="architecture">Arquitectura</option>
                             </select>
                         </div>
 
@@ -272,46 +242,12 @@ export default function CurriculumGenerator() {
                                 value={form.difficulty_level}
                                 onChange={e => setForm(f => ({ ...f, difficulty_level: e.target.value }))}
                             >
-                                <option value="beginner">Principiante</option>
-                                <option value="intermediate">Intermedio</option>
-                                <option value="advanced">Avanzado</option>
-                                <option value="expert">Experto / Certificación</option>
+                                <option value="beginner">Principiante (2 meses)</option>
+                                <option value="intermediate">Intermedio (4 meses)</option>
+                                <option value="advanced">Avanzado (6 meses)</option>
+                                <option value="expert">Experto / Certificación (6 meses)</option>
                             </select>
                         </div>
-                    </div>
-
-                    <div style={s.row}>
-                        <div style={{ ...s.field, flex: 1 }}>
-                            <label style={s.label}>Número de conceptos</label>
-                            <select
-                                style={s.select}
-                                value={form.num_concepts}
-                                onChange={e => setForm(f => ({ ...f, num_concepts: Number(e.target.value) }))}
-                            >
-                                {[6, 8, 10, 12].map(n => (
-                                    <option key={n} value={n}>{n} conceptos</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div style={s.checkboxRow}>
-                        <label style={s.checkboxLabel}>
-                            <input
-                                type="checkbox"
-                                checked={form.include_examples}
-                                onChange={e => setForm(f => ({ ...f, include_examples: e.target.checked }))}
-                            />
-                            Incluir ejemplos prácticos
-                        </label>
-                        <label style={s.checkboxLabel}>
-                            <input
-                                type="checkbox"
-                                checked={form.include_questions}
-                                onChange={e => setForm(f => ({ ...f, include_questions: e.target.checked }))}
-                            />
-                            Incluir preguntas de práctica
-                        </label>
                     </div>
 
                     {error && <p style={s.error}>{error}</p>}
@@ -321,86 +257,129 @@ export default function CurriculumGenerator() {
                         onClick={handleGenerate}
                         disabled={loading}
                     >
-                        {loading ? 'Generando con IA...' : 'Generar currículo'}
+                        {loading ? 'Generando roadmap con IA...' : 'Generar roadmap'}
                     </button>
 
                     {loading && (
                         <div style={s.loadingNote}>
-                            La IA está extrayendo conceptos e infiriendo prerequisitos...
-                            <br />Esto tarda ~15 segundos.
+                            La IA está generando un roadmap estructurado por fases...
+                            <br />Esto puede tomar hasta 60 segundos.
                         </div>
                     )}
                 </div>
 
-                {result && (
+                {roadmap && (
                     <div style={s.resultPanel}>
                         <div style={s.statsRow}>
                             <div style={s.statCard}>
-                                <span style={s.statNum}>{result.stats.total_concepts}</span>
+                                <span style={s.statNum}>{roadmap.duration_months}</span>
+                                <span style={s.statLbl}>Meses</span>
+                            </div>
+                            <div style={s.statCard}>
+                                <span style={s.statNum}>{roadmap.phases.length}</span>
+                                <span style={s.statLbl}>Fases</span>
+                            </div>
+                            <div style={s.statCard}>
+                                <span style={s.statNum}>
+                                    {roadmap.phases.reduce((acc, p) => acc + p.topics.reduce((tacc, t) => tacc + t.subtopics.length, 0), 0)}
+                                </span>
                                 <span style={s.statLbl}>Conceptos</span>
                             </div>
-                            <div style={s.statCard}>
-                                <span style={s.statNum}>{result.stats.total_edges}</span>
-                                <span style={s.statLbl}>Prerequisitos</span>
-                            </div>
-                            <div style={s.statCard}>
-                                <span style={{...s.statNum, color: '#1D9E75'}}>
-                                    {result.is_valid_dag ? '✓' : '✗'}
-                                </span>
-                                <span style={s.statLbl}>DAG válido</span>
-                            </div>
                             <button
-                                style={{
-                                    ...s.btn,
-                                    marginTop: 24,
-                                    background: '#1D9E75',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 8
-                                }}
+                                style={{ ...s.saveBtn, ...s.statCard }}
                                 onClick={handleSaveCourse}
                                 disabled={loading}
                             >
-                                {loading ? 'Guardando...' : '💾 Guardar curso en Supabase'}
+                                {loading ? 'Guardando...' : '💾 Guardar curso'}
                             </button>
                         </div>
 
-                        <h2 style={s.sectionTitle}>Conceptos generados</h2>
-                        <div style={s.conceptGrid}>
-                            {result.concepts.map((c, i) => (
-                                <div key={i} style={s.conceptCard}>
-                                <div style={s.conceptTop}>
-                                    <span style={s.conceptLabel}>{c.label}</span>
-                                        <span style={{ ...s.diffBadge, background: diffColor(c.difficulty) }}>
-                                            {diffLabel(c.difficulty)}
-                                        </span>
+                        <div style={s.roadmapContainer}>
+                            {roadmap.phases.map((phase) => (
+                                <div key={phase.phase_number} style={s.phaseCard}>
+                                    <div style={s.phaseHeader} onClick={() => togglePhase(phase.phase_number)}>
+                                        <span style={s.phaseNumber}>Fase {phase.phase_number}</span>
+                                        <span style={s.phaseName}>{phase.name}</span>
+                                        <span style={s.phaseDuration}>📅 {phase.months} meses</span>
+                                        <span style={s.expandIcon}>{expandedPhases[phase.phase_number] ? '▼' : '▶'}</span>
                                     </div>
-                                    <p style={s.conceptDesc}>{c.description}</p>
+
+                                    {expandedPhases[phase.phase_number] && (
+                                        <div style={s.phaseContent}>
+                                            <div style={s.bloomLevels}>
+                                                <span style={s.bloomLabel}>Niveles Bloom:</span>
+                                                {phase.bloom_levels.map(level => (
+                                                    <span key={level} style={s.bloomBadge}>{level}</span>
+                                                ))}
+                                            </div>
+                                            <p style={s.phaseObjective}>🎯 {phase.objective}</p>
+
+                                            <div style={s.phaseDetails}>
+                                                <div style={s.detailColumn}>
+                                                    <strong>Resultados esperados:</strong>
+                                                    <ul style={s.list}>
+                                                        {phase.expected_outcomes.map((outcome, idx) => (
+                                                            <li key={idx}>{outcome}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                                <div style={s.detailColumn}>
+                                                    <strong>Skills adquiridas:</strong>
+                                                    <ul style={s.list}>
+                                                        {phase.skills.map((skill, idx) => (
+                                                            <li key={idx}>{skill}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                                <div style={s.detailColumn}>
+                                                    <strong>Tech stack:</strong>
+                                                    <ul style={s.list}>
+                                                        {phase.tech_stack.map((tech, idx) => (
+                                                            <li key={idx}>{tech}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            </div>
+
+                                            <div style={s.topicsContainer}>
+                                                {phase.topics.map((topic, topicIdx) => {
+                                                    const topicKey = `${phase.phase_number}-${topicIdx}`
+                                                    return (
+                                                        <div key={topicKey} style={s.topicCard}>
+                                                            <div style={s.topicHeader} onClick={() => toggleTopic(topicKey)}>
+                                                                <span style={s.topicName}>{topic.topic_name}</span>
+                                                                <span style={s.subtopicCount}>{topic.subtopics.length} conceptos</span>
+                                                                <span style={s.expandIcon}>{expandedTopics[topicKey] ? '▼' : '▶'}</span>
+                                                            </div>
+                                                            {expandedTopics[topicKey] && (
+                                                                <div style={s.subtopicsList}>
+                                                                    {topic.subtopics.map((subtopic, subIdx) => (
+                                                                        <div key={subIdx} style={s.subtopicCard}>
+                                                                            <div style={s.subtopicHeader}>
+                                                                                <span style={s.subtopicLabel}>{subtopic.label}</span>
+                                                                                <span style={{ ...s.diffBadge, background: diffColor(subtopic.difficulty) }}>
+                                                                                    {diffLabel(subtopic.difficulty)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <p style={s.subtopicDesc}>{subtopic.description}</p>
+                                                                            {subtopic.prerequisites.length > 0 && (
+                                                                                <div style={s.prereqs}>
+                                                                                    <strong>Prerrequisitos:</strong> {subtopic.prerequisites.join(', ')}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
-
-                        <h2 style={s.sectionTitle}>Prerequisitos inferidos</h2>
-                        <div style={s.edgeList}>
-                            {result.edges.map((e, i) => (
-                                <div key={i} style={s.edgeRow}>
-                                    <span style={s.edgeSrc}>{e.source}</span>
-                                    <span style={s.edgeArrow}>→</span>
-                                    <span style={s.edgeTgt}>{e.target}</span>
-                                    <div style={s.strengthBar}>
-                                        <div style={{
-                                            ...s.strengthFill,
-                                            width: `${e.strength * 100}%`,
-                                            background: e.strength >= 0.8 ? '#1D9E75' : e.strength >= 0.6 ? '#FAC775' : '#D3D1C7',
-                                        }} />
-                                    </div>
-                                    <span style={s.strengthVal}>{Math.round(e.strength * 100)}%</span>
-                                </div>
-                            ))}
-                        </div>
-
-
                     </div>
                 )}
             </div>
@@ -422,36 +401,40 @@ const s: Record<string, React.CSSProperties> = {
     textarea: { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', outline: 'none', resize: 'vertical' },
     select: { padding: '8px 12px', borderRadius: 8, border: '0.5px solid #D3D1C7', fontSize: 14, fontFamily: 'system-ui, sans-serif', background: '#fff', outline: 'none' },
     row: { display: 'flex', gap: 12 },
-    checkboxRow: { display: 'flex', gap: 16, marginTop: 8 },
-    checkboxLabel: { fontSize: 13, color: '#2C2C2A', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' },
     btn: { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
     loadingNote: { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
     error: { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
     resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 },
-    statsRow: { display: 'flex', gap: 12 },
+    statsRow: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
     statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
     statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
     statLbl: { fontSize: 11, color: '#888780' },
-    sectionTitle: { fontSize: 15, fontWeight: 600, color: '#2C2C2A', margin: 0 },
-    conceptGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 },
-    conceptCard: { background: '#fff', borderRadius: 10, border: '0.5px solid #D3D1C7', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 },
-    conceptTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    conceptLabel: { fontSize: 13, fontWeight: 600, color: '#1E3A5F' },
+    saveBtn: { background: '#1D9E75', color: '#fff', border: 'none', cursor: 'pointer', transition: 'opacity 0.2s' },
+    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20 },
+    phaseCard: { background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', overflow: 'hidden' },
+    phaseHeader: { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: '#F9F9F8', cursor: 'pointer', borderBottom: '1px solid #F1EFE8', flexWrap: 'wrap' },
+    phaseNumber: { fontSize: 14, fontWeight: 700, color: '#1D9E75', background: '#E1F5EE', padding: '4px 12px', borderRadius: 20 },
+    phaseName: { fontSize: 16, fontWeight: 600, color: '#1E3A5F', flex: 1 },
+    phaseDuration: { fontSize: 12, color: '#888780' },
+    expandIcon: { fontSize: 12, color: '#888780' },
+    phaseContent: { padding: '16px 20px' },
+    bloomLevels: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' },
+    bloomLabel: { fontSize: 12, fontWeight: 600, color: '#888780' },
+    bloomBadge: { fontSize: 11, background: '#E8E6E1', padding: '4px 10px', borderRadius: 16, color: '#1E3A5F' },
+    phaseObjective: { fontSize: 13, color: '#5F5E5A', marginBottom: 16, lineHeight: 1.5 },
+    phaseDetails: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 },
+    detailColumn: { fontSize: 12 },
+    list: { marginTop: 8, paddingLeft: 20, marginBottom: 0 },
+    topicsContainer: { display: 'flex', flexDirection: 'column', gap: 12 },
+    topicCard: { background: '#F9F9F8', borderRadius: 8, border: '1px solid #E8E6E1' },
+    topicHeader: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', justifyContent: 'space-between', flexWrap: 'wrap' },
+    topicName: { fontSize: 14, fontWeight: 600, color: '#1E3A5F', flex: 1 },
+    subtopicCount: { fontSize: 11, color: '#888780' },
+    subtopicsList: { padding: '12px 16px', borderTop: '1px solid #E8E6E1', display: 'flex', flexDirection: 'column', gap: 12 },
+    subtopicCard: { background: '#fff', borderRadius: 8, padding: 12, border: '1px solid #F1EFE8' },
+    subtopicHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 },
+    subtopicLabel: { fontSize: 13, fontWeight: 600, color: '#1E3A5F' },
     diffBadge: { fontSize: 10, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 20 },
-    conceptDesc: { fontSize: 12, color: '#5F5E5A', lineHeight: 1.5, margin: 0 },
-    edgeList: { display: 'flex', flexDirection: 'column', gap: 8 },
-    edgeRow: { display: 'flex', alignItems: 'center', gap: 10, background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '8px 14px' },
-    edgeSrc: { fontSize: 12, fontWeight: 500, color: '#1E3A5F', width: 160, flexShrink: 0 },
-    edgeArrow: { fontSize: 14, color: '#1D9E75', fontWeight: 700 },
-    edgeTgt: { fontSize: 12, fontWeight: 500, color: '#534AB7', width: 160, flexShrink: 0 },
-    strengthBar: { flex: 1, height: 5, background: '#F1EFE8', borderRadius: 3, overflow: 'hidden' },
-    strengthFill: { height: '100%', borderRadius: 3 },
-    strengthVal: { fontSize: 11, color: '#888780', width: 32, textAlign: 'right', flexShrink: 0 },
-    saveBtn: {
-        background: '#1D9E75',
-        color: '#fff',
-        border: 'none',
-        cursor: 'pointer',
-        transition: 'opacity 0.2s'
-    },
+    subtopicDesc: { fontSize: 12, color: '#6B6E6A', lineHeight: 1.4, marginBottom: 8 },
+    prereqs: { fontSize: 11, color: '#1D9E75', background: '#E1F5EE', padding: '4px 8px', borderRadius: 4, display: 'inline-block' },
 }

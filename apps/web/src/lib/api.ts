@@ -88,3 +88,10 @@ export const getNodeContent = async (courseId: string, nodeId: string, nodeLabel
 
     return response.json()
 }
+
+export const generateRoadmap = (payload: {
+    title: string
+    description: string
+    domain: string
+    difficulty_level: string
+}) => api.post('/ai/roadmap/generate', payload).then((r) => r.data)

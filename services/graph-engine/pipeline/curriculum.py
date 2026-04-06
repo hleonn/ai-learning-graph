@@ -247,146 +247,6 @@ def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[di
     logger.info(f"Validación DAG: {is_dag}, edges limpios: {len(clean_edges)}")
     return is_dag, clean_edges
 
-def generate_roadmap(
-    title: str,
-    description: str,
-    domain: str = "generic",
-    difficulty_level: str = "intermediate",
-) -> dict:
-    """
-    Genera un roadmap de aprendizaje estructurado por fases Bloom.
-
-    Niveles de dificultad:
-    - beginner: Solo Fase 1 (Aprender/Construir)
-    - intermediate: Fase 1 + Fase 2
-    - advanced: Fase 1 + Fase 2 + Fase 3
-    - expert: Todas las fases + profundidad profesional (6 meses)
-    """
-
-    # Mapeo de niveles a fases incluidas
-    phases_config = {
-        "beginner": {"max_phase": 1, "duration_months": 2},
-        "intermediate": {"max_phase": 2, "duration_months": 4},
-        "advanced": {"max_phase": 3, "duration_months": 6},
-        "expert": {"max_phase": 3, "duration_months": 6, "expert_depth": True}
-    }
-
-    config = phases_config.get(difficulty_level, phases_config["intermediate"])
-    max_phase = config["max_phase"]
-    duration_months = config["duration_months"]
-    expert_depth = config.get("expert_depth", False)
-
-    # Construir prompt dinámico según el nivel
-    phase_instructions = []
-    if max_phase >= 1:
-        phase_instructions.append("""
-FASE 1: APRENDER Y CONSTRUIR (Nivel Bloom: Recordar, Comprender, Aplicar)
-- Objetivo: Entender fundamentos y construir tu primer proyecto funcional
-- Resultados esperados: Proyecto básico funcionando, código reproducible
-- Skills: Herramientas fundamentales del stack""")
-
-    if max_phase >= 2:
-        phase_instructions.append("""
-FASE 2: INTEGRAR Y DISEÑAR (Nivel Bloom: Analizar, Evaluar)
-- Objetivo: Integrar con otros sistemas y diseñar soluciones completas
-- Resultados esperados: Sistema integrado funcionando, API/documentación
-- Skills: Herramientas intermedias del stack""")
-
-    if max_phase >= 3:
-        phase_instructions.append("""
-FASE 3: ESCALAR Y OPERAR (Nivel Bloom: Crear, Sintetizar)
-- Objetivo: Escalar y operar sistemas en condiciones reales
-- Resultados esperados: Sistema desplegado en cloud, monitoreo básico
-- Skills: Herramientas avanzadas del stack""")
-
-    if expert_depth:
-        phase_instructions.append("""
-- PROFUNDIDAD EXPERTO: Incluye preparación para certificación, mejores prácticas de la industria,
-  casos de estudio reales, optimización de rendimiento, seguridad y arquitectura escalable""")
-
-    prompt = f"""You are an expert curriculum designer. Generate a complete learning roadmap for:
-
-Course title: {title}
-Course description: {description}
-Domain: {domain}
-Difficulty level: {difficulty_level}
-Duration: {duration_months} months
-
-STRUCTURE REQUIREMENTS:
-{chr(10).join(phase_instructions)}
-
-IMPORTANT: Each phase must contain TOPICS, and each topic must contain SUBTOPICS.
-- A TOPIC is a major area of study (3-5 per phase)
-- A SUBTOPIC is a specific concept that will become a NODE in the knowledge graph
-- Each SUBTOPIC must have PREREQUISITES (other subtopics that must be learned first)
-- Subtopics within a phase can depend on subtopics from previous phases
-
-Return ONLY valid JSON. No markdown, no explanations.
-
-Output format:
-{{
-  "title": "{title}",
-  "duration_months": {duration_months},
-  "phases": [
-    {{
-      "phase_number": 1,
-      "name": "Aprender y Construir",
-      "months": "1-2",
-      "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
-      "objective": "Entender fundamentos y construir primer proyecto funcional",
-      "expected_outcomes": ["Proyecto básico funcionando", "Código reproducible"],
-      "skills": ["Skill 1", "Skill 2"],
-      "tech_stack": ["Tool 1", "Tool 2"],
-      "topics": [
-        {{
-          "topic_name": "Nombre del Tema",
-          "subtopics": [
-            {{
-              "label": "Nombre del Subtema",
-              "description": "Breve descripción de qué se aprende",
-              "difficulty": 1,
-              "prerequisites": ["Subtema que debe saberse antes"]
-            }}
-          ]
-        }}
-      ]
-    }}
-  ]
-}}
-
-RULES FOR PREREQUISITES:
-- Use the EXACT LABEL of the prerequisite subtopic
-- First subtopics in a phase should have empty prerequisites list
-- Subtopics can only depend on subtopics from same phase or previous phases
-- No circular dependencies
-- Create a DAG (Directed Acyclic Graph) structure
-
-Generate a comprehensive roadmap for {title}."""
-
-    try:
-        response = deepseek_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=3000
-        )
-
-        raw = response.choices[0].message.content.strip()
-
-        # Limpiar markdown
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
-
-        roadmap = json.loads(raw)
-        logger.info(f"Roadmap generado: {len(roadmap.get('phases', []))} fases")
-        return roadmap
-
-    except Exception as e:
-        logger.error(f"Error en generate_roadmap: {e}")
-        raise
 
 def generate_curriculum(
     title: str,
@@ -397,9 +257,6 @@ def generate_curriculum(
 ) -> dict:
     """
     Pipeline completo: título → grafo de conocimiento validado con contenido educativo.
-
-    Returns:
-        {concepts: [...], edges: [...], is_valid_dag: bool}
     """
     logger.info(f"Generando currículum: '{title}' (nivel: {difficulty_level})")
 
@@ -426,4 +283,246 @@ def generate_curriculum(
             "total_edges":    len(clean_edges),
             "removed_edges":  len(edges) - len(clean_edges),
         }
+    }
+
+
+def generate_roadmap(
+    title: str,
+    description: str,
+    domain: str = "generic",
+    difficulty_level: str = "intermediate",
+) -> dict:
+    """
+    Genera un roadmap de aprendizaje estructurado por fases Bloom.
+    """
+
+    # Mapeo de niveles a duración
+    duration_map = {
+        "beginner": 2,
+        "intermediate": 4,
+        "advanced": 6,
+        "expert": 6
+    }
+    duration_months = duration_map.get(difficulty_level, 4)
+
+    # Configuración específica por nivel
+    if difficulty_level == "expert":
+        # Prompt específico para nivel Expert (Certificación)
+        prompt = f"""Generate a certification-level learning roadmap for: {title}
+
+Description: {description}
+Domain: {domain}
+Level: EXPERT / CERTIFICATION (professional level)
+Duration: 6 months
+
+This is for professional certification preparation. Create a comprehensive roadmap.
+
+Return ONLY valid JSON. Use this structure:
+
+{{
+  "title": "{title}",
+  "duration_months": 6,
+  "phases": [
+    {{
+      "phase_number": 1,
+      "name": "Fundamentos Avanzados",
+      "months": "1-2",
+      "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
+      "objective": "Master the fundamental concepts at professional level",
+      "expected_outcomes": ["Outcome 1", "Outcome 2", "Outcome 3"],
+      "skills": ["Skill 1", "Skill 2", "Skill 3"],
+      "tech_stack": ["Tool 1", "Tool 2", "Tool 3"],
+      "topics": [
+        {{
+          "topic_name": "Topic Name",
+          "subtopics": [
+            {{"label": "Subtopic 1", "description": "Description", "difficulty": 3, "prerequisites": []}},
+            {{"label": "Subtopic 2", "description": "Description", "difficulty": 4, "prerequisites": ["Subtopic 1"]}}
+          ]
+        }}
+      ]
+    }},
+    {{
+      "phase_number": 2,
+      "name": "Arquitectura y Diseño",
+      "months": "3-4",
+      "bloom_levels": ["Analizar", "Evaluar"],
+      "objective": "Design scalable and robust systems",
+      "expected_outcomes": ["Outcome 1", "Outcome 2"],
+      "skills": ["Skill 1", "Skill 2"],
+      "tech_stack": ["Tool 1", "Tool 2"],
+      "topics": [
+        {{
+          "topic_name": "Topic Name",
+          "subtopics": [
+            {{"label": "Subtopic 1", "description": "Description", "difficulty": 4, "prerequisites": []}},
+            {{"label": "Subtopic 2", "description": "Description", "difficulty": 5, "prerequisites": ["Subtopic 1"]}}
+          ]
+        }}
+      ]
+    }},
+    {{
+      "phase_number": 3,
+      "name": "Optimización y Certificación",
+      "months": "5-6",
+      "bloom_levels": ["Crear", "Sintetizar"],
+      "objective": "Prepare for certification and real-world scenarios",
+      "expected_outcomes": ["Outcome 1", "Outcome 2"],
+      "skills": ["Skill 1", "Skill 2"],
+      "tech_stack": ["Tool 1", "Tool 2"],
+      "topics": [
+        {{
+          "topic_name": "Topic Name",
+          "subtopics": [
+            {{"label": "Subtopic 1", "description": "Description", "difficulty": 4, "prerequisites": []}},
+            {{"label": "Subtopic 2", "description": "Description", "difficulty": 5, "prerequisites": ["Subtopic 1"]}}
+          ]
+        }}
+      ]
+    }}
+  ]
+}}
+
+Rules:
+- Phase 1: Advanced fundamentals (difficulty 3-4)
+- Phase 2: Architecture and design patterns (difficulty 4-5)
+- Phase 3: Optimization and certification prep (difficulty 5)
+- Each phase: 2-3 topics, each topic: 2-4 subtopics
+- Subtopics must have prerequisite relationships
+- Use real, professional terminology
+- Focus on practical, industry-relevant content
+
+Generate certification-level roadmap for {title}:"""
+
+    else:
+        # Prompt para niveles beginner, intermediate, advanced
+        prompt = f"""Generate a JSON learning roadmap for: {title}
+
+Description: {description}
+Domain: {domain}
+Level: {difficulty_level}
+Duration: {duration_months} months
+
+Return ONLY valid JSON. Use this exact structure:
+
+{{
+  "title": "{title}",
+  "duration_months": {duration_months},
+  "phases": [
+    {{
+      "phase_number": 1,
+      "name": "Fundamentos",
+      "months": "1-2",
+      "bloom_levels": ["Recordar", "Comprender"],
+      "objective": "Objetivo de la fase",
+      "expected_outcomes": ["Resultado 1", "Resultado 2"],
+      "skills": ["Skill 1", "Skill 2"],
+      "tech_stack": ["Tool 1", "Tool 2"],
+      "topics": [
+        {{
+          "topic_name": "Tema 1",
+          "subtopics": [
+            {{
+              "label": "Subtema 1",
+              "description": "Descripción corta",
+              "difficulty": 1,
+              "prerequisites": []
+            }},
+            {{
+              "label": "Subtema 2",
+              "description": "Descripción corta",
+              "difficulty": 2,
+              "prerequisites": ["Subtema 1"]
+            }}
+          ]
+        }}
+      ]
+    }}
+  ]
+}}
+
+Rules:
+- For beginner level: 1 phase only (months "1-2")
+- For intermediate: 2 phases (months "1-2" and "3-4")
+- For advanced/expert: 3 phases (months "1-2", "3-4", "5-6")
+- Each phase has 2-3 topics
+- Each topic has 2-4 subtopics
+- Subtopics must have prerequisite relationships
+- Difficulty: 1=beginner, 2=easy, 3=medium, 4=hard, 5=expert
+
+Generate roadmap for {title}:"""
+
+    try:
+        response = deepseek_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=2500
+        )
+
+        raw = response.choices[0].message.content.strip()
+
+        # Limpiar markdown
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        # Intentar reparar JSON común
+        raw = raw.replace('\\"', '"')
+
+        roadmap = json.loads(raw)
+        logger.info(f"Roadmap generado: {len(roadmap.get('phases', []))} fases")
+        return roadmap
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decodificando JSON: {e}")
+        logger.error(f"Respuesta raw: {raw[:500]}...")
+        return _generate_fallback_roadmap(title, difficulty_level, duration_months)
+    except Exception as e:
+        logger.error(f"Error en generate_roadmap: {e}")
+        raise
+
+
+def _generate_fallback_roadmap(title: str, difficulty_level: str, duration_months: int) -> dict:
+    """Genera un roadmap de fallback si la API falla"""
+    num_phases = 3 if difficulty_level in ["advanced", "expert"] else (2 if difficulty_level == "intermediate" else 1)
+
+    phases = []
+    for i in range(num_phases):
+        phase_num = i + 1
+        start_month = i * 2 + 1
+        end_month = start_month + 1
+        phases.append({
+            "phase_number": phase_num,
+            "name": f"Fase {phase_num}",
+            "months": f"{start_month}-{end_month}",
+            "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
+            "objective": f"Objetivo de la fase {phase_num} de {title}",
+            "expected_outcomes": [f"Resultado esperado {phase_num}.1", f"Resultado esperado {phase_num}.2"],
+            "skills": [f"Habilidad {phase_num}.1", f"Habilidad {phase_num}.2"],
+            "tech_stack": [f"Herramienta {phase_num}.1", f"Herramienta {phase_num}.2"],
+            "topics": [
+                {
+                    "topic_name": f"Tema {phase_num}.1",
+                    "subtopics": [
+                        {"label": f"Subtema {phase_num}.1.1", "description": f"Descripción de Subtema {phase_num}.1.1", "difficulty": 1, "prerequisites": []},
+                        {"label": f"Subtema {phase_num}.1.2", "description": f"Descripción de Subtema {phase_num}.1.2", "difficulty": 2, "prerequisites": [f"Subtema {phase_num}.1.1"]}
+                    ]
+                },
+                {
+                    "topic_name": f"Tema {phase_num}.2",
+                    "subtopics": [
+                        {"label": f"Subtema {phase_num}.2.1", "description": f"Descripción de Subtema {phase_num}.2.1", "difficulty": 2, "prerequisites": []},
+                        {"label": f"Subtema {phase_num}.2.2", "description": f"Descripción de Subtema {phase_num}.2.2", "difficulty": 3, "prerequisites": [f"Subtema {phase_num}.2.1"]}
+                    ]
+                }
+            ]
+        })
+
+    return {
+        "title": title,
+        "duration_months": duration_months,
+        "phases": phases
     }

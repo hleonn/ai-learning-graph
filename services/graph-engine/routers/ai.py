@@ -1,4 +1,4 @@
-from pipeline.curriculum import generate_curriculum
+from pipeline.curriculum import generate_curriculum, generate_roadmap
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from loguru import logger
