@@ -15,6 +15,11 @@ class NodeCreate(BaseModel):
     difficulty: int = 1
     position_x: Optional[float] = 0
     position_y: Optional[float] = 0
+    phase: Optional[int] = None  #
+    topic: Optional[str] = None  #
+    bloom_levels: Optional[list] = None  #
+    expected_outcomes: Optional[list] = None  #
+    skills: Optional[list] = None  #
 
 class EdgeCreate(BaseModel):
     source: str
@@ -115,6 +120,11 @@ def create_node(course_id: str, node: NodeCreate):
         "difficulty": node.difficulty,
         "position_x": node.position_x,
         "position_y": node.position_y,
+        "phase": node.phase,  #
+        "topic": node.topic,  #
+        "bloom_levels": node.bloom_levels,  #
+        "expected_outcomes": node.expected_outcomes,  #
+        "skills": node.skills,  #
     }
 
     result = supabase.table("concept_nodes").insert(new_node).execute()
