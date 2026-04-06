@@ -20,7 +20,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // POST /courses — crear un nuevo curso
 router.post('/', async (req: Request, res: Response) => {
-    const { title, description, domain, google_classroom_id, difficulty_level } = req.body
+    const { title, description, domain, google_classroom_id, difficulty_level, roadmap } = req.body
 
     if (!title) {
         return res.status(400).json({ error: 'El título es requerido' })
@@ -34,6 +34,7 @@ router.post('/', async (req: Request, res: Response) => {
             domain: domain || 'generic',
             google_classroom_id: google_classroom_id || null,
             difficulty_level: difficulty_level || 'intermediate',
+            roadmap: roadmap || null,
         })
         .select()
 
