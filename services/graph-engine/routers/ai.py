@@ -343,3 +343,26 @@ def get_node_content(course_id: str, node_id: str, request: dict = Body(...)):
         "options": ["Opción 1", "Opción 2", "Opción 3", "Opción 4"],
         "correct_answer": 0
     }
+
+class RoadmapRequest(BaseModel):
+    title: str
+    description: str
+    domain: str = "generic"
+    difficulty_level: str = "intermediate"
+
+
+@router.post("/roadmap/generate")
+def generate_roadmap_endpoint(req: RoadmapRequest):
+    """
+    Genera un roadmap de aprendizaje estructurado por fases Bloom.
+    """
+    logger.info(f"Generando roadmap: {req.title} (nivel: {req.difficulty_level})")
+
+    result = generate_roadmap(
+        title=req.title,
+        description=req.description,
+        domain=req.domain,
+        difficulty_level=req.difficulty_level,
+    )
+
+    return result

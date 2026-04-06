@@ -247,6 +247,146 @@ def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[di
     logger.info(f"Validación DAG: {is_dag}, edges limpios: {len(clean_edges)}")
     return is_dag, clean_edges
 
+def generate_roadmap(
+    title: str,
+    description: str,
+    domain: str = "generic",
+    difficulty_level: str = "intermediate",
+) -> dict:
+    """
+    Genera un roadmap de aprendizaje estructurado por fases Bloom.
+
+    Niveles de dificultad:
+    - beginner: Solo Fase 1 (Aprender/Construir)
+    - intermediate: Fase 1 + Fase 2
+    - advanced: Fase 1 + Fase 2 + Fase 3
+    - expert: Todas las fases + profundidad profesional (6 meses)
+    """
+
+    # Mapeo de niveles a fases incluidas
+    phases_config = {
+        "beginner": {"max_phase": 1, "duration_months": 2},
+        "intermediate": {"max_phase": 2, "duration_months": 4},
+        "advanced": {"max_phase": 3, "duration_months": 6},
+        "expert": {"max_phase": 3, "duration_months": 6, "expert_depth": True}
+    }
+
+    config = phases_config.get(difficulty_level, phases_config["intermediate"])
+    max_phase = config["max_phase"]
+    duration_months = config["duration_months"]
+    expert_depth = config.get("expert_depth", False)
+
+    # Construir prompt dinámico según el nivel
+    phase_instructions = []
+    if max_phase >= 1:
+        phase_instructions.append("""
+FASE 1: APRENDER Y CONSTRUIR (Nivel Bloom: Recordar, Comprender, Aplicar)
+- Objetivo: Entender fundamentos y construir tu primer proyecto funcional
+- Resultados esperados: Proyecto básico funcionando, código reproducible
+- Skills: Herramientas fundamentales del stack""")
+
+    if max_phase >= 2:
+        phase_instructions.append("""
+FASE 2: INTEGRAR Y DISEÑAR (Nivel Bloom: Analizar, Evaluar)
+- Objetivo: Integrar con otros sistemas y diseñar soluciones completas
+- Resultados esperados: Sistema integrado funcionando, API/documentación
+- Skills: Herramientas intermedias del stack""")
+
+    if max_phase >= 3:
+        phase_instructions.append("""
+FASE 3: ESCALAR Y OPERAR (Nivel Bloom: Crear, Sintetizar)
+- Objetivo: Escalar y operar sistemas en condiciones reales
+- Resultados esperados: Sistema desplegado en cloud, monitoreo básico
+- Skills: Herramientas avanzadas del stack""")
+
+    if expert_depth:
+        phase_instructions.append("""
+- PROFUNDIDAD EXPERTO: Incluye preparación para certificación, mejores prácticas de la industria,
+  casos de estudio reales, optimización de rendimiento, seguridad y arquitectura escalable""")
+
+    prompt = f"""You are an expert curriculum designer. Generate a complete learning roadmap for:
+
+Course title: {title}
+Course description: {description}
+Domain: {domain}
+Difficulty level: {difficulty_level}
+Duration: {duration_months} months
+
+STRUCTURE REQUIREMENTS:
+{chr(10).join(phase_instructions)}
+
+IMPORTANT: Each phase must contain TOPICS, and each topic must contain SUBTOPICS.
+- A TOPIC is a major area of study (3-5 per phase)
+- A SUBTOPIC is a specific concept that will become a NODE in the knowledge graph
+- Each SUBTOPIC must have PREREQUISITES (other subtopics that must be learned first)
+- Subtopics within a phase can depend on subtopics from previous phases
+
+Return ONLY valid JSON. No markdown, no explanations.
+
+Output format:
+{{
+  "title": "{title}",
+  "duration_months": {duration_months},
+  "phases": [
+    {{
+      "phase_number": 1,
+      "name": "Aprender y Construir",
+      "months": "1-2",
+      "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
+      "objective": "Entender fundamentos y construir primer proyecto funcional",
+      "expected_outcomes": ["Proyecto básico funcionando", "Código reproducible"],
+      "skills": ["Skill 1", "Skill 2"],
+      "tech_stack": ["Tool 1", "Tool 2"],
+      "topics": [
+        {{
+          "topic_name": "Nombre del Tema",
+          "subtopics": [
+            {{
+              "label": "Nombre del Subtema",
+              "description": "Breve descripción de qué se aprende",
+              "difficulty": 1,
+              "prerequisites": ["Subtema que debe saberse antes"]
+            }}
+          ]
+        }}
+      ]
+    }}
+  ]
+}}
+
+RULES FOR PREREQUISITES:
+- Use the EXACT LABEL of the prerequisite subtopic
+- First subtopics in a phase should have empty prerequisites list
+- Subtopics can only depend on subtopics from same phase or previous phases
+- No circular dependencies
+- Create a DAG (Directed Acyclic Graph) structure
+
+Generate a comprehensive roadmap for {title}."""
+
+    try:
+        response = deepseek_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=3000
+        )
+
+        raw = response.choices[0].message.content.strip()
+
+        # Limpiar markdown
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        roadmap = json.loads(raw)
+        logger.info(f"Roadmap generado: {len(roadmap.get('phases', []))} fases")
+        return roadmap
+
+    except Exception as e:
+        logger.error(f"Error en generate_roadmap: {e}")
+        raise
 
 def generate_curriculum(
     title: str,
