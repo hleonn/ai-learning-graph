@@ -25,19 +25,34 @@ interface NodeContent {
     correct_answer: number
 }
 
-interface CourseStructure {
+interface Subtopic {
+    label: string
+    description: string
+    difficulty: number
+    prerequisites: string[]
+}
+
+interface Topic {
+    topic_name: string
+    subtopics: Subtopic[]
+}
+
+interface Phase {
+    phase_number: number
+    name: string
+    months: string
+    bloom_levels: string[]
+    objective: string
+    expected_outcomes: string[]
+    skills: string[]
+    tech_stack: string[]
+    topics: Topic[]
+}
+
+interface RoadmapData {
     title: string
-    difficulty_level: string
-    domain: string
-    total_concepts: number
-    topics: Array<{
-        id: string
-        order: number
-        name: string
-        description: string
-        difficulty: number
-        subtopics: string[]
-    }>
+    duration_months: number
+    phases: Phase[]
 }
 
 function masteryColor(score: number): string {
@@ -79,25 +94,33 @@ export default function GraphView() {
     const [nodeContent, setNodeContent] = useState<NodeContent | null>(null)
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
     const [showAnswerFeedback, setShowAnswerFeedback] = useState(false)
-    const [showLeftPanel, setShowLeftPanel] = useState(false)
-    const [courseStructure, setCourseStructure] = useState<CourseStructure | null>(null)
+    const [showLeftPanel, setShowLeftPanel] = useState(true)
+    const [roadmap, setRoadmap] = useState<RoadmapData | null>(null)
+    const [expandedPhases, setExpandedPhases] = useState<Record<number, boolean>>({})
+    const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({})
 
-    // ── Cargar estructura del curso ──────────────────────────────────────────────
-    const loadCourseStructure = async () => {
+    // ── Cargar roadmap del curso ──────────────────────────────────────────────
+    const loadRoadmap = async () => {
         if (!courseId) return
         const token = localStorage.getItem('google_token')
         if (!token) return
 
         try {
-            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}/structure`, {
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             if (response.ok) {
-                const data = await response.json()
-                setCourseStructure(data)
+                const courseData = await response.json()
+                if (courseData.roadmap) {
+                    setRoadmap(courseData.roadmap)
+                    // Expandir primera fase por defecto
+                    if (courseData.roadmap.phases && courseData.roadmap.phases.length > 0) {
+                        setExpandedPhases({ [courseData.roadmap.phases[0].phase_number]: true })
+                    }
+                }
             }
         } catch (error) {
-            console.error('Error loading course structure:', error)
+            console.error('Error loading roadmap:', error)
         }
     }
 
@@ -198,6 +221,8 @@ export default function GraphView() {
                         pagerank: n.data.pagerank,
                         mastery: score,
                         topo_order: topoOrder,
+                        phase: n.data.phase,
+                        topic: n.data.topic,
                     },
                     position: {x: n.position.x, y: n.position.y},
                 }
@@ -364,6 +389,29 @@ export default function GraphView() {
         }
     }
 
+    const togglePhase = (phaseNumber: number) => {
+        setExpandedPhases(prev => ({
+            ...prev,
+            [phaseNumber]: !prev[phaseNumber]
+        }))
+    }
+
+    const toggleTopic = (topicKey: string) => {
+        setExpandedTopics(prev => ({
+            ...prev,
+            [topicKey]: !prev[topicKey]
+        }))
+    }
+
+    const getSubtopicProgress = (subtopicLabel: string): number => {
+        // Buscar el nodo por label
+        const node = graphRef.current?.nodes?.find((n: any) => n.data.label === subtopicLabel)
+        if (node) {
+            return masteryRef.current[node.data.id]?.mastery_score || 0
+        }
+        return 0
+    }
+
     useEffect(() => {
         const init = async () => {
             const token = localStorage.getItem('google_token')
@@ -421,7 +469,7 @@ export default function GraphView() {
                 const next = getNextRecommendedConcept(map, graphData)
                 setNextRecommended(next)
 
-                await loadCourseStructure()
+                await loadRoadmap()
 
                 setTimeout(() => {
                     initCytoscape()
@@ -451,58 +499,123 @@ export default function GraphView() {
     const isComplete = courseProgress === 100
     const isTeacher = userRole === 'teacher'
 
-    // Obtener progreso por tema
-    const getTopicProgress = (topicId: string): number => {
-        return masteryRef.current[topicId]?.mastery_score || 0
+    // Calcular progreso por fase
+    const getPhaseProgress = (phase: Phase): number => {
+        let total = 0
+        let completed = 0
+        for (const topic of phase.topics) {
+            for (const subtopic of topic.subtopics) {
+                total++
+                if (getSubtopicProgress(subtopic.label) >= 0.8) {
+                    completed++
+                }
+            }
+        }
+        return total > 0 ? Math.round((completed / total) * 100) : 0
     }
 
     return (
         <div style={s.page}>
-            {/* Panel izquierdo */}
-            <div style={{...s.leftPanel, width: showLeftPanel ? 320 : 40}}>
+            {/* Panel izquierdo - Roadmap */}
+            <div style={{...s.leftPanel, width: showLeftPanel ? 360 : 40}}>
                 <button style={s.toggleLeftBtn} onClick={() => setShowLeftPanel(!showLeftPanel)}>
                     {showLeftPanel ? '◀' : '▶'}
                 </button>
-                {showLeftPanel && (
+                {showLeftPanel && roadmap && (
                     <div style={s.leftPanelContent}>
                         <div style={s.courseHeader}>
-                            <h3 style={s.courseTitleLeft}>{graphRef.current?.course.title}</h3>
-                            <div style={s.courseDifficultyLeft}>
-                                {courseStructure?.difficulty_level === 'beginner' && '🔰 Principiante'}
-                                {courseStructure?.difficulty_level === 'intermediate' && '📘 Intermedio'}
-                                {courseStructure?.difficulty_level === 'advanced' && '🚀 Avanzado'}
-                                {courseStructure?.difficulty_level === 'expert' && '🎓 Certificación'}
-                                {!courseStructure?.difficulty_level && '📚 Estándar'}
-                            </div>
-                            <div style={s.totalTopics}>
-                                📚 Total: {courseStructure?.total_concepts || 0} temas
-                            </div>
+                            <h3 style={s.courseTitleLeft}>{roadmap.title}</h3>
+                            <div style={s.courseDuration}>📅 {roadmap.duration_months} meses</div>
                         </div>
 
-                        <div style={s.topicsList}>
-                            {courseStructure?.topics.map((topic) => {
-                                const topicProgress = getTopicProgress(topic.id)
+                        <div style={s.phasesList}>
+                            {roadmap.phases.map((phase) => {
+                                const phaseProgress = getPhaseProgress(phase)
                                 return (
-                                    <div key={topic.id} style={s.topicItem}>
-                                        <div style={s.topicHeader}>
-                                            <span style={s.topicNumber}>{topic.order}.</span>
-                                            <span style={s.topicName}>{topic.name}</span>
-                                            <span style={s.topicPercent}>{Math.round(topicProgress * 100)}%</span>
+                                    <div key={phase.phase_number} style={s.phaseItem}>
+                                        <div style={s.phaseHeaderLeft} onClick={() => togglePhase(phase.phase_number)}>
+                                            <div style={s.phaseHeaderLeftInfo}>
+                                                <span style={s.phaseNumberLeft}>Fase {phase.phase_number}</span>
+                                                <span style={s.phaseNameLeft}>{phase.name}</span>
+                                            </div>
+                                            <div style={s.phaseHeaderRight}>
+                                                <span style={s.phaseProgress}>{phaseProgress}%</span>
+                                                <span style={s.expandIcon}>{expandedPhases[phase.phase_number] ? '▼' : '▶'}</span>
+                                            </div>
                                         </div>
-                                        <div style={s.topicProgressBar}>
-                                            <div style={{...s.topicProgressFill, width: `${topicProgress * 100}%`}} />
+                                        <div style={s.phaseProgressBar}>
+                                            <div style={{...s.phaseProgressFill, width: `${phaseProgress}%`}} />
                                         </div>
-                                        <div style={s.topicDetails}>
-                                            <span>🎯 Nivel Bloom: Por definir</span>
-                                            <span>📈 Skills: Por definir</span>
-                                        </div>
-                                        <div style={s.subtopicsList}>
-                                            <div style={s.subtopicItem}>• {topic.description.substring(0, 80)}...</div>
-                                        </div>
+
+                                        {expandedPhases[phase.phase_number] && (
+                                            <div style={s.phaseContentLeft}>
+                                                <div style={s.bloomLevelsLeft}>
+                                                    {phase.bloom_levels.map(level => (
+                                                        <span key={level} style={s.bloomBadgeLeft}>{level}</span>
+                                                    ))}
+                                                </div>
+                                                <p style={s.phaseObjectiveLeft}>{phase.objective.substring(0, 100)}...</p>
+
+                                                {phase.topics.map((topic, topicIdx) => {
+                                                    const topicKey = `${phase.phase_number}-${topicIdx}`
+                                                    let topicProgress = 0
+                                                    let topicTotal = 0
+                                                    let topicCompleted = 0
+                                                    for (const subtopic of topic.subtopics) {
+                                                        topicTotal++
+                                                        if (getSubtopicProgress(subtopic.label) >= 0.8) {
+                                                            topicCompleted++
+                                                        }
+                                                    }
+                                                    topicProgress = topicTotal > 0 ? Math.round((topicCompleted / topicTotal) * 100) : 0
+
+                                                    return (
+                                                        <div key={topicKey} style={s.topicItemLeft}>
+                                                            <div style={s.topicHeaderLeft} onClick={() => toggleTopic(topicKey)}>
+                                                                <span style={s.topicNameLeft}>{topic.topic_name}</span>
+                                                                <div style={s.topicHeaderRight}>
+                                                                    <span style={s.topicProgress}>{topicProgress}%</span>
+                                                                    <span style={s.expandIcon}>{expandedTopics[topicKey] ? '▼' : '▶'}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div style={s.topicProgressBar}>
+                                                                <div style={{...s.topicProgressFill, width: `${topicProgress}%`}} />
+                                                            </div>
+
+                                                            {expandedTopics[topicKey] && (
+                                                                <div style={s.subtopicsListLeft}>
+                                                                    {topic.subtopics.map((subtopic, subIdx) => {
+                                                                        const subProgress = getSubtopicProgress(subtopic.label)
+                                                                        return (
+                                                                            <div key={subIdx} style={s.subtopicItemLeft}>
+                                                                                <div style={s.subtopicHeaderLeft}>
+                                                                                    <span style={s.subtopicLabelLeft}>{subtopic.label}</span>
+                                                                                    <span style={{...s.subtopicProgress, color: masteryColor(subProgress)}}>
+                                                                                        {Math.round(subProgress * 100)}%
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div style={s.subtopicProgressBar}>
+                                                                                    <div style={{...s.subtopicProgressFill, width: `${subProgress * 100}%`, background: masteryColor(subProgress)}} />
+                                                                                </div>
+                                                                            </div>
+                                                                        )
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
                                     </div>
                                 )
                             })}
                         </div>
+                    </div>
+                )}
+                {showLeftPanel && !roadmap && (
+                    <div style={s.leftPanelContent}>
+                        <p style={s.noRoadmapMsg}>No hay roadmap disponible para este curso.</p>
                     </div>
                 )}
             </div>
@@ -755,84 +868,173 @@ const s: Record<string, React.CSSProperties> = {
         color: '#1E3A5F',
         margin: '0 0 8px'
     },
-    courseDifficultyLeft: {
-        fontSize: 11,
-        fontWeight: 600,
+    courseDuration: {
+        fontSize: 12,
+        color: '#1D9E75',
+        background: '#E1F5EE',
         padding: '2px 8px',
         borderRadius: 12,
-        background: '#E8E6E1',
-        color: '#1E3A5F',
-        display: 'inline-block',
-        marginBottom: 8
+        display: 'inline-block'
     },
-    totalTopics: {
-        fontSize: 12,
-        color: '#888780',
-        marginTop: 8
-    },
-    topicsList: {
+    phasesList: {
         display: 'flex',
         flexDirection: 'column',
         gap: 16
     },
-    topicItem: {
-        padding: 12,
+    phaseItem: {
         background: '#F9F9F8',
         borderRadius: 8,
         border: '1px solid #E8E6E1'
     },
-    topicHeader: {
+    phaseHeaderLeft: {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 8
+        padding: '12px 12px 8px 12px',
+        cursor: 'pointer'
     },
-    topicNumber: {
+    phaseHeaderLeftInfo: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap'
+    },
+    phaseNumberLeft: {
+        fontSize: 11,
+        fontWeight: 700,
+        color: '#1D9E75',
+        background: '#E1F5EE',
+        padding: '2px 8px',
+        borderRadius: 12
+    },
+    phaseNameLeft: {
+        fontSize: 13,
+        fontWeight: 600,
+        color: '#1E3A5F'
+    },
+    phaseHeaderRight: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8
+    },
+    phaseProgress: {
         fontSize: 12,
         fontWeight: 600,
         color: '#1D9E75'
     },
-    topicName: {
-        fontSize: 13,
-        fontWeight: 500,
-        color: '#1E3A5F',
-        flex: 1,
-        marginLeft: 8
-    },
-    topicPercent: {
-        fontSize: 11,
-        fontWeight: 600,
-        color: '#1D9E75'
-    },
-    topicProgressBar: {
-        height: 4,
+    phaseProgressBar: {
+        height: 3,
         background: '#F1EFE8',
         borderRadius: 2,
         overflow: 'hidden',
-        marginBottom: 8
+        margin: '0 12px 12px 12px'
     },
-    topicProgressFill: {
+    phaseProgressFill: {
         height: '100%',
         background: '#1D9E75',
         borderRadius: 2,
         transition: 'width 0.3s'
     },
-    topicDetails: {
+    phaseContentLeft: {
+        padding: '0 12px 12px 12px'
+    },
+    bloomLevelsLeft: {
         display: 'flex',
-        gap: 12,
+        gap: 6,
+        flexWrap: 'wrap',
+        marginBottom: 8
+    },
+    bloomBadgeLeft: {
         fontSize: 10,
-        color: '#888780',
-        marginTop: 8
+        background: '#E8E6E1',
+        padding: '2px 6px',
+        borderRadius: 10,
+        color: '#1E3A5F'
     },
-    subtopicsList: {
-        marginTop: 8,
-        paddingLeft: 16,
-        borderLeft: '2px solid #E1F5EE'
-    },
-    subtopicItem: {
+    phaseObjectiveLeft: {
         fontSize: 11,
         color: '#6B6E6A',
+        marginBottom: 12,
+        lineHeight: 1.4
+    },
+    topicItemLeft: {
+        marginTop: 8,
+        background: '#fff',
+        borderRadius: 6,
+        border: '1px solid #E8E6E1'
+    },
+    topicHeaderLeft: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '10px 12px',
+        cursor: 'pointer'
+    },
+    topicNameLeft: {
+        fontSize: 12,
+        fontWeight: 600,
+        color: '#1E3A5F'
+    },
+    topicHeaderRight: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8
+    },
+    topicProgress: {
+        fontSize: 11,
+        fontWeight: 500,
+        color: '#1D9E75'
+    },
+    topicProgressBar: {
+        height: 2,
+        background: '#F1EFE8',
+        borderRadius: 1,
+        overflow: 'hidden',
+        margin: '0 12px 8px 12px'
+    },
+    topicProgressFill: {
+        height: '100%',
+        background: '#1D9E75',
+        borderRadius: 1,
+        transition: 'width 0.3s'
+    },
+    subtopicsListLeft: {
+        padding: '8px 12px 12px 12px',
+        borderTop: '1px solid #F1EFE8'
+    },
+    subtopicItemLeft: {
+        marginBottom: 8
+    },
+    subtopicHeaderLeft: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: 4
+    },
+    subtopicLabelLeft: {
+        fontSize: 11,
+        color: '#2C2C2A'
+    },
+    subtopicProgress: {
+        fontSize: 10,
+        fontWeight: 500
+    },
+    subtopicProgressBar: {
+        height: 2,
+        background: '#F1EFE8',
+        borderRadius: 1,
+        overflow: 'hidden'
+    },
+    subtopicProgressFill: {
+        height: '100%',
+        borderRadius: 1,
+        transition: 'width 0.3s'
+    },
+    noRoadmapMsg: {
+        fontSize: 13,
+        color: '#888780',
+        textAlign: 'center',
+        marginTop: 40
     },
 
     // Contenido principal
