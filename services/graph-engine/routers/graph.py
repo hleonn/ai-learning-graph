@@ -65,6 +65,7 @@ def get_graph(course_id: str):
                 "difficulty": node["difficulty"],
                 "pagerank": round(pagerank.get(node["id"], 0.0), 4),
                 "topo_order": topo_index.get(node["id"], -1),
+                "phase": node.get("phase", 1),
             },
             "position": {
                 "x": node.get("position_x", 0),
