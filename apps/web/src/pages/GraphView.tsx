@@ -55,19 +55,17 @@ interface RoadmapData {
     phases: Phase[]
 }
 
-// Colores por fase (borde del nodo)
 function getPhaseBorderColor(phase: number): string {
-    switch(phase) {
-        case 1: return '#4A90D9'  // Azul
-        case 2: return '#50E3C2'  // Verde menta
-        case 3: return '#F5A623'  // Naranja
-        case 4: return '#D0021B'  // Rojo
-        case 5: return '#9B59B6'  // Púrpura
-        default: return '#1E3A5F' // Azul oscuro
+    switch(Number(phase)) {
+        case 1: return '#4A90D9'
+        case 2: return '#50E3C2'
+        case 3: return '#F5A623'
+        case 4: return '#D0021B'
+        case 5: return '#9B59B6'
+        default: return '#1E3A5F'
     }
 }
 
-// Color de fondo del nodo según mastery (se mantiene)
 function masteryColor(score: number): string {
     if (score >= 0.8) return '#1D9E75'
     if (score >= 0.6) return '#5DCAA5'
@@ -113,12 +111,10 @@ export default function GraphView() {
     const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({})
     const [selectedPhase, setSelectedPhase] = useState<number | null>(null)
 
-    // ── Cargar roadmap del curso ──────────────────────────────────────────────
     const loadRoadmap = async () => {
         if (!courseId) return
         const token = localStorage.getItem('google_token')
         if (!token) return
-
         try {
             const response = await fetch(`https://mygateway.up.railway.app/courses/${courseId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -189,7 +185,7 @@ export default function GraphView() {
             setShowContentModal(true)
         }
     }
-// Función para filtrar nodos por fase
+
     const filterNodesByPhase = (phase: number | null) => {
         setSelectedPhase(phase)
         if (cyRef.current) {
@@ -198,14 +194,16 @@ export default function GraphView() {
                 if (phase === null || nodePhase === phase) {
                     node.style('opacity', 1)
                     node.style('visibility', 'visible')
+                    node.style('border-opacity', 0.8)
                 } else {
-                    node.style('opacity', 0.2)
+                    node.style('opacity', 0.3)
                     node.style('visibility', 'visible')
+                    node.style('border-opacity', 0.1)
                 }
             })
         }
     }
-// Función para resetear el filtro
+
     const resetFilter = () => {
         filterNodesByPhase(null)
     }
@@ -215,10 +213,8 @@ export default function GraphView() {
             alert('Selecciona una respuesta')
             return
         }
-
         const isCorrect = selectedAnswer === nodeContent?.correct_answer
         setShowAnswerFeedback(true)
-
         setTimeout(() => {
             setShowContentModal(false)
             if (isCorrect) {
@@ -229,16 +225,16 @@ export default function GraphView() {
         }, 1500)
     }
 
-    const centerNode = (nodeId: string) => {
-        if (cyRef.current) {
-            const node = cyRef.current.$id(nodeId)
-            if (node) {
-                cyRef.current.center(node)
-                cyRef.current.zoom(1.5)
-                node.trigger('tap')
-            }
-        }
-    }
+    // const centerNode = (nodeId: string) => {
+    //     if (cyRef.current) {
+    //         const node = cyRef.current.$id(nodeId)
+    //         if (node) {
+    //             cyRef.current.center(node)
+    //             cyRef.current.zoom(1.5)
+    //             node.trigger('tap')
+    //         }
+    //     }
+    // }
 
     const initCytoscape = () => {
         if (!containerRef.current || !graphRef.current) return
@@ -247,10 +243,8 @@ export default function GraphView() {
             cyRef.current.destroy()
             cyRef.current = null
         }
-
         const graph = graphRef.current
         const mastery = masteryRef.current
-
         const elements = [
             ...graph.nodes.map((n: any) => {
                 const score = mastery[n.data.id]?.mastery_score ?? 0
@@ -274,7 +268,6 @@ export default function GraphView() {
             }),
             ...graph.edges.map((e: any) => ({data: e.data})),
         ]
-
         const cy = Cytoscape({
             container: containerRef.current,
             elements,
@@ -334,14 +327,12 @@ export default function GraphView() {
             userPanningEnabled: true,
             boxSelectionEnabled: false,
         })
-
         cy.on('dragfree', 'node', (event: any) => {
             const node = event.target
             const nodeId = node.data('id')
             const position = node.position()
             saveNodePosition(nodeId, position)
         })
-
         cy.on('tap', 'node', async (evt: any) => {
             const data = evt.target.data()
             const m = masteryRef.current[data.id]
@@ -349,16 +340,13 @@ export default function GraphView() {
             setFeedbackMessage(getMasteryMessage(m?.mastery_score ?? 0, data.label))
             await loadNodeContent(data.id, data.label)
         })
-
         cy.on('tap', (evt: any) => {
             if (evt.target === cy) {
                 setSelected(null)
                 setFeedbackMessage(null)
             }
         })
-
         cyRef.current = cy
-
         setTimeout(() => {
             cy.resize()
             cy.fit(undefined, 50)
@@ -368,20 +356,17 @@ export default function GraphView() {
     const handleAnswer = async (correct: boolean) => {
         if (!selected || !courseId || !currentUserId) return
         const previousScore = selected.masteryData?.mastery_score ?? 0
-
         await recordEvent({
             user_id: currentUserId,
             node_id: selected.id,
             correct,
             course_id: courseId,
         })
-
         try {
             const [masteryData, gapsData] = await Promise.all([
                 getStudentMastery(currentUserId, courseId),
                 getGaps(currentUserId, courseId),
             ])
-
             const map: Record<string, MasteryNode> = {}
             masteryData.nodes.forEach((n: MasteryNode) => {
                 map[n.node_id] = n
@@ -389,13 +374,10 @@ export default function GraphView() {
             masteryRef.current = map
             setSummary(masteryData.summary)
             setGaps(gapsData.gaps.slice(0, 5))
-
             const progress = calculateProgress(map, graphRef.current?.summary.total_nodes || 0)
             setCourseProgress(progress)
-
             const next = getNextRecommendedConcept(map, graphRef.current)
             setNextRecommended(next)
-
             if (cyRef.current) {
                 cyRef.current.nodes().forEach((node: any) => {
                     const nodeId = node.data('id')
@@ -409,16 +391,13 @@ export default function GraphView() {
                     }
                 })
             }
-
             const updatedMastery = masteryRef.current[selected.id]
             const newScore = updatedMastery?.mastery_score ?? 0
             setSelected((prev: any) => ({...prev, masteryData: updatedMastery}))
-
             if (newScore >= 0.8 && previousScore < 0.8) {
                 const masteredCount = Object.values(map).filter(m => m.mastery_score >= 0.8).length
                 const totalNodes = graphRef.current?.summary.total_nodes || 0
                 const isComplete = masteredCount === totalNodes
-
                 let message = `🎉 ¡Felicidades! Has dominado "${selected.label}". `
                 if (next && !isComplete) {
                     message += `Siguiente concepto recomendado: "${next.label}".`
@@ -471,11 +450,9 @@ export default function GraphView() {
                 window.location.href = 'https://mygateway.up.railway.app/auth/google'
                 return
             }
-
             try {
                 const payload = JSON.parse(atob(token.split('.')[1]))
                 const email = payload.email
-
                 const userResponse = await fetch(`https://mygateway.up.railway.app/api/user/by-email/${email}`)
                 if (!userResponse.ok) {
                     throw new Error('Usuario no encontrado en la base de datos')
@@ -483,13 +460,11 @@ export default function GraphView() {
                 const userData = await userResponse.json()
                 const userId = userData.id
                 setCurrentUserId(userId)
-
                 const roleResponse = await fetch(`https://mygateway.up.railway.app/api/user/role/${userId}`)
                 if (roleResponse.ok) {
                     const roleData = await roleResponse.json()
                     setUserRole(roleData.role || 'student')
                 }
-
                 await fetch(`https://mygateway.up.railway.app/enroll/${courseId}`, {
                     method: 'POST',
                     headers: {
@@ -497,16 +472,13 @@ export default function GraphView() {
                         'Content-Type': 'application/json'
                     }
                 })
-
                 setLoading(true)
                 const graphData = await getGraph(courseId!)
                 graphRef.current = graphData
-
                 const [masteryData, gapsData] = await Promise.all([
                     getStudentMastery(userId, courseId!),
                     getGaps(userId, courseId!),
                 ])
-
                 const map: Record<string, MasteryNode> = {}
                 masteryData.nodes.forEach((n: MasteryNode) => {
                     map[n.node_id] = n
@@ -514,15 +486,11 @@ export default function GraphView() {
                 masteryRef.current = map
                 setSummary(masteryData.summary)
                 setGaps(gapsData.gaps.slice(0, 5))
-
                 const progress = calculateProgress(map, graphData.summary.total_nodes)
                 setCourseProgress(progress)
-
                 const next = getNextRecommendedConcept(map, graphData)
                 setNextRecommended(next)
-
                 await loadRoadmap()
-
                 setTimeout(() => {
                     initCytoscape()
                 }, 100)
@@ -532,9 +500,7 @@ export default function GraphView() {
                 setLoading(false)
             }
         }
-
         init()
-
         return () => {
             if (cyRef.current) {
                 cyRef.current.destroy()
@@ -567,7 +533,6 @@ export default function GraphView() {
 
     return (
         <div style={s.page}>
-            {/* Panel izquierdo - Roadmap */}
             <div style={{...s.leftPanel, width: showLeftPanel ? 360 : 40}}>
                 <button style={s.toggleLeftBtn} onClick={() => setShowLeftPanel(!showLeftPanel)}>
                     {showLeftPanel ? '◀' : '▶'}
@@ -578,7 +543,6 @@ export default function GraphView() {
                             <h3 style={s.courseTitleLeft}>{roadmap.title}</h3>
                             <div style={s.courseDuration}>📅 {roadmap.duration_months} meses</div>
                         </div>
-
                         <div style={s.phasesList}>
                             {roadmap.phases.map((phase) => {
                                 const phaseProgress = getPhaseProgress(phase)
@@ -597,7 +561,6 @@ export default function GraphView() {
                                         <div style={s.phaseProgressBar}>
                                             <div style={{...s.phaseProgressFill, width: `${phaseProgress}%`}} />
                                         </div>
-
                                         {expandedPhases[phase.phase_number] && (
                                             <div style={s.phaseContentLeft}>
                                                 <div style={s.bloomLevelsLeft}>
@@ -606,7 +569,6 @@ export default function GraphView() {
                                                     ))}
                                                 </div>
                                                 <p style={s.phaseObjectiveLeft}>{phase.objective.substring(0, 100)}...</p>
-
                                                 {phase.topics.map((topic, topicIdx) => {
                                                     const topicKey = `${phase.phase_number}-${topicIdx}`
                                                     let topicProgress = 0
@@ -619,7 +581,6 @@ export default function GraphView() {
                                                         }
                                                     }
                                                     topicProgress = topicTotal > 0 ? Math.round((topicCompleted / topicTotal) * 100) : 0
-
                                                     return (
                                                         <div key={topicKey} style={s.topicItemLeft}>
                                                             <div style={s.topicHeaderLeft} onClick={() => toggleTopic(topicKey)}>
@@ -632,7 +593,6 @@ export default function GraphView() {
                                                             <div style={s.topicProgressBar}>
                                                                 <div style={{...s.topicProgressFill, width: `${topicProgress}%`}} />
                                                             </div>
-
                                                             {expandedTopics[topicKey] && (
                                                                 <div style={s.subtopicsListLeft}>
                                                                     {topic.subtopics.map((subtopic, subIdx) => {
@@ -642,7 +602,22 @@ export default function GraphView() {
                                                                             <div
                                                                                 key={subIdx}
                                                                                 style={s.subtopicItemLeft}
-                                                                                onClick={() => nodeId && centerNode(nodeId)}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation()
+                                                                                    if (nodeId && cyRef.current) {
+                                                                                        const node = cyRef.current.$id(nodeId)
+                                                                                        if (node) {
+                                                                                            cyRef.current.center(node)
+                                                                                            cyRef.current.zoom(1.5)
+                                                                                            node.style('border-width', 6)
+                                                                                            node.style('border-color', '#FFD700')
+                                                                                            setTimeout(() => {
+                                                                                                node.style('border-width', 3)
+                                                                                                node.style('border-color', getPhaseBorderColor(node.data('phase')))
+                                                                                            }, 2000)
+                                                                                        }
+                                                                                    }
+                                                                                }}
                                                                             >
                                                                                 <div style={s.subtopicHeaderLeft}>
                                                                                     <span style={s.subtopicLabelLeft}>{subtopic.label}</span>
@@ -676,15 +651,13 @@ export default function GraphView() {
                 )}
             </div>
 
-            {/* Contenido principal */}
             <div style={s.mainContent}>
                 <div style={s.header}>
                     <button onClick={() => navigate('/dashboard')} style={s.back}>← Volver</button>
                     <div style={{flex: 1}}>
                         <h1 style={s.title}>{graphRef.current?.course.title}</h1>
                         <p style={s.subtitle}>
-                            {graphRef.current?.summary.total_nodes} conceptos
-                            · {graphRef.current?.summary.total_edges} prerequisitos
+                            {graphRef.current?.summary.total_nodes} conceptos · {graphRef.current?.summary.total_edges} prerequisitos
                             {isTeacher && <span style={s.teacherBadge}> 👨‍🏫 Modo Profesor</span>}
                         </p>
                     </div>
@@ -696,69 +669,30 @@ export default function GraphView() {
                     </div>
                     {summary && (
                         <div style={s.statsRow}>
-                            <div style={s.stat}>
-                                <span style={s.statNum}>{Math.round(summary.avg_mastery * 100)}%</span>
-                                <span style={s.statLbl}>Mastery</span>
-                            </div>
-                            <div style={s.stat}>
-                                <span style={{...s.statNum, color: '#1D9E75'}}>{summary.mastered}</span>
-                                <span style={s.statLbl}>Dominados</span>
-                            </div>
-                            <div style={s.stat}>
-                                <span style={{...s.statNum, color: '#E24B4A'}}>{summary.not_started}</span>
-                                <span style={s.statLbl}>Sin iniciar</span>
-                            </div>
+                            <div style={s.stat}><span style={s.statNum}>{Math.round(summary.avg_mastery * 100)}%</span><span style={s.statLbl}>Mastery</span></div>
+                            <div style={s.stat}><span style={{...s.statNum, color: '#1D9E75'}}>{summary.mastered}</span><span style={s.statLbl}>Dominados</span></div>
+                            <div style={s.stat}><span style={{...s.statNum, color: '#E24B4A'}}>{summary.not_started}</span><span style={s.statLbl}>Sin iniciar</span></div>
                         </div>
                     )}
                 </div>
 
-                {/* Leyenda de fases */}
                 <div style={s.phaseLegend}>
                     <span style={s.legendTitle}>Fases:</span>
-                    <div
-                        style={{
-                            ...s.legendItem,
-                            cursor: 'pointer',
-                            background: selectedPhase === null ? '#E1F5EE' : 'transparent',
-                            borderRadius: 4,
-                            padding: '2px 6px'
-                        }}
-                        onClick={() => filterNodesByPhase(null)}
-                    >
-                        <div style={{...s.legendColor, backgroundColor: '#1E3A5F'}}/>
-                        <span>Todas</span>
+                    <div style={{...s.legendItem, cursor: 'pointer', background: selectedPhase === null ? '#E1F5EE' : 'transparent', borderRadius: 4, padding: '2px 6px'}} onClick={() => filterNodesByPhase(null)}>
+                        <div style={{...s.legendColor, backgroundColor: '#1E3A5F'}}/><span>Todas</span>
                     </div>
                     {roadmap?.phases.map(phase => {
                         const phaseProgressValue = getPhaseProgress(phase)
                         return (
-                            <div
-                                key={phase.phase_number}
-                                style={{
-                                    ...s.legendItem,
-                                    cursor: 'pointer',
-                                    background: selectedPhase === phase.phase_number ? '#E1F5EE' : 'transparent',
-                                    borderRadius: 4,
-                                    padding: '2px 6px'
-                                }}
-                                onClick={() => filterNodesByPhase(phase.phase_number)}
-                            >
-                                <div style={{
-                                    ...s.legendColor,
-                                    backgroundColor: getPhaseBorderColor(phase.phase_number)
-                                }}/>
-                                <span>Fase {phase.phase_number}</span>
-                                <span style={s.phaseProgressBadge}>{phaseProgressValue}%</span>
+                            <div key={phase.phase_number} style={{...s.legendItem, cursor: 'pointer', background: selectedPhase === phase.phase_number ? '#E1F5EE' : 'transparent', borderRadius: 4, padding: '2px 6px'}} onClick={() => filterNodesByPhase(phase.phase_number)}>
+                                <div style={{...s.legendColor, backgroundColor: getPhaseBorderColor(phase.phase_number)}}/><span>Fase {phase.phase_number}</span><span style={s.phaseProgressBadge}>{phaseProgressValue}%</span>
                             </div>
                         )
                     })}
                     <button style={s.resetFilterBtn} onClick={resetFilter}>⟳</button>
                 </div>
 
-                {isComplete && (
-                    <div style={s.completeBanner}>
-                        🎓 ¡Felicidades! Has completado el curso "{graphRef.current?.course.title}" al 100%. 🎉
-                    </div>
-                )}
+                {isComplete && <div style={s.completeBanner}>🎓 ¡Felicidades! Has completado el curso "{graphRef.current?.course.title}" al 100%. 🎉</div>}
 
                 <div style={s.body}>
                     <div ref={containerRef} style={s.graphContainer}/>
@@ -767,30 +701,14 @@ export default function GraphView() {
                             <div style={s.nodeCard}>
                                 <div style={s.nodeHeader}>
                                     <h2 style={s.nodeTitle}>{selected.label}</h2>
-                                    <div style={{...s.phaseBadge, backgroundColor: getPhaseBorderColor(selected.phase)}}>
-                                        Fase {selected.phase || 1}
-                                    </div>
+                                    <div style={{...s.phaseBadge, backgroundColor: getPhaseBorderColor(selected.phase)}}>Fase {selected.phase || 1}</div>
                                 </div>
                                 <div style={s.masteryBar}>
-                                    <div style={s.masteryBarLabel}>
-                                        <span>Mastery</span>
-                                        <span style={{fontWeight: 600}}>
-                                            {Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%
-                                        </span>
-                                    </div>
-                                    <div style={s.masteryTrack}>
-                                        <div style={{
-                                            ...s.masteryFill,
-                                            width: `${(selectedMastery?.mastery_score ?? 0) * 100}%`,
-                                            background: masteryColor(selectedMastery?.mastery_score ?? 0),
-                                        }}/>
-                                    </div>
-                                    <div style={s.masteryLevel}>
-                                        {selectedMastery?.level ?? 'not_started'} · {selectedMastery?.attempts ?? 0} intentos
-                                    </div>
+                                    <div style={s.masteryBarLabel}><span>Mastery</span><span style={{fontWeight: 600}}>{Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%</span></div>
+                                    <div style={s.masteryTrack}><div style={{...s.masteryFill, width: `${(selectedMastery?.mastery_score ?? 0) * 100}%`, background: masteryColor(selectedMastery?.mastery_score ?? 0)}}/></div>
+                                    <div style={s.masteryLevel}>{selectedMastery?.level ?? 'not_started'} · {selectedMastery?.attempts ?? 0} intentos</div>
                                 </div>
                                 <p style={s.nodeDesc}>{selected.description}</p>
-
                                 {!isTeacher && (
                                     <div style={s.answerRow}>
                                         <p style={s.answerLabel}>¿Respondiste correctamente?</p>
@@ -800,49 +718,27 @@ export default function GraphView() {
                                         </div>
                                     </div>
                                 )}
-
-                                {isTeacher && (
-                                    <div style={s.teacherNote}>
-                                        👨‍🏫 Como profesor, solo puedes visualizar el progreso. Los estudiantes responden preguntas.
-                                    </div>
-                                )}
-
-                                {feedbackMessage && (
-                                    <div style={s.feedbackMessage}>
-                                        {feedbackMessage}
-                                    </div>
-                                )}
+                                {isTeacher && <div style={s.teacherNote}>👨‍🏫 Como profesor, solo puedes visualizar el progreso. Los estudiantes responden preguntas.</div>}
+                                {feedbackMessage && <div style={s.feedbackMessage}>{feedbackMessage}</div>}
                             </div>
                         ) : (
                             <div style={s.panelEmpty}>
                                 <p style={s.muted}>Haz clic en un nodo para ver su mastery</p>
-                                {nextRecommended && !isComplete && (
-                                    <div style={s.nextRecommended}>
-                                        📍 Siguiente recomendado: <strong>{nextRecommended.label}</strong>
-                                    </div>
-                                )}
-                                {isComplete && (
-                                    <div style={s.completedMessage}>
-                                        🎓 ¡Curso completado! Revisa tu progreso en el dashboard.
-                                    </div>
-                                )}
+                                {nextRecommended && !isComplete && <div style={s.nextRecommended}>📍 Siguiente recomendado: <strong>{nextRecommended.label}</strong></div>}
+                                {isComplete && <div style={s.completedMessage}>🎓 ¡Curso completado! Revisa tu progreso en el dashboard.</div>}
                             </div>
                         )}
-
                         {isTeacher && gaps.length > 0 && (
                             <div style={s.gapsSection}>
                                 <h3 style={s.gapsTitle}>Gaps críticos</h3>
                                 {gaps.map((gap) => (
                                     <div key={gap.node_id} style={s.gapRow}>
                                         <div style={s.gapLabel}>{gap.label}</div>
-                                        <div style={s.gapBar}>
-                                            <div style={{...s.gapFill, width: `${Math.min(gap.severity * 100, 100)}%`}}/>
-                                        </div>
+                                        <div style={s.gapBar}><div style={{...s.gapFill, width: `${Math.min(gap.severity * 100, 100)}%`}}/></div>
                                     </div>
                                 ))}
                             </div>
                         )}
-
                         <div style={s.legend}>
                             <p style={s.legendTitle}>Mastery</p>
                             {[
@@ -862,63 +758,33 @@ export default function GraphView() {
                 </div>
             </div>
 
-            {/* Modal de contenido educativo */}
             {showContentModal && nodeContent && (
                 <div style={s.modalOverlay}>
                     <div style={s.modalContent}>
                         <h3 style={s.modalTitle}>{selected?.label}</h3>
-
-                        <div style={s.modalSection}>
-                            <h4>📖 Explicación</h4>
-                            <p>{nodeContent.explanation}</p>
-                        </div>
-
-                        <div style={s.modalSection}>
-                            <h4>💡 Ejemplo</h4>
-                            <p>{nodeContent.example}</p>
-                        </div>
-
+                        <div style={s.modalSection}><h4>📖 Explicación</h4><p>{nodeContent.explanation}</p></div>
+                        <div style={s.modalSection}><h4>💡 Ejemplo</h4><p>{nodeContent.example}</p></div>
                         <div style={s.modalSection}>
                             <h4>❓ Pregunta de práctica</h4>
                             <p>{nodeContent.question}</p>
                             <div style={s.optionsContainer}>
                                 {nodeContent.options.map((opt, idx) => (
                                     <label key={idx} style={s.optionLabel}>
-                                        <input
-                                            type="radio"
-                                            name="answer"
-                                            value={idx}
-                                            checked={selectedAnswer === idx}
-                                            onChange={() => setSelectedAnswer(idx)}
-                                            disabled={showAnswerFeedback || isTeacher}
-                                        />
+                                        <input type="radio" name="answer" value={idx} checked={selectedAnswer === idx} onChange={() => setSelectedAnswer(idx)} disabled={showAnswerFeedback || isTeacher} />
                                         {opt}
                                     </label>
                                 ))}
                             </div>
                             {!showAnswerFeedback && !isTeacher ? (
-                                <button style={s.submitBtn} onClick={handleAnswerQuestion}>
-                                    Verificar respuesta
-                                </button>
+                                <button style={s.submitBtn} onClick={handleAnswerQuestion}>Verificar respuesta</button>
                             ) : showAnswerFeedback && (
                                 <div style={s.answerFeedback}>
-                                    {selectedAnswer === nodeContent.correct_answer ? (
-                                        <p style={s.correctFeedback}>✅ ¡Correcto! Bien hecho.</p>
-                                    ) : (
-                                        <p style={s.wrongFeedback}>❌ Incorrecto. La respuesta correcta es: {nodeContent.options[nodeContent.correct_answer]}</p>
-                                    )}
+                                    {selectedAnswer === nodeContent.correct_answer ? <p style={s.correctFeedback}>✅ ¡Correcto! Bien hecho.</p> : <p style={s.wrongFeedback}>❌ Incorrecto. La respuesta correcta es: {nodeContent.options[nodeContent.correct_answer]}</p>}
                                 </div>
                             )}
-                            {isTeacher && (
-                                <div style={s.teacherNote}>
-                                    👨‍🏫 Modo profesor: Las preguntas son para estudiantes.
-                                </div>
-                            )}
+                            {isTeacher && <div style={s.teacherNote}>👨‍🏫 Modo profesor: Las preguntas son para estudiantes.</div>}
                         </div>
-
-                        <button style={s.closeModalBtn} onClick={() => setShowContentModal(false)}>
-                            Cerrar
-                        </button>
+                        <button style={s.closeModalBtn} onClick={() => setShowContentModal(false)}>Cerrar</button>
                     </div>
                 </div>
             )}
@@ -928,227 +794,42 @@ export default function GraphView() {
 
 const s: Record<string, React.CSSProperties> = {
     page: { display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8', overflow: 'hidden' },
-
-    // Panel izquierdo
-    leftPanel: {
-        background: '#fff',
-        borderRight: '1px solid #D3D1C7',
-        transition: 'width 0.3s ease',
-        overflow: 'hidden',
-        position: 'relative',
-        height: '100%',
-        flexShrink: 0
-    },
-    toggleLeftBtn: {
-        position: 'absolute',
-        top: 20,
-        right: 8,
-        width: 28,
-        height: 28,
-        borderRadius: '50%',
-        background: '#F1EFE8',
-        border: '1px solid #D3D1C7',
-        cursor: 'pointer',
-        zIndex: 10,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 12
-    },
-    leftPanelContent: {
-        padding: 16,
-        height: '100%',
-        overflowY: 'auto'
-    },
-    courseHeader: {
-        marginBottom: 20,
-        paddingBottom: 12,
-        borderBottom: '1px solid #F1EFE8'
-    },
-    courseTitleLeft: {
-        fontSize: 16,
-        fontWeight: 700,
-        color: '#1E3A5F',
-        margin: '0 0 8px'
-    },
-    courseDuration: {
-        fontSize: 12,
-        color: '#1D9E75',
-        background: '#E1F5EE',
-        padding: '2px 8px',
-        borderRadius: 12,
-        display: 'inline-block'
-    },
-    phasesList: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 16
-    },
-    phaseItem: {
-        background: '#F9F9F8',
-        borderRadius: 8,
-        border: '1px solid #E8E6E1',
-        overflow: 'hidden'
-    },
-    phaseHeaderLeft: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '12px 12px 8px 12px',
-        cursor: 'pointer'
-    },
-    phaseHeaderLeftInfo: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        flexWrap: 'wrap'
-    },
-    phaseNumberLeft: {
-        fontSize: 11,
-        fontWeight: 700,
-        color: '#1D9E75',
-        background: '#E1F5EE',
-        padding: '2px 8px',
-        borderRadius: 12
-    },
-    phaseNameLeft: {
-        fontSize: 13,
-        fontWeight: 600,
-        color: '#1E3A5F'
-    },
-    phaseHeaderRight: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8
-    },
-    phaseProgress: {
-        fontSize: 12,
-        fontWeight: 600,
-        color: '#1D9E75'
-    },
-    phaseProgressBar: {
-        height: 3,
-        background: '#F1EFE8',
-        borderRadius: 2,
-        overflow: 'hidden',
-        margin: '0 12px 12px 12px'
-    },
-    phaseProgressFill: {
-        height: '100%',
-        background: '#1D9E75',
-        borderRadius: 2,
-        transition: 'width 0.3s'
-    },
-    phaseContentLeft: {
-        padding: '0 12px 12px 12px'
-    },
-    bloomLevelsLeft: {
-        display: 'flex',
-        gap: 6,
-        flexWrap: 'wrap',
-        marginBottom: 8
-    },
-    bloomBadgeLeft: {
-        fontSize: 10,
-        background: '#E8E6E1',
-        padding: '2px 6px',
-        borderRadius: 10,
-        color: '#1E3A5F'
-    },
-    phaseObjectiveLeft: {
-        fontSize: 11,
-        color: '#6B6E6A',
-        marginBottom: 12,
-        lineHeight: 1.4
-    },
-    topicItemLeft: {
-        marginTop: 8,
-        background: '#fff',
-        borderRadius: 6,
-        border: '1px solid #E8E6E1'
-    },
-    topicHeaderLeft: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '10px 12px',
-        cursor: 'pointer'
-    },
-    topicNameLeft: {
-        fontSize: 12,
-        fontWeight: 600,
-        color: '#1E3A5F'
-    },
-    topicHeaderRight: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8
-    },
-    topicProgress: {
-        fontSize: 11,
-        fontWeight: 500,
-        color: '#1D9E75'
-    },
-    topicProgressBar: {
-        height: 2,
-        background: '#F1EFE8',
-        borderRadius: 1,
-        overflow: 'hidden',
-        margin: '0 12px 8px 12px'
-    },
-    topicProgressFill: {
-        height: '100%',
-        background: '#1D9E75',
-        borderRadius: 1,
-        transition: 'width 0.3s'
-    },
-    subtopicsListLeft: {
-        padding: '8px 12px 12px 12px',
-        borderTop: '1px solid #F1EFE8'
-    },
-    subtopicItemLeft: {
-        marginBottom: 8,
-        cursor: 'pointer'
-    },
-    subtopicHeaderLeft: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 4
-    },
-    subtopicLabelLeft: {
-        fontSize: 11,
-        color: '#2C2C2A'
-    },
-    subtopicProgress: {
-        fontSize: 10,
-        fontWeight: 500
-    },
-    subtopicProgressBar: {
-        height: 2,
-        background: '#F1EFE8',
-        borderRadius: 1,
-        overflow: 'hidden'
-    },
-    subtopicProgressFill: {
-        height: '100%',
-        borderRadius: 1,
-        transition: 'width 0.3s'
-    },
-    noRoadmapMsg: {
-        fontSize: 13,
-        color: '#888780',
-        textAlign: 'center',
-        marginTop: 40
-    },
-
-    // Contenido principal
-    mainContent: {
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden'
-    },
+    leftPanel: { background: '#fff', borderRight: '1px solid #D3D1C7', transition: 'width 0.3s ease', overflow: 'hidden', position: 'relative', height: '100%', flexShrink: 0 },
+    toggleLeftBtn: { position: 'absolute', top: 20, right: 8, width: 28, height: 28, borderRadius: '50%', background: '#F1EFE8', border: '1px solid #D3D1C7', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 },
+    leftPanelContent: { padding: 16, height: '100%', overflowY: 'auto' },
+    courseHeader: { marginBottom: 20, paddingBottom: 12, borderBottom: '1px solid #F1EFE8' },
+    courseTitleLeft: { fontSize: 16, fontWeight: 700, color: '#1E3A5F', margin: '0 0 8px' },
+    courseDuration: { fontSize: 12, color: '#1D9E75', background: '#E1F5EE', padding: '2px 8px', borderRadius: 12, display: 'inline-block' },
+    phasesList: { display: 'flex', flexDirection: 'column', gap: 16 },
+    phaseItem: { background: '#F9F9F8', borderRadius: 8, border: '1px solid #E8E6E1', overflow: 'hidden' },
+    phaseHeaderLeft: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 12px 8px 12px', cursor: 'pointer' },
+    phaseHeaderLeftInfo: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+    phaseNumberLeft: { fontSize: 11, fontWeight: 700, color: '#1D9E75', background: '#E1F5EE', padding: '2px 8px', borderRadius: 12 },
+    phaseNameLeft: { fontSize: 13, fontWeight: 600, color: '#1E3A5F' },
+    phaseHeaderRight: { display: 'flex', alignItems: 'center', gap: 8 },
+    phaseProgress: { fontSize: 12, fontWeight: 600, color: '#1D9E75' },
+    phaseProgressBar: { height: 3, background: '#F1EFE8', borderRadius: 2, overflow: 'hidden', margin: '0 12px 12px 12px' },
+    phaseProgressFill: { height: '100%', background: '#1D9E75', borderRadius: 2, transition: 'width 0.3s' },
+    phaseContentLeft: { padding: '0 12px 12px 12px' },
+    bloomLevelsLeft: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
+    bloomBadgeLeft: { fontSize: 10, background: '#E8E6E1', padding: '2px 6px', borderRadius: 10, color: '#1E3A5F' },
+    phaseObjectiveLeft: { fontSize: 11, color: '#6B6E6A', marginBottom: 12, lineHeight: 1.4 },
+    topicItemLeft: { marginTop: 8, background: '#fff', borderRadius: 6, border: '1px solid #E8E6E1' },
+    topicHeaderLeft: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', cursor: 'pointer' },
+    topicNameLeft: { fontSize: 12, fontWeight: 600, color: '#1E3A5F' },
+    topicHeaderRight: { display: 'flex', alignItems: 'center', gap: 8 },
+    topicProgress: { fontSize: 11, fontWeight: 500, color: '#1D9E75' },
+    topicProgressBar: { height: 2, background: '#F1EFE8', borderRadius: 1, overflow: 'hidden', margin: '0 12px 8px 12px' },
+    topicProgressFill: { height: '100%', background: '#1D9E75', borderRadius: 1, transition: 'width 0.3s' },
+    subtopicsListLeft: { padding: '8px 12px 12px 12px', borderTop: '1px solid #F1EFE8' },
+    subtopicItemLeft: { marginBottom: 8, cursor: 'pointer' },
+    subtopicHeaderLeft: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+    subtopicLabelLeft: { fontSize: 11, color: '#2C2C2A' },
+    subtopicProgress: { fontSize: 10, fontWeight: 500 },
+    subtopicProgressBar: { height: 2, background: '#F1EFE8', borderRadius: 1, overflow: 'hidden' },
+    subtopicProgressFill: { height: '100%', borderRadius: 1, transition: 'width 0.3s' },
+    noRoadmapMsg: { fontSize: 13, color: '#888780', textAlign: 'center', marginTop: 40 },
+    mainContent: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
     header: { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F', flexWrap: 'wrap' },
     back: { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
     title: { fontSize: 18, fontWeight: 700, color: '#fff', margin: 0 },
@@ -1163,7 +844,6 @@ const s: Record<string, React.CSSProperties> = {
     statNum: { fontSize: 20, fontWeight: 700, color: '#fff' },
     statLbl: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
     phaseLegend: { display: 'flex', gap: 16, alignItems: 'center', padding: '8px 16px', background: '#fff', borderBottom: '1px solid #D3D1C7', flexWrap: 'wrap' },
-    // legendTitle: { fontSize: 12, fontWeight: 600, color: '#888780' },
     legendItem: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 },
     legendColor: { width: 16, height: 16, borderRadius: 3 },
     completeBanner: { background: '#1D9E75', color: '#fff', textAlign: 'center', padding: '8px 16px', fontSize: 14, fontWeight: 600 },
@@ -1215,22 +895,6 @@ const s: Record<string, React.CSSProperties> = {
     answerFeedback: { marginTop: 12, padding: 10, borderRadius: 8 },
     correctFeedback: { color: '#1D9E75', fontWeight: 600, margin: 0 },
     wrongFeedback: { color: '#E24B4A', fontWeight: 600, margin: 0 },
-    phaseProgressBadge: {
-        fontSize: 10,
-        fontWeight: 600,
-        color: '#1D9E75',
-        background: '#E1F5EE',
-        padding: '2px 6px',
-        borderRadius: 10,
-        marginLeft: 6
-    },
-    resetFilterBtn: {
-        background: '#E8E6E1',
-        border: 'none',
-        borderRadius: 4,
-        padding: '2px 8px',
-        cursor: 'pointer',
-        fontSize: 12,
-        marginLeft: 8
-    }
+    phaseProgressBadge: { fontSize: 10, fontWeight: 600, color: '#1D9E75', background: '#E1F5EE', padding: '2px 6px', borderRadius: 10, marginLeft: 6 },
+    resetFilterBtn: { background: '#E8E6E1', border: 'none', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', fontSize: 12, marginLeft: 8 },
 }
