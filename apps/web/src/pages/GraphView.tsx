@@ -113,7 +113,6 @@ export default function GraphView() {
                 const courseData = await response.json()
                 if (courseData.roadmap) {
                     setRoadmap(courseData.roadmap)
-                    // Expandir primera fase por defecto
                     if (courseData.roadmap.phases && courseData.roadmap.phases.length > 0) {
                         setExpandedPhases({ [courseData.roadmap.phases[0].phase_number]: true })
                     }
@@ -196,6 +195,17 @@ export default function GraphView() {
         }, 1500)
     }
 
+    const centerNode = (nodeId: string) => {
+        if (cyRef.current) {
+            const node = cyRef.current.$id(nodeId)
+            if (node) {
+                cyRef.current.center(node)
+                cyRef.current.zoom(1.5)
+                node.trigger('tap')
+            }
+        }
+    }
+
     const initCytoscape = () => {
         if (!containerRef.current || !graphRef.current) return
         containerRef.current.innerHTML = ''
@@ -212,10 +222,11 @@ export default function GraphView() {
                 const score = mastery[n.data.id]?.mastery_score ?? 0
                 const topoOrder = n.data.topo_order ?? -1
                 const orderLabel = topoOrder >= 0 ? `${topoOrder + 1}. ` : ''
+                const phaseLabel = n.data.phase ? ` [F${n.data.phase}]` : ''
                 return {
                     data: {
                         id: n.data.id,
-                        label: `${orderLabel}${n.data.label}`,
+                        label: `${orderLabel}${n.data.label}${phaseLabel}`,
                         description: n.data.description,
                         difficulty: n.data.difficulty,
                         pagerank: n.data.pagerank,
@@ -404,12 +415,16 @@ export default function GraphView() {
     }
 
     const getSubtopicProgress = (subtopicLabel: string): number => {
-        // Buscar el nodo por label
         const node = graphRef.current?.nodes?.find((n: any) => n.data.label === subtopicLabel)
         if (node) {
             return masteryRef.current[node.data.id]?.mastery_score || 0
         }
         return 0
+    }
+
+    const getNodeIdByLabel = (label: string): string | null => {
+        const node = graphRef.current?.nodes?.find((n: any) => n.data.label === label)
+        return node?.data?.id || null
     }
 
     useEffect(() => {
@@ -499,7 +514,6 @@ export default function GraphView() {
     const isComplete = courseProgress === 100
     const isTeacher = userRole === 'teacher'
 
-    // Calcular progreso por fase
     const getPhaseProgress = (phase: Phase): number => {
         let total = 0
         let completed = 0
@@ -586,8 +600,13 @@ export default function GraphView() {
                                                                 <div style={s.subtopicsListLeft}>
                                                                     {topic.subtopics.map((subtopic, subIdx) => {
                                                                         const subProgress = getSubtopicProgress(subtopic.label)
+                                                                        const nodeId = getNodeIdByLabel(subtopic.label)
                                                                         return (
-                                                                            <div key={subIdx} style={s.subtopicItemLeft}>
+                                                                            <div
+                                                                                key={subIdx}
+                                                                                style={s.subtopicItemLeft}
+                                                                                onClick={() => nodeId && centerNode(nodeId)}
+                                                                            >
                                                                                 <div style={s.subtopicHeaderLeft}>
                                                                                     <span style={s.subtopicLabelLeft}>{subtopic.label}</span>
                                                                                     <span style={{...s.subtopicProgress, color: masteryColor(subProgress)}}>
@@ -1003,7 +1022,8 @@ const s: Record<string, React.CSSProperties> = {
         borderTop: '1px solid #F1EFE8'
     },
     subtopicItemLeft: {
-        marginBottom: 8
+        marginBottom: 8,
+        cursor: 'pointer'
     },
     subtopicHeaderLeft: {
         display: 'flex',
