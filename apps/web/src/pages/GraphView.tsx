@@ -55,22 +55,25 @@ interface RoadmapData {
     phases: Phase[]
 }
 
+// Colores por fase (borde del nodo)
+function getPhaseBorderColor(phase: number): string {
+    switch(phase) {
+        case 1: return '#4A90D9'  // Azul
+        case 2: return '#50E3C2'  // Verde menta
+        case 3: return '#F5A623'  // Naranja
+        case 4: return '#D0021B'  // Rojo
+        case 5: return '#9B59B6'  // Púrpura
+        default: return '#1E3A5F' // Azul oscuro
+    }
+}
+
+// Color de fondo del nodo según mastery (se mantiene)
 function masteryColor(score: number): string {
     if (score >= 0.8) return '#1D9E75'
     if (score >= 0.6) return '#5DCAA5'
     if (score >= 0.3) return '#FAC775'
     if (score > 0) return '#F0997B'
     return '#D3D1C7'
-}
-// Función para obtener color según fase
-function getPhaseColor(phase: number): string {
-    switch(phase) {
-        case 1: return '#4A90D9'  // Azul
-        case 2: return '#50E3C2'  // Verde menta
-        case 3: return '#F5A623'  // Naranja
-        case 4: return '#D0021B'  // Rojo
-        default: return '#1E3A5F' // Azul oscuro
-    }
 }
 
 function getMasteryMessage(score: number, label: string): string {
@@ -232,17 +235,17 @@ export default function GraphView() {
                 const score = mastery[n.data.id]?.mastery_score ?? 0
                 const topoOrder = n.data.topo_order ?? -1
                 const orderLabel = topoOrder >= 0 ? `${topoOrder + 1}. ` : ''
-                const phaseLabel = n.data.phase ? ` [F${n.data.phase}]` : ''
+                const phase = n.data.phase || 1
                 return {
                     data: {
                         id: n.data.id,
-                        label: `${orderLabel}${n.data.label}${phaseLabel}`,
+                        label: `${orderLabel}${n.data.label}`,
                         description: n.data.description,
                         difficulty: n.data.difficulty,
                         pagerank: n.data.pagerank,
                         mastery: score,
                         topo_order: topoOrder,
-                        phase: n.data.phase,
+                        phase: phase,
                         topic: n.data.topic,
                     },
                     position: {x: n.position.x, y: n.position.y},
@@ -268,9 +271,9 @@ export default function GraphView() {
                         'text-margin-y': 6,
                         width: (ele: any) => Math.max(40, 40 + (ele.data('pagerank') || 0) * 400),
                         height: (ele: any) => Math.max(40, 40 + (ele.data('pagerank') || 0) * 400),
-                        'border-width': 'data(phase)',
-                        'border-color': (ele: any) => getPhaseColor(ele.data('phase')),
-                        'border-opacity': 0.6,
+                        'border-width': 3,
+                        'border-color': (ele: any) => getPhaseBorderColor(ele.data('phase')),
+                        'border-opacity': 0.8,
                     },
                 },
                 {
@@ -287,14 +290,14 @@ export default function GraphView() {
                 {
                     selector: 'node:selected',
                     style: {
-                        'border-width': 3,
+                        'border-width': 5,
                         'border-color': '#1E3A5F',
                     },
                 },
                 {
                     selector: 'node.mastered',
                     style: {
-                        'border-width': 2,
+                        'border-width': 4,
                         'border-color': '#1D9E75',
                     },
                 },
@@ -559,7 +562,7 @@ export default function GraphView() {
                             {roadmap.phases.map((phase) => {
                                 const phaseProgress = getPhaseProgress(phase)
                                 return (
-                                    <div key={phase.phase_number} style={s.phaseItem}>
+                                    <div key={phase.phase_number} style={{...s.phaseItem, borderLeft: `4px solid ${getPhaseBorderColor(phase.phase_number)}`}}>
                                         <div style={s.phaseHeaderLeft} onClick={() => togglePhase(phase.phase_number)}>
                                             <div style={s.phaseHeaderLeftInfo}>
                                                 <span style={s.phaseNumberLeft}>Fase {phase.phase_number}</span>
@@ -688,6 +691,17 @@ export default function GraphView() {
                     )}
                 </div>
 
+                {/* Leyenda de fases */}
+                <div style={s.phaseLegend}>
+                    <span style={s.legendTitle}>Fases:</span>
+                    {roadmap?.phases.map(phase => (
+                        <div key={phase.phase_number} style={s.legendItem}>
+                            <div style={{...s.legendColor, backgroundColor: getPhaseBorderColor(phase.phase_number)}} />
+                            <span>Fase {phase.phase_number}</span>
+                        </div>
+                    ))}
+                </div>
+
                 {isComplete && (
                     <div style={s.completeBanner}>
                         🎓 ¡Felicidades! Has completado el curso "{graphRef.current?.course.title}" al 100%. 🎉
@@ -699,7 +713,12 @@ export default function GraphView() {
                     <div style={s.panel}>
                         {selected ? (
                             <div style={s.nodeCard}>
-                                <h2 style={s.nodeTitle}>{selected.label}</h2>
+                                <div style={s.nodeHeader}>
+                                    <h2 style={s.nodeTitle}>{selected.label}</h2>
+                                    <div style={{...s.phaseBadge, backgroundColor: getPhaseBorderColor(selected.phase)}}>
+                                        Fase {selected.phase || 1}
+                                    </div>
+                                </div>
                                 <div style={s.masteryBar}>
                                     <div style={s.masteryBarLabel}>
                                         <span>Mastery</span>
@@ -916,7 +935,8 @@ const s: Record<string, React.CSSProperties> = {
     phaseItem: {
         background: '#F9F9F8',
         borderRadius: 8,
-        border: '1px solid #E8E6E1'
+        border: '1px solid #E8E6E1',
+        overflow: 'hidden'
     },
     phaseHeaderLeft: {
         display: 'flex',
@@ -1090,12 +1110,18 @@ const s: Record<string, React.CSSProperties> = {
     stat: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
     statNum: { fontSize: 20, fontWeight: 700, color: '#fff' },
     statLbl: { fontSize: 11, color: 'rgba(255,255,255,0.6)' },
+    phaseLegend: { display: 'flex', gap: 16, alignItems: 'center', padding: '8px 16px', background: '#fff', borderBottom: '1px solid #D3D1C7', flexWrap: 'wrap' },
+    // legendTitle: { fontSize: 12, fontWeight: 600, color: '#888780' },
+    legendItem: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 },
+    legendColor: { width: 16, height: 16, borderRadius: 3 },
     completeBanner: { background: '#1D9E75', color: '#fff', textAlign: 'center', padding: '8px 16px', fontSize: 14, fontWeight: 600 },
     body: { display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 },
     graphContainer: { flex: 1, background: '#fff', position: 'relative', height: '100%', width: '100%' },
     panel: { width: 280, background: '#fff', borderLeft: '1px solid #D3D1C7', padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' },
     nodeCard: { display: 'flex', flexDirection: 'column', gap: 10 },
+    nodeHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     nodeTitle: { fontSize: 16, fontWeight: 700, color: '#1E3A5F', margin: 0 },
+    phaseBadge: { fontSize: 10, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 12 },
     nodeDesc: { fontSize: 13, color: '#5F5E5A', lineHeight: 1.5, margin: 0 },
     masteryBar: { display: 'flex', flexDirection: 'column', gap: 4 },
     masteryBarLabel: { display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#5F5E5A' },
