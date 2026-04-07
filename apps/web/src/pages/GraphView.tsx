@@ -701,7 +701,7 @@ export default function GraphView() {
                             <div style={s.nodeCard}>
                                 <div style={s.nodeHeader}>
                                     <h2 style={s.nodeTitle}>{selected.label}</h2>
-                                    <div style={{...s.phaseBadge, backgroundColor: getPhaseBorderColor(selected.phase)}}>Fase {selected.phase || 1}</div>
+                                    <div style={{...s.phaseBadge, backgroundColor: getPhaseBorderColor(selected.phase  || 1)}}>Fase {selected.phase || 1}</div>
                                 </div>
                                 <div style={s.masteryBar}>
                                     <div style={s.masteryBarLabel}><span>Mastery</span><span style={{fontWeight: 600}}>{Math.round((selectedMastery?.mastery_score ?? 0) * 100)}%</span></div>
