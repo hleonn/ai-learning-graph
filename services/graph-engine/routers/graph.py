@@ -20,6 +20,7 @@ class NodeCreate(BaseModel):
     bloom_levels: Optional[list] = None  #
     expected_outcomes: Optional[list] = None  #
     skills: Optional[list] = None  #
+    color: Optional[str] = None
 
 class EdgeCreate(BaseModel):
     source: str

@@ -62,6 +62,16 @@ function masteryColor(score: number): string {
     if (score > 0) return '#F0997B'
     return '#D3D1C7'
 }
+// Función para obtener color según fase
+function getPhaseColor(phase: number): string {
+    switch(phase) {
+        case 1: return '#4A90D9'  // Azul
+        case 2: return '#50E3C2'  // Verde menta
+        case 3: return '#F5A623'  // Naranja
+        case 4: return '#D0021B'  // Rojo
+        default: return '#1E3A5F' // Azul oscuro
+    }
+}
 
 function getMasteryMessage(score: number, label: string): string {
     if (score >= 0.8) return `🎉 ¡Excelente! Has dominado "${label}". ¡Sigue así!`
@@ -258,6 +268,9 @@ export default function GraphView() {
                         'text-margin-y': 6,
                         width: (ele: any) => Math.max(40, 40 + (ele.data('pagerank') || 0) * 400),
                         height: (ele: any) => Math.max(40, 40 + (ele.data('pagerank') || 0) * 400),
+                        'border-width': 'data(phase)',
+                        'border-color': (ele: any) => getPhaseColor(ele.data('phase')),
+                        'border-opacity': 0.6,
                     },
                 },
                 {

@@ -256,47 +256,61 @@ def generate_curriculum(
 
 
 def _validate_and_repair_dag(roadmap: dict) -> dict:
-    """Valida y repara el DAG para asegurar conectividad"""
+    """Valida y repara el DAG asegurando conectividad entre fases"""
 
-    # Recopilar todos los subtemas
+    # Recopilar todos los subtemas con sus metadatos
     all_subtopics = []
+    phase_map = {}
+
     for phase in roadmap.get("phases", []):
         for topic in phase.get("topics", []):
             for subtopic in topic.get("subtopics", []):
+                label = subtopic["label"]
                 all_subtopics.append({
-                    "label": subtopic["label"],
+                    "label": label,
                     "prerequisites": subtopic.get("prerequisites", []),
                     "phase": phase.get("phase_number", 1),
                     "topic": topic.get("topic_name", "")
                 })
+                phase_map[label] = phase.get("phase_number", 1)
 
-    # Identificar nodos aislados (sin prerrequisitos y sin dependientes)
-    has_prereq = set()
-    is_prereq_for = set()
+    # Verificar conectividad entre fases
+    phases = sorted(set(phase_map.values()))
 
-    for s in all_subtopics:
-        for prereq in s["prerequisites"]:
-            has_prereq.add(s["label"])
-            is_prereq_for.add(prereq)
+    for i in range(len(phases) - 1):
+        current_phase = phases[i]
+        next_phase = phases[i + 1]
 
-    isolated = []
-    for s in all_subtopics:
-        if s["label"] not in has_prereq and s["label"] not in is_prereq_for:
-            isolated.append(s["label"])
+        current_subtopics = [s for s in all_subtopics if s["phase"] == current_phase]
+        next_subtopics = [s for s in all_subtopics if s["phase"] == next_phase]
 
-    # Conectar nodos aislados
-    if isolated and len(all_subtopics) > 1:
-        for i, label in enumerate(isolated):
-            if i == 0:
-                continue
-            for phase in roadmap.get("phases", []):
-                for topic in phase.get("topics", []):
-                    for subtopic in topic.get("subtopics", []):
-                        if subtopic["label"] == label:
-                            if "prerequisites" not in subtopic:
-                                subtopic["prerequisites"] = []
-                            subtopic["prerequisites"].append(isolated[i-1])
-                            logger.info(f"Reparado: {label} ahora depende de {isolated[i-1]}")
+        if not current_subtopics or not next_subtopics:
+            continue
+
+        # Conectar el último subtema de la fase actual con el primero de la siguiente
+        last_current = current_subtopics[-1]["label"]
+        first_next = next_subtopics[0]
+
+        # Verificar si ya tiene dependencias de fase anterior
+        has_prev_phase_prereq = False
+        for prereq in first_next["prerequisites"]:
+            if phase_map.get(prereq, 0) < next_phase:
+                has_prev_phase_prereq = True
+                break
+
+        if not has_prev_phase_prereq:
+            if last_current not in first_next["prerequisites"]:
+                first_next["prerequisites"].append(last_current)
+                logger.info(f"Reparado: {first_next['label']} ahora depende de {last_current}")
+
+    # Actualizar el roadmap con los cambios
+    for phase in roadmap.get("phases", []):
+        for topic in phase.get("topics", []):
+            for subtopic in topic.get("subtopics", []):
+                label = subtopic["label"]
+                original = next((s for s in all_subtopics if s["label"] == label), None)
+                if original:
+                    subtopic["prerequisites"] = original["prerequisites"]
 
     return roadmap
 
@@ -307,7 +321,7 @@ def generate_roadmap(
     domain: str = "generic",
     difficulty_level: str = "intermediate",
 ) -> dict:
-    """Genera un roadmap de aprendizaje estructurado por fases Bloom con un DAG coherente."""
+    """Genera un roadmap de aprendizaje con dependencias cruzadas entre fases."""
 
     duration_map = {
         "beginner": 2,
@@ -317,29 +331,53 @@ def generate_roadmap(
     }
     duration_months = duration_map.get(difficulty_level, 4)
 
-    # Prompt mejorado para forzar relaciones de prerrequisito
-    prompt = f"""Generate a COMPLETE and CONNECTED learning roadmap for: {title}
+    # Ejemplo de dependencias cruzadas para que DeepSeek aprenda el patrón
+    example = """
+EJEMPLO DE DEPENDENCIAS CRUZADAS ENTRE FASES (Álgebra):
 
-Description: {description}
-Domain: {domain}
-Level: {difficulty_level.upper()}
-Duration: {duration_months} months
+Fase 1: Suma y Resta
+- N1: Suma de monomios (prerrequisitos: [])
+- N2: Suma de polinomios (prerrequisitos: ["Suma de monomios"])
+- N3: Resta de monomios (prerrequisitos: ["Suma de monomios"])
+- N4: Resta de polinomios (prerrequisitos: ["Suma de polinomios", "Resta de monomios"])
 
-CRITICAL REQUIREMENTS FOR A VALID DAG (Directed Acyclic Graph):
+Fase 2: Multiplicación y División
+- N5: Multiplicación de monomios (prerrequisitos: ["Suma de monomios"])
+- N6: Multiplicación de binomios (prerrequisitos: ["Multiplicación de monomios", "Suma de monomios"])
+- N7: División de monomios (prerrequisitos: ["Multiplicación de monomios", "Resta de monomios"])
+- N8: División de polinomios (prerrequisitos: ["Multiplicación de polinomios", "Resta de polinomios"])
 
-1. EVERY subtopic (except the first ones) MUST have at least ONE prerequisite from a previous phase or within the same phase.
-2. Create a CHAIN of dependencies: Subtopic A → Subtopic B → Subtopic C
-3. The graph MUST be fully connected - no isolated nodes or disconnected clusters
-4. Each phase builds upon the previous phase's subtopics
-5. Within each topic, subtopics should form a learning sequence (1 → 2 → 3)
+Fase 3: Productos Notables
+- N9: Binomio al cuadrado (prerrequisitos: ["Multiplicación de binomios", "Suma de monomios"])
+- N10: Binomios conjugados (prerrequisitos: ["Multiplicación de binomios", "Resta de monomios"])
 
-Example of GOOD prerequisite structure:
-- Subtopic 1.1: "Fundamentos" (no prerequisites)
-- Subtopic 1.2: "Conceptos Básicos" (prerequisite: "Fundamentos")
-- Subtopic 1.3: "Aplicaciones Prácticas" (prerequisite: "Conceptos Básicos")
-- Subtopic 2.1: "Técnicas Avanzadas" (prerequisite: "Aplicaciones Prácticas")
+REGLAS CLAVE PARA DEPENDENCIAS:
+1. Un nodo en Fase 2 puede depender de MÚLTIPLES nodos de la Fase 1
+2. Un nodo en Fase 3 puede depender de MÚLTIPLES nodos de la Fase 2
+3. Las dependencias deben ser PEDAGÓGICAMENTE RELEVANTES (no automáticas)
+4. El grafo debe ser un SOLO COMPONENTE CONECTADO
+5. Cada nodo (excepto los primeros) debe tener al menos UN prerrequisito
+"""
 
-Return ONLY valid JSON with this exact structure:
+    prompt = f"""Genera un roadmap de aprendizaje COMPLETO con DEPENDENCIAS CRUZADAS entre fases.
+
+{example}
+
+Curso: {title}
+Descripción: {description}
+Dominio: {domain}
+Nivel: {difficulty_level.upper()}
+Duración: {duration_months} meses
+
+REGLAS OBLIGATORIAS:
+1. Cada fase debe tener 2-3 temas, cada tema 3-5 subtemas
+2. Los subtemas dentro de un tema forman una SECUENCIA de aprendizaje
+3. Los subtemas de Fase 2+ DEBEN tener prerrequisitos de fases ANTERIORES
+4. Las dependencias deben ser PEDAGÓGICAMENTE RELEVANTES
+5. NO crear dependencias automáticas (ej: todo N depende de todo N-1)
+6. El grafo completo debe ser un DAG válido (sin ciclos)
+
+Devuelve SOLO JSON válido. Usa esta estructura:
 
 {{
   "title": "{title}",
@@ -349,18 +387,17 @@ Return ONLY valid JSON with this exact structure:
       "phase_number": 1,
       "name": "Nombre de la Fase",
       "months": "1-2",
-      "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
-      "objective": "Objetivo de la fase",
-      "expected_outcomes": ["Resultado 1", "Resultado 2", "Resultado 3"],
-      "skills": ["Skill 1", "Skill 2", "Skill 3"],
-      "tech_stack": ["Tool 1", "Tool 2", "Tool 3"],
+      "bloom_levels": ["Recordar", "Comprender"],
+      "objective": "Objetivo educativo de la fase",
+      "expected_outcomes": ["Resultado 1", "Resultado 2"],
+      "skills": ["Habilidad 1", "Habilidad 2"],
+      "tech_stack": ["Herramienta 1", "Herramienta 2"],
       "topics": [
         {{
           "topic_name": "Nombre del Tema",
           "subtopics": [
             {{"label": "Subtema 1", "description": "Descripción", "difficulty": 1, "prerequisites": []}},
-            {{"label": "Subtema 2", "description": "Descripción", "difficulty": 2, "prerequisites": ["Subtema 1"]}},
-            {{"label": "Subtema 3", "description": "Descripción", "difficulty": 3, "prerequisites": ["Subtema 2"]}}
+            {{"label": "Subtema 2", "description": "Descripción", "difficulty": 2, "prerequisites": ["Subtema 1"]}}
           ]
         }}
       ]
@@ -368,27 +405,17 @@ Return ONLY valid JSON with this exact structure:
   ]
 }}
 
-RULES FOR PREREQUISITES (MANDATORY):
-- Each phase must have 2-3 topics
-- Each topic must have 3-5 subtopics
-- Subtopics within a topic MUST form a chain: subtopic_n depends on subtopic_n-1
-- Subtopics can also depend on subtopics from PREVIOUS phases
-- NO circular dependencies
-- The ENTIRE graph must be a single connected component
-- Difficulty increases with each phase and subtopic number
-
-Generate a well-structured, fully connected roadmap for {title}:"""
+Genera el roadmap:"""
 
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=3000
+            max_tokens=4000
         )
 
         raw = response.choices[0].message.content.strip()
-
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -424,7 +451,6 @@ def _generate_fallback_roadmap(title: str, difficulty_level: str, duration_month
         start_month = i * 2 + 1
         end_month = start_month + 1
 
-        # Crear temas y subtemas con dependencias
         topics = []
         for j in range(2):
             topic_name = f"Tema {phase_num}.{j+1}"
