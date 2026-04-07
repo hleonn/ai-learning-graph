@@ -111,6 +111,7 @@ export default function GraphView() {
     const [roadmap, setRoadmap] = useState<RoadmapData | null>(null)
     const [expandedPhases, setExpandedPhases] = useState<Record<number, boolean>>({})
     const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({})
+    const [selectedPhase, setSelectedPhase] = useState<number | null>(null)
 
     // ── Cargar roadmap del curso ──────────────────────────────────────────────
     const loadRoadmap = async () => {
@@ -187,6 +188,26 @@ export default function GraphView() {
             })
             setShowContentModal(true)
         }
+    }
+// Función para filtrar nodos por fase
+    const filterNodesByPhase = (phase: number | null) => {
+        setSelectedPhase(phase)
+        if (cyRef.current) {
+            cyRef.current.nodes().forEach((node: any) => {
+                const nodePhase = node.data('phase') || 1
+                if (phase === null || nodePhase === phase) {
+                    node.style('opacity', 1)
+                    node.style('visibility', 'visible')
+                } else {
+                    node.style('opacity', 0.2)
+                    node.style('visibility', 'visible')
+                }
+            })
+        }
+    }
+// Función para resetear el filtro
+    const resetFilter = () => {
+        filterNodesByPhase(null)
     }
 
     const handleAnswerQuestion = () => {
@@ -694,12 +715,43 @@ export default function GraphView() {
                 {/* Leyenda de fases */}
                 <div style={s.phaseLegend}>
                     <span style={s.legendTitle}>Fases:</span>
-                    {roadmap?.phases.map(phase => (
-                        <div key={phase.phase_number} style={s.legendItem}>
-                            <div style={{...s.legendColor, backgroundColor: getPhaseBorderColor(phase.phase_number)}} />
-                            <span>Fase {phase.phase_number}</span>
-                        </div>
-                    ))}
+                    <div
+                        style={{
+                            ...s.legendItem,
+                            cursor: 'pointer',
+                            background: selectedPhase === null ? '#E1F5EE' : 'transparent',
+                            borderRadius: 4,
+                            padding: '2px 6px'
+                        }}
+                        onClick={() => filterNodesByPhase(null)}
+                    >
+                        <div style={{...s.legendColor, backgroundColor: '#1E3A5F'}}/>
+                        <span>Todas</span>
+                    </div>
+                    {roadmap?.phases.map(phase => {
+                        const phaseProgressValue = getPhaseProgress(phase)
+                        return (
+                            <div
+                                key={phase.phase_number}
+                                style={{
+                                    ...s.legendItem,
+                                    cursor: 'pointer',
+                                    background: selectedPhase === phase.phase_number ? '#E1F5EE' : 'transparent',
+                                    borderRadius: 4,
+                                    padding: '2px 6px'
+                                }}
+                                onClick={() => filterNodesByPhase(phase.phase_number)}
+                            >
+                                <div style={{
+                                    ...s.legendColor,
+                                    backgroundColor: getPhaseBorderColor(phase.phase_number)
+                                }}/>
+                                <span>Fase {phase.phase_number}</span>
+                                <span style={s.phaseProgressBadge}>{phaseProgressValue}%</span>
+                            </div>
+                        )
+                    })}
+                    <button style={s.resetFilterBtn} onClick={resetFilter}>⟳</button>
                 </div>
 
                 {isComplete && (
@@ -1163,4 +1215,22 @@ const s: Record<string, React.CSSProperties> = {
     answerFeedback: { marginTop: 12, padding: 10, borderRadius: 8 },
     correctFeedback: { color: '#1D9E75', fontWeight: 600, margin: 0 },
     wrongFeedback: { color: '#E24B4A', fontWeight: 600, margin: 0 },
+    phaseProgressBadge: {
+        fontSize: 10,
+        fontWeight: 600,
+        color: '#1D9E75',
+        background: '#E1F5EE',
+        padding: '2px 6px',
+        borderRadius: 10,
+        marginLeft: 6
+    },
+    resetFilterBtn: {
+        background: '#E8E6E1',
+        border: 'none',
+        borderRadius: 4,
+        padding: '2px 8px',
+        cursor: 'pointer',
+        fontSize: 12,
+        marginLeft: 8
+    }
 }
