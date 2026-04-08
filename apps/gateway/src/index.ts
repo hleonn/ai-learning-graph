@@ -4,6 +4,7 @@ import helmet from 'helmet'
 import dotenv from 'dotenv'
 import axios from 'axios'
 import jwt from 'jsonwebtoken'
+import { google } from 'googleapis'
 
 import healthRouter from './routes/health'
 import coursesRouter from './routes/courses'
@@ -29,6 +30,17 @@ app.use(cors({
 }))
 app.use(express.json())
 
+// ── Helper para crear cliente autenticado de Classroom ────────────────────────
+function getClassroomClient(googleTokens: any) {
+    const auth = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+    )
+    auth.setCredentials(googleTokens)
+    return google.classroom({ version: 'v1', auth: auth })
+}
+
 // ── Obtener UUID por email ────────────────────────────────────────────────────
 app.get('/api/user/by-email/:email', async (req: Request, res: Response) => {
     const { email } = req.params
@@ -49,6 +61,7 @@ app.get('/api/user/by-email/:email', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+
 // ── Obtener rol del usuario ────────────────────────────────────────────────────
 app.get('/api/user/role/:userId', async (req: Request, res: Response) => {
     const { userId } = req.params
@@ -69,6 +82,7 @@ app.get('/api/user/role/:userId', async (req: Request, res: Response) => {
         res.status(500).json({ error: error.message })
     }
 })
+
 // ── Obtener cursos en los que está inscrito un estudiante ─────────────────────
 app.get('/api/user/:userId/enrolled-courses', async (req: Request, res: Response) => {
     const { userId } = req.params
@@ -116,6 +130,7 @@ app.get('/api/user/:userId/enrollments', async (req: Request, res: Response) => 
         res.status(500).json({ error: error.message })
     }
 })
+
 // ── Auto-enroll directo ───────────────────────────────────────────────────────
 app.post('/enroll/:courseId', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization
@@ -130,7 +145,6 @@ app.post('/enroll/:courseId', async (req: Request, res: Response) => {
 
         console.log(`[Enroll] Usuario: ${decoded.email}, Curso: ${courseId}`)
 
-        // Obtener UUID del usuario
         const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('id')
@@ -141,7 +155,6 @@ app.post('/enroll/:courseId', async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Perfil de usuario no encontrado' })
         }
 
-        // Verificar si ya está inscrito
         const { data: existing } = await supabase
             .from('course_enrollments')
             .select('*')
@@ -204,6 +217,158 @@ app.use('/ai', (req, res) => proxyToGraphEngine(req, res, 'ai'))
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use(errorHandler)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── GOOGLE CLASSROOM INTEGRATION ENDPOINTS ─────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── 1. Crear curso en Google Classroom ────────────────────────────────────────
+app.post('/api/classroom/create-course', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' })
+
+    try {
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+        const { title, description, section } = req.body
+
+        const classroom = getClassroomClient(decoded.google_tokens)
+
+        const response = await classroom.courses.create({
+            requestBody: {
+                name: title,
+                section: section || 'Sección 1',
+                descriptionHeading: 'Curso generado con AI Learning Graph',
+                description: description || `Curso: ${title}`,
+                ownerId: 'me',
+                courseState: 'PROVISIONED'
+            }
+        })
+
+        const courseData = response.data
+        res.json({
+            success: true,
+            courseId: courseData.id,
+            enrollmentCode: courseData.enrollmentCode,
+            alternateLink: courseData.alternateLink
+        })
+    } catch (error: any) {
+        console.error('Error creating course:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ── 2. Obtener código de inscripción (usando id como parámetro) ────────────────
+app.get('/api/classroom/:courseId/enrollment-code', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' })
+
+    try {
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+        const { courseId } = req.params
+
+        const classroom = getClassroomClient(decoded.google_tokens)
+
+        const response = await classroom.courses.get({
+            id: courseId  // ← CORREGIDO: usar 'id' en lugar de 'courseId'
+        })
+        const courseData = response.data
+
+        res.json({
+            success: true,
+            enrollmentCode: courseData.enrollmentCode,
+            alternateLink: courseData.alternateLink
+        })
+    } catch (error: any) {
+        console.error('Error getting enrollment code:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ── 3. Listar cursos del profesor ─────────────────────────────────────────────
+app.get('/api/classroom/my-courses', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' })
+
+    try {
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+
+        const classroom = getClassroomClient(decoded.google_tokens)
+
+        const response = await classroom.courses.list({
+            courseStates: ['ACTIVE', 'PROVISIONED']
+        })
+
+        res.json({
+            success: true,
+            courses: response.data.courses || []
+        })
+    } catch (error: any) {
+        console.error('Error listing courses:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ── 4. Crear anuncio en un curso ──────────────────────────────────────────────
+app.post('/api/classroom/:courseId/announcement', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' })
+
+    try {
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+        const { courseId } = req.params
+        const { text } = req.body
+
+        const classroom = getClassroomClient(decoded.google_tokens)
+
+        const response = await classroom.courses.announcements.create({
+            courseId: courseId,
+            requestBody: {
+                text: text,
+                state: 'PUBLISHED'
+            }
+        })
+
+        res.json({ success: true, announcementId: response.data.id })
+    } catch (error: any) {
+        console.error('Error creating announcement:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
+
+// ── 5. Crear tarea (courseWork) ───────────────────────────────────────────────
+app.post('/api/classroom/:courseId/coursework', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' })
+
+    try {
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+        const { courseId } = req.params
+        const { title, description, points } = req.body
+
+        const classroom = getClassroomClient(decoded.google_tokens)
+
+        const response = await classroom.courses.courseWork.create({
+            courseId: courseId,
+            requestBody: {
+                title: title,
+                description: description,
+                workType: 'ASSIGNMENT',
+                state: 'PUBLISHED',
+                maxPoints: points || 100
+            }
+        })
+
+        res.json({ success: true, courseWorkId: response.data.id })
+    } catch (error: any) {
+        console.error('Error creating coursework:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
 
 // ── Arrancar servidor ─────────────────────────────────────────────────────────
 app.listen(PORT, () => {
