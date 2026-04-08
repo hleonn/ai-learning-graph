@@ -369,7 +369,86 @@ app.post('/api/classroom/:courseId/coursework', async (req: Request, res: Respon
         res.status(500).json({ error: error.message })
     }
 })
+// ── Helper para obtener o crear tópicos en Classroom ──────────────────────────
+async function getOrCreateTopic(classroom: any, courseId: string, topicName: string): Promise<string | undefined> {
+    try {
+        // Buscar tópico existente
+        const topicsResponse = await classroom.courses.topics.list({ courseId })
+        const existingTopic = topicsResponse.data.topic?.find((t: any) => t.name === topicName)
 
+        if (existingTopic) {
+            console.log(`✅ Tópico existente encontrado: ${topicName}`)
+            return existingTopic.topicId
+        }
+
+        // Crear nuevo tópico
+        const newTopic = await classroom.courses.topics.create({
+            courseId: courseId,
+            requestBody: { name: topicName }
+        })
+
+        console.log(`✅ Nuevo tópico creado: ${topicName}`)
+        return newTopic.data.topicId
+    } catch (error) {
+        console.error('Error with topic:', error)
+        return undefined
+    }
+}
+
+// ── Google Classroom: Crear material por subtema ───────────────────────────────
+app.post('/api/classroom/:courseId/material-by-subtopic', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization
+    if (!authHeader) return res.status(401).json({ error: 'No token provided' })
+
+    try {
+        const token = authHeader.split(' ')[1]
+        const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
+        const { courseId } = req.params
+        const { title, description, content, phaseNumber, topicName } = req.body
+
+        const auth = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        )
+        auth.setCredentials(decoded.google_tokens)
+
+        const classroom = google.classroom({ version: 'v1', auth: auth })
+
+        // Obtener o crear el tópico
+        const topicId = await getOrCreateTopic(classroom, courseId, topicName)
+
+        // Crear el material
+        const materialTitle = `📘 Fase ${phaseNumber}: ${title}`
+        const materialDescription = `${description}\n\n---\n📚 **Contenido educativo generado por IA:**\n\n${content}\n\n---\n*Este contenido fue generado automáticamente por AI Learning Graph. Los profesores pueden editarlo libremente.*`
+
+        const requestBody: any = {
+            title: materialTitle,
+            description: materialDescription,
+            materials: [
+                {
+                    text: {
+                        text: content
+                    }
+                }
+            ]
+        }
+
+        if (topicId) {
+            requestBody.topicId = topicId
+        }
+
+        const response = await classroom.courses.courseWorkMaterials.create({
+            courseId: courseId,
+            requestBody: requestBody
+        })
+
+        res.json({ success: true, materialId: response.data.id })
+    } catch (error: any) {
+        console.error('Error creating material by subtopic:', error)
+        res.status(500).json({ error: error.message })
+    }
+})
 // ── Arrancar servidor ─────────────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`Gateway corriendo en http://localhost:${PORT}`)

@@ -269,7 +269,75 @@ export default function CurriculumGenerator() {
         }
     }
 
-    // Publicar en Google Classroom
+    // Crear materiales para cada subtema en Classroom
+    const createClassroomMaterials = async (classroomCourseId: string) => {
+        const token = localStorage.getItem('google_token')
+        let materialCount = 0
+        let failedCount = 0
+
+        for (const phase of roadmap!.phases) {
+            for (const topic of phase.topics) {
+                for (const subtopic of topic.subtopics) {
+                    // Construir contenido educativo completo
+                    const educationalContent = `
+${subtopic.description}
+
+📌 **Nivel de dificultad:** ${subtopic.difficulty}/5
+
+🔗 **Prerrequisitos:** ${subtopic.prerequisites.join(', ') || 'Ninguno'}
+
+💡 **Contenido detallado:**
+Este concepto es fundamental para entender ${subtopic.label}. 
+Practica los ejercicios relacionados y asegúrate de comprender los prerrequisitos antes de avanzar.
+
+📚 **Ejemplos prácticos:**
+• Ejemplo 1: Aplicación práctica de ${subtopic.label}
+• Ejemplo 2: Caso de uso real de ${subtopic.label}
+• Ejemplo 3: Ejercicio resuelto sobre ${subtopic.label}
+
+✅ **Al completar este concepto, podrás:**
+- Aplicar ${subtopic.label} en proyectos reales
+- Resolver problemas relacionados con ${subtopic.label}
+- Explicar los conceptos clave a otros compañeros
+`
+
+                    try {
+                        const response = await fetch(`https://mygateway.up.railway.app/api/classroom/${classroomCourseId}/material-by-subtopic`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                title: subtopic.label,
+                                description: subtopic.description,
+                                content: educationalContent,
+                                phaseNumber: phase.phase_number,
+                                topicName: topic.topic_name
+                            })
+                        })
+
+                        if (response.ok) {
+                            materialCount++
+                            console.log(`✅ Material creado: ${subtopic.label}`)
+                        } else {
+                            failedCount++
+                            console.error(`❌ Error creando material: ${subtopic.label}`)
+                        }
+                    } catch (error) {
+                        failedCount++
+                        console.error(`❌ Error creando material ${subtopic.label}:`, error)
+                    }
+
+                    // Pequeña pausa para evitar rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 200))
+                }
+            }
+        }
+
+        return { materialCount, failedCount }
+    }
+// Publicar en Google Classroom
     const publishToClassroom = async () => {
         if (!roadmap) {
             alert('Primero debes generar un roadmap')
@@ -371,8 +439,13 @@ export default function CurriculumGenerator() {
             if (!classroomData.success) {
                 throw new Error(classroomData.error || 'Error al crear el curso en Classroom')
             }
+            const { materialCount, failedCount } = await createClassroomMaterials(classroomData.courseId)
+            alert(`✅ Curso publicado en Google Classroom!\n\n
+            📎 Enlace: ${classroomData.alternateLink}\n
+            🔑 Código de clase: ${classroomData.enrollmentCode}\n
+            📚 Materiales creados: ${materialCount} (${failedCount} fallaron)\\n\\n
+            ⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
 
-            alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${classroomData.alternateLink}\n🔑 Código de clase: ${classroomData.enrollmentCode}\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
 
             // Abrir enlace en nueva pestaña
             window.open(classroomData.alternateLink, '_blank')
