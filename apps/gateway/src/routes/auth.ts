@@ -21,6 +21,7 @@ const SCOPES = [
     'https://www.googleapis.com/auth/classroom.coursework.students',
     'https://www.googleapis.com/auth/classroom.announcements',
     'https://www.googleapis.com/auth/classroom.rosters.readonly',
+    'https://www.googleapis.com/auth/classroom.courseworkmaterials',
     'https://www.googleapis.com/auth/drive.file',
 ]
 
