@@ -290,8 +290,7 @@ export default function CurriculumGenerator() {
                 body: JSON.stringify({
                     title: form.title,
                     description: form.description || `Curso de ${form.title}`,
-                    section: `Nivel: ${form.difficulty_level}`,
-                    descriptionHeading: roadmap.phases[0]?.objective || 'Curso generado con IA'
+                    section: `Nivel: ${form.difficulty_level}`
                 })
             })
 
@@ -300,26 +299,7 @@ export default function CurriculumGenerator() {
 
             console.log('Curso creado en Classroom:', courseData.courseId)
 
-            // 2. Crear materiales para cada concepto
-            for (const phase of roadmap.phases) {
-                for (const topic of phase.topics) {
-                    for (const subtopic of topic.subtopics) {
-                        await fetch(`https://mygateway.up.railway.app/api/classroom/${courseData.courseId}/material`, {
-                            method: 'POST',
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                title: `${phase.name}: ${subtopic.label}`,
-                                description: `${subtopic.description}\n\n📚 Dificultad: ${subtopic.difficulty}/5\n🔗 Prerrequisitos: ${subtopic.prerequisites.join(', ') || 'Ninguno'}`
-                            })
-                        })
-                    }
-                }
-            }
-
-            // 3. Crear anuncio de bienvenida
+            // 2. Crear anuncio de bienvenida
             await fetch(`https://mygateway.up.railway.app/api/classroom/${courseData.courseId}/announcement`, {
                 method: 'POST',
                 headers: {
@@ -327,11 +307,11 @@ export default function CurriculumGenerator() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    text: `🎉 ¡Bienvenidos al curso "${form.title}"!\n\nEste curso tiene ${roadmap.phases.length} fases y ${roadmap.phases.reduce((acc, p) => acc + p.topics.reduce((tacc, t) => tacc + t.subtopics.length, 0), 0)} conceptos.\n\n📅 Duración: ${roadmap.duration_months} meses.\n\n¡Comienza tu aprendizaje hoy!`
+                    text: `🎉 ¡Bienvenidos al curso "${form.title}"!\n\nEste curso tiene ${roadmap.phases.length} fases.\n\n📅 Duración: ${roadmap.duration_months} meses.\n\n¡Comienza tu aprendizaje hoy!`
                 })
             })
 
-            alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${courseData.alternateLink}\n🔑 Código de clase: ${courseData.enrollmentCode}\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom para que los estudiantes puedan verlo.`)
+            alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${courseData.alternateLink}\n🔑 Código de clase: ${courseData.enrollmentCode}\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
 
             // Abrir el enlace en una nueva pestaña
             window.open(courseData.alternateLink, '_blank')
@@ -343,6 +323,7 @@ export default function CurriculumGenerator() {
             setLoading(false)
         }
     }
+
     return (
         <div style={s.page}>
             <div style={s.header}>
@@ -451,11 +432,19 @@ export default function CurriculumGenerator() {
                                 {loading ? 'Guardando...' : '💾 Guardar curso'}
                             </button>
                             <button
-                                style={{...s.btn, marginTop: 24, background: '#4285F4'}}
+                                style={{
+                                    ...s.btn,
+                                    marginTop: 12,
+                                    background: '#4285F4',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8
+                                }}
                                 onClick={publishToClassroom}
                                 disabled={loading}
                             >
-                                📚 Publicar en Google Classroom
+                                <span>📚</span> Publicar en Google Classroom
                             </button>
                         </div>
 
