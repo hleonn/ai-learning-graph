@@ -269,6 +269,60 @@ export default function CurriculumGenerator() {
             setLoading(false)
         }
     }
+    const publishToClassroom = async () => {
+        if (!roadmap) return
+
+        const token = localStorage.getItem('google_token')
+        if (!token) {
+            alert('Primero debes conectar tu cuenta de Google Classroom')
+            return
+        }
+
+        setLoading(true)
+        try {
+            // 1. Crear el curso en Classroom
+            const courseResponse = await fetch('https://mygateway.up.railway.app/api/classroom/create-course', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: form.title,
+                    description: form.description || `Curso de ${form.title}`,
+                    section: `Nivel: ${form.difficulty_level}`
+                })
+            })
+
+            const courseData = await courseResponse.json()
+            if (!courseData.success) throw new Error(courseData.error)
+
+            console.log('Curso creado en Classroom:', courseData.courseId)
+
+            // 2. Crear anuncio de bienvenida
+            await fetch(`https://mygateway.up.railway.app/api/classroom/${courseData.courseId}/announcement`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text: `🎉 ¡Bienvenidos al curso "${form.title}"!\n\nEste curso tiene ${roadmap.phases.length} fases.\n\n📅 Duración: ${roadmap.duration_months} meses.\n\n¡Comienza tu aprendizaje hoy!`
+                })
+            })
+
+            alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${courseData.alternateLink}\n🔑 Código de clase: ${courseData.enrollmentCode}\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
+
+            // Abrir el enlace en una nueva pestaña
+            window.open(courseData.alternateLink, '_blank')
+
+        } catch (error: any) {
+            console.error('Error publishing to Classroom:', error)
+            alert(`Error al publicar: ${error.message}`)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     return (
         <div style={s.page}>
@@ -371,11 +425,26 @@ export default function CurriculumGenerator() {
                                 <span style={s.statLbl}>Conceptos</span>
                             </div>
                             <button
-                                style={{ ...s.saveBtn, ...s.statCard }}
+                                style={{...s.saveBtn, ...s.statCard}}
                                 onClick={handleSaveCourse}
                                 disabled={loading}
                             >
                                 {loading ? 'Guardando...' : '💾 Guardar curso'}
+                            </button>
+                            <button
+                                style={{
+                                    ...s.btn,
+                                    marginTop: 12,
+                                    background: '#4285F4',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: 8
+                                }}
+                                onClick={publishToClassroom}
+                                disabled={loading}
+                            >
+                                <span>📚</span> Publicar en Google Classroom
                             </button>
                         </div>
 
