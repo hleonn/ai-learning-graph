@@ -397,14 +397,24 @@ async function getOrCreateTopic(classroom: any, courseId: string, topicName: str
 
 // ── Google Classroom: Crear material por subtema ───────────────────────────────
 app.post('/api/classroom/:courseId/material-by-subtopic', async (req: Request, res: Response) => {
+    console.log('📚 Endpoint material-by-subtopic llamado')
+    console.log('📦 Headers:', req.headers.authorization ? 'Token presente' : 'No token')
+    console.log('📦 Params:', req.params)
+    console.log('📦 Body:', req.body)
+
     const authHeader = req.headers.authorization
-    if (!authHeader) return res.status(401).json({ error: 'No token provided' })
+    if (!authHeader) {
+        console.log('❌ No token provided')
+        return res.status(401).json({ error: 'No token provided' })
+    }
 
     try {
         const token = authHeader.split(' ')[1]
         const decoded = jwt.verify(token, process.env.SUPABASE_SERVICE_KEY!) as any
         const { courseId } = req.params
         const { title, description, content, phaseNumber, topicName } = req.body
+
+        console.log(`📚 Creando material: ${title} en curso ${courseId}`)
 
         const auth = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
