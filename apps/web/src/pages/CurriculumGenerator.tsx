@@ -7,6 +7,8 @@ interface Subtopic {
     description: string
     difficulty: number
     prerequisites: string[]
+    content?: string
+    examples?: string[]
 }
 
 interface Topic {
@@ -46,7 +48,6 @@ const API_URL = 'https://mygateway.up.railway.app'
 function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x: number; y: number }> {
     const positions: Record<string, { x: number; y: number }> = {}
 
-    // Recopilar todos los subtemas con sus prerrequisitos
     const allSubtopics: { label: string; prerequisites: string[]; phase: number }[] = []
     for (const phase of roadmap.phases) {
         for (const topic of phase.topics) {
@@ -60,16 +61,13 @@ function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x
         }
     }
 
-    // Calcular niveles (BFS desde nodos sin prerrequisitos)
     const levels: Record<string, number> = {}
     const processed = new Set<string>()
     let currentLevel = 0
 
-    // Inicializar: nodos sin prerrequisitos están en nivel 0
     let currentNodes = allSubtopics.filter(s => s.prerequisites.length === 0).map(s => s.label)
     currentNodes.forEach(label => { levels[label] = 0; processed.add(label) })
 
-    // Asignar niveles progresivamente
     while (currentNodes.length > 0) {
         const nextNodes: string[] = []
         for (const nodeLabel of currentNodes) {
@@ -86,7 +84,6 @@ function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x
         currentNodes = nextNodes
     }
 
-    // Calcular posiciones basadas en nivel
     const nodesPerLevel: Record<number, string[]> = {}
     Object.entries(levels).forEach(([label, level]) => {
         if (!nodesPerLevel[level]) nodesPerLevel[level] = []
@@ -178,12 +175,9 @@ export default function CurriculumGenerator() {
             const positions = calculatePositionsFromRoadmap(roadmap)
             console.log('Posiciones calculadas:', positions)
 
-            // 1. Crear el curso en Supabase via Gateway
             const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     title: form.title,
                     description: form.description || `Curso de ${form.title}`,
@@ -230,6 +224,8 @@ export default function CurriculumGenerator() {
                                 skills: phase.skills,
                                 position_x: pos.x,
                                 position_y: pos.y,
+                                content: subtopic.content || '',
+                                examples: subtopic.examples || []
                             })
                         })
 
@@ -269,7 +265,7 @@ export default function CurriculumGenerator() {
         }
     }
 
-    // Crear materiales para cada subtema en Classroom
+    // Crear materiales para cada subtema en Classroom usando contenido REAL de DeepSeek
     const createClassroomMaterials = async (classroomCourseId: string) => {
         const token = localStorage.getItem('google_token')
         let materialCount = 0
@@ -278,7 +274,11 @@ export default function CurriculumGenerator() {
         for (const phase of roadmap!.phases) {
             for (const topic of phase.topics) {
                 for (const subtopic of topic.subtopics) {
-                    // Construir contenido educativo completo
+                    // Usar contenido REAL generado por DeepSeek
+                    const realContent = subtopic.content || subtopic.description
+                    const realExamples = subtopic.examples || []
+
+                    // Construir contenido educativo completo con el material real
                     const educationalContent = `
 ${subtopic.description}
 
@@ -286,19 +286,21 @@ ${subtopic.description}
 
 🔗 **Prerrequisitos:** ${subtopic.prerequisites.join(', ') || 'Ninguno'}
 
-💡 **Contenido detallado:**
-Este concepto es fundamental para entender ${subtopic.label}. 
-Practica los ejercicios relacionados y asegúrate de comprender los prerrequisitos antes de avanzar.
+💡 **Explicación detallada:**
+${realContent}
 
 📚 **Ejemplos prácticos:**
-• Ejemplo 1: Aplicación práctica de ${subtopic.label}
-• Ejemplo 2: Caso de uso real de ${subtopic.label}
-• Ejemplo 3: Ejercicio resuelto sobre ${subtopic.label}
+${realExamples.map((ex: string, idx: number) => `${idx + 1}. ${ex}`).join('\n') || '• Ejemplo práctico disponible en clase.'}
 
 ✅ **Al completar este concepto, podrás:**
 - Aplicar ${subtopic.label} en proyectos reales
 - Resolver problemas relacionados con ${subtopic.label}
 - Explicar los conceptos clave a otros compañeros
+
+📖 **Recursos adicionales:**
+- Documentación oficial: https://developer.mozilla.org/
+- Ejercicios prácticos disponibles en la plataforma
+- Foro de discusión para resolver dudas
 `
 
                     try {
@@ -322,7 +324,8 @@ Practica los ejercicios relacionados y asegúrate de comprender los prerrequisit
                             console.log(`✅ Material creado: ${subtopic.label}`)
                         } else {
                             failedCount++
-                            console.error(`❌ Error creando material: ${subtopic.label}`)
+                            const errorData = await response.text()
+                            console.error(`❌ Error creando material ${subtopic.label}:`, errorData)
                         }
                     } catch (error) {
                         failedCount++
@@ -337,7 +340,8 @@ Practica los ejercicios relacionados y asegúrate de comprender los prerrequisit
 
         return { materialCount, failedCount }
     }
-// Publicar en Google Classroom
+
+    // Publicar en Google Classroom
     const publishToClassroom = async () => {
         if (!roadmap) {
             alert('Primero debes generar un roadmap')
@@ -399,6 +403,8 @@ Practica los ejercicios relacionados y asegúrate de comprender los prerrequisit
                                     skills: phase.skills,
                                     position_x: pos.x,
                                     position_y: pos.y,
+                                    content: subtopic.content || '',
+                                    examples: subtopic.examples || []
                                 })
                             })
 
@@ -439,13 +445,11 @@ Practica los ejercicios relacionados y asegúrate de comprender los prerrequisit
             if (!classroomData.success) {
                 throw new Error(classroomData.error || 'Error al crear el curso en Classroom')
             }
-            const { materialCount, failedCount } = await createClassroomMaterials(classroomData.courseId)
-            alert(`✅ Curso publicado en Google Classroom!\n\n
-            📎 Enlace: ${classroomData.alternateLink}\n
-            🔑 Código de clase: ${classroomData.enrollmentCode}\n
-            📚 Materiales creados: ${materialCount} (${failedCount} fallaron)\\n\\n
-            ⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
 
+            // Crear materiales para cada subtema usando contenido REAL
+            const { materialCount, failedCount } = await createClassroomMaterials(classroomData.courseId)
+
+            alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${classroomData.alternateLink}\n🔑 Código de clase: ${classroomData.enrollmentCode}\n📚 Materiales creados: ${materialCount} (${failedCount} fallaron)\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
 
             // Abrir enlace en nueva pestaña
             window.open(classroomData.alternateLink, '_blank')

@@ -21,6 +21,8 @@ class NodeCreate(BaseModel):
     expected_outcomes: Optional[list] = None  #
     skills: Optional[list] = None  #
     color: Optional[str] = None
+    content: Optional[str] = None  # Nuevo
+    examples: Optional[list] = None  # Nuevo
 
 class EdgeCreate(BaseModel):
     source: str
@@ -127,6 +129,8 @@ def create_node(course_id: str, node: NodeCreate):
         "bloom_levels": node.bloom_levels,  #
         "expected_outcomes": node.expected_outcomes,  #
         "skills": node.skills,  #
+        "content": node.content,  #
+        "examples": node.examples,  #
     }
 
     result = supabase.table("concept_nodes").insert(new_node).execute()
