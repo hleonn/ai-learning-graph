@@ -40,8 +40,8 @@ function diffLabel(d: number): string {
     return ['', 'Introductorio', 'Básico', 'Intermedio', 'Avanzado', 'Experto'][d] ?? ''
 }
 
-// const GRAPH_ENGINE_URL = 'https://ai-learning-graph-production.up.railway.app'
 const API_URL = 'https://mygateway.up.railway.app'
+
 // Función para calcular posiciones basadas en el orden topológico
 function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x: number; y: number }> {
     const positions: Record<string, { x: number; y: number }> = {}
@@ -73,7 +73,6 @@ function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x
     while (currentNodes.length > 0) {
         const nextNodes: string[] = []
         for (const nodeLabel of currentNodes) {
-            // Buscar nodos que tienen este como prerrequisito
             for (const subtopic of allSubtopics) {
                 if (!processed.has(subtopic.label) && subtopic.prerequisites.includes(nodeLabel)) {
                     if (!nextNodes.includes(subtopic.label)) {
@@ -126,6 +125,8 @@ export default function CurriculumGenerator() {
     const [error, setError] = useState<string | null>(null)
     const [expandedPhases, setExpandedPhases] = useState<Record<number, boolean>>({})
     const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({})
+    const [savedCourseId, setSavedCourseId] = useState<string | null>(null)
+    const [isSaved, setIsSaved] = useState(false)
 
     const handleGenerate = async () => {
         if (!form.title.trim()) {
@@ -135,6 +136,8 @@ export default function CurriculumGenerator() {
         setLoading(true)
         setError(null)
         setRoadmap(null)
+        setSavedCourseId(null)
+        setIsSaved(false)
 
         try {
             const data = await generateRoadmap(form)
@@ -164,6 +167,7 @@ export default function CurriculumGenerator() {
         }))
     }
 
+    // Guardar curso en Supabase (sin redirigir)
     const handleSaveCourse = async () => {
         if (!roadmap) return
 
@@ -171,7 +175,6 @@ export default function CurriculumGenerator() {
         setError(null)
 
         try {
-            // Calcular posiciones automáticas basadas en orden topológico
             const positions = calculatePositionsFromRoadmap(roadmap)
             console.log('Posiciones calculadas:', positions)
 
@@ -202,6 +205,8 @@ export default function CurriculumGenerator() {
             }
 
             console.log('Curso creado con ID:', courseId)
+            setSavedCourseId(courseId)
+            setIsSaved(true)
 
             let nodeCount = 0
             let edgeCount = 0
@@ -211,8 +216,6 @@ export default function CurriculumGenerator() {
                     for (const subtopic of topic.subtopics) {
                         const pos = positions[subtopic.label] || { x: 100, y: 100 }
 
-                        // Crear nodo con posición
-                        // const nodeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/nodes`, {
                         const nodeResponse = await fetch(`${API_URL}/graph/${courseId}/nodes`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -236,11 +239,8 @@ export default function CurriculumGenerator() {
                             console.error(`Error creating node ${subtopic.label}:`, await nodeResponse.text())
                         }
 
-                        // Crear edges para prerrequisitos
                         for (const prereq of subtopic.prerequisites) {
-                            //const edgeResponse = await fetch(`${GRAPH_ENGINE_URL}/graph/${courseId}/edges`, {
                             const edgeResponse = await fetch(`${API_URL}/graph/${courseId}/edges`, {
-
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -259,7 +259,6 @@ export default function CurriculumGenerator() {
             }
 
             alert(`✅ Curso "${form.title}" guardado exitosamente con ${nodeCount} conceptos y ${edgeCount} relaciones`)
-            navigate('/dashboard')
 
         } catch (error: any) {
             console.error('Error saving course:', error)
@@ -269,8 +268,13 @@ export default function CurriculumGenerator() {
             setLoading(false)
         }
     }
+
+    // Publicar en Google Classroom
     const publishToClassroom = async () => {
-        if (!roadmap) return
+        if (!roadmap) {
+            alert('Primero debes generar un roadmap')
+            return
+        }
 
         const token = localStorage.getItem('google_token')
         if (!token) {
@@ -280,8 +284,76 @@ export default function CurriculumGenerator() {
 
         setLoading(true)
         try {
-            // 1. Crear el curso en Classroom
-            const courseResponse = await fetch('https://mygateway.up.railway.app/api/classroom/create-course', {
+            // Si no está guardado, guardar primero automáticamente
+            let courseIdForClassroom = savedCourseId
+
+            if (!courseIdForClassroom) {
+                console.log('Curso no guardado localmente, guardando primero...')
+
+                const positions = calculatePositionsFromRoadmap(roadmap)
+
+                const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: form.title,
+                        description: form.description || `Curso de ${form.title}`,
+                        domain: form.domain,
+                        difficulty_level: form.difficulty_level,
+                        roadmap: roadmap,
+                    })
+                })
+
+                if (!courseResponse.ok) {
+                    throw new Error(`Error creating course: ${courseResponse.status}`)
+                }
+
+                const courseData = await courseResponse.json()
+                courseIdForClassroom = courseData[0]?.id || courseData.id
+                setSavedCourseId(courseIdForClassroom)
+
+                // Crear nodos y edges
+                for (const phase of roadmap.phases) {
+                    for (const topic of phase.topics) {
+                        for (const subtopic of topic.subtopics) {
+                            const pos = positions[subtopic.label] || { x: 100, y: 100 }
+                            await fetch(`${API_URL}/graph/${courseIdForClassroom}/nodes`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    label: subtopic.label,
+                                    description: subtopic.description,
+                                    difficulty: subtopic.difficulty,
+                                    phase: phase.phase_number,
+                                    topic: topic.topic_name,
+                                    bloom_levels: phase.bloom_levels,
+                                    expected_outcomes: phase.expected_outcomes,
+                                    skills: phase.skills,
+                                    position_x: pos.x,
+                                    position_y: pos.y,
+                                })
+                            })
+
+                            for (const prereq of subtopic.prerequisites) {
+                                await fetch(`${API_URL}/graph/${courseIdForClassroom}/edges`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        source: prereq,
+                                        target: subtopic.label,
+                                        prerequisite_strength: 0.9,
+                                    })
+                                })
+                            }
+                        }
+                    }
+                }
+                setIsSaved(true)
+                alert(`✅ Curso "${form.title}" guardado localmente`)
+            }
+
+            // Publicar en Classroom
+            const classroomResponse = await fetch('https://mygateway.up.railway.app/api/classroom/create-course', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -294,27 +366,16 @@ export default function CurriculumGenerator() {
                 })
             })
 
-            const courseData = await courseResponse.json()
-            if (!courseData.success) throw new Error(courseData.error)
+            const classroomData = await classroomResponse.json()
 
-            console.log('Curso creado en Classroom:', courseData.courseId)
+            if (!classroomData.success) {
+                throw new Error(classroomData.error || 'Error al crear el curso en Classroom')
+            }
 
-            // 2. Crear anuncio de bienvenida
-            await fetch(`https://mygateway.up.railway.app/api/classroom/${courseData.courseId}/announcement`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    text: `🎉 ¡Bienvenidos al curso "${form.title}"!\n\nEste curso tiene ${roadmap.phases.length} fases.\n\n📅 Duración: ${roadmap.duration_months} meses.\n\n¡Comienza tu aprendizaje hoy!`
-                })
-            })
+            alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${classroomData.alternateLink}\n🔑 Código de clase: ${classroomData.enrollmentCode}\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
 
-            alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${courseData.alternateLink}\n🔑 Código de clase: ${courseData.enrollmentCode}\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
-
-            // Abrir el enlace en una nueva pestaña
-            window.open(courseData.alternateLink, '_blank')
+            // Abrir enlace en nueva pestaña
+            window.open(classroomData.alternateLink, '_blank')
 
         } catch (error: any) {
             console.error('Error publishing to Classroom:', error)
@@ -424,29 +485,30 @@ export default function CurriculumGenerator() {
                                 </span>
                                 <span style={s.statLbl}>Conceptos</span>
                             </div>
+                        </div>
+
+                        <div style={s.buttonContainer}>
                             <button
-                                style={{...s.saveBtn, ...s.statCard}}
+                                style={{ ...s.saveBtn }}
                                 onClick={handleSaveCourse}
                                 disabled={loading}
                             >
-                                {loading ? 'Guardando...' : '💾 Guardar curso'}
+                                {loading ? 'Guardando...' : '💾 1. Guardar curso'}
                             </button>
                             <button
-                                style={{
-                                    ...s.btn,
-                                    marginTop: 12,
-                                    background: '#4285F4',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 8
-                                }}
+                                style={{ ...s.classroomBtn }}
                                 onClick={publishToClassroom}
                                 disabled={loading}
                             >
-                                <span>📚</span> Publicar en Google Classroom
+                                {loading ? 'Publicando...' : '📚 2. Publicar en Classroom'}
                             </button>
                         </div>
+
+                        {isSaved && savedCourseId && (
+                            <div style={s.successBadge}>
+                                ✅ Curso guardado localmente (ID: {savedCourseId.substring(0, 8)}...)
+                            </div>
+                        )}
 
                         <div style={s.roadmapContainer}>
                             {roadmap.phases.map((phase) => (
@@ -563,7 +625,39 @@ const s: Record<string, React.CSSProperties> = {
     statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
     statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
     statLbl: { fontSize: 11, color: '#888780' },
-    saveBtn: { background: '#1D9E75', color: '#fff', border: 'none', cursor: 'pointer', transition: 'opacity 0.2s' },
+    buttonContainer: { display: 'flex', gap: 12, marginTop: 8, marginBottom: 8 },
+    saveBtn: {
+        background: '#1D9E75',
+        color: '#fff',
+        border: 'none',
+        cursor: 'pointer',
+        transition: 'opacity 0.2s',
+        padding: '10px 20px',
+        borderRadius: 8,
+        fontSize: 14,
+        fontWeight: 600,
+        flex: 1
+    },
+    classroomBtn: {
+        background: '#4285F4',
+        color: '#fff',
+        border: 'none',
+        cursor: 'pointer',
+        transition: 'opacity 0.2s',
+        padding: '10px 20px',
+        borderRadius: 8,
+        fontSize: 14,
+        fontWeight: 600,
+        flex: 1
+    },
+    successBadge: {
+        background: '#E1F5EE',
+        color: '#1D9E75',
+        padding: '8px 12px',
+        borderRadius: 8,
+        fontSize: 12,
+        textAlign: 'center'
+    },
     roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20 },
     phaseCard: { background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', overflow: 'hidden' },
     phaseHeader: { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: '#F9F9F8', cursor: 'pointer', borderBottom: '1px solid #F1EFE8', flexWrap: 'wrap' },
