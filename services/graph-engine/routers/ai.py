@@ -365,5 +365,31 @@ def generate_roadmap_endpoint(req: RoadmapRequest):
         domain=req.domain,
         difficulty_level=req.difficulty_level,
     )
+class SubtopicContentRequest(BaseModel):
+    subtopic_label: str
+    subtopic_description: str
+    difficulty: int
+    phase_number: int
+    prerequisites: list[str] = []
+    course_title: str
+    domain: str = "generic"
+
+
+@router.post("/generate-subtopic-content")
+def generate_subtopic_content_endpoint(req: SubtopicContentRequest):
+    """
+    Genera contenido educativo detallado para un subtema usando Prompt 2
+    """
+    logger.info(f"Generando contenido para: {req.subtopic_label}")
+
+    result = generate_subtopic_content(
+        subtopic_label=req.subtopic_label,
+        subtopic_description=req.subtopic_description,
+        difficulty=req.difficulty,
+        phase_number=req.phase_number,
+        prerequisites=req.prerequisites,
+        course_title=req.course_title,
+        domain=req.domain
+    )
 
     return result

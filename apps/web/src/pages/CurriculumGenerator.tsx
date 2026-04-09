@@ -265,7 +265,7 @@ export default function CurriculumGenerator() {
         }
     }
 
-    // Crear materiales para cada subtema en Classroom usando contenido REAL de DeepSeek
+    // Crear materiales para cada subtema en Classroom usando contenido REAL generado por IA
     const createClassroomMaterials = async (classroomCourseId: string) => {
         const token = localStorage.getItem('google_token')
         let materialCount = 0
@@ -274,35 +274,71 @@ export default function CurriculumGenerator() {
         for (const phase of roadmap!.phases) {
             for (const topic of phase.topics) {
                 for (const subtopic of topic.subtopics) {
-                    // Usar contenido REAL generado por DeepSeek
-                    const realContent = subtopic.content || subtopic.description
-                    const realExamples = subtopic.examples || []
+                    // Generar contenido educativo bajo demanda con Prompt 2
+                    let educationalContent = ""
 
-                    // Construir contenido educativo completo con el material real
-                    const educationalContent = `
-${subtopic.description}
+                    try {
+                        // Llamar al endpoint para generar contenido
+                        const contentResponse = await fetch('https://mygateway.up.railway.app/api/ai/generate-subtopic-content', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                subtopic_label: subtopic.label,
+                                subtopic_description: subtopic.description,
+                                difficulty: subtopic.difficulty,
+                                phase_number: phase.phase_number,
+                                prerequisites: subtopic.prerequisites,
+                                course_title: form.title,
+                                domain: form.domain
+                            })
+                        })
 
-📌 **Nivel de dificultad:** ${subtopic.difficulty}/5
+                        if (contentResponse.ok) {
+                            const contentData = await contentResponse.json()
 
-🔗 **Prerrequisitos:** ${subtopic.prerequisites.join(', ') || 'Ninguno'}
+                            // Construir el contenido educativo completo
+                            educationalContent = `
+## 🎯 ¿Por qué aprender esto?
 
-💡 **Explicación detallada:**
-${realContent}
+${contentData.motivation || `Dominar ${subtopic.label} es fundamental para avanzar en ${form.title}.`}
 
-📚 **Ejemplos prácticos:**
-${realExamples.map((ex: string, idx: number) => `${idx + 1}. ${ex}`).join('\n') || '• Ejemplo práctico disponible en clase.'}
+## 📖 Explicación detallada
 
-✅ **Al completar este concepto, podrás:**
-- Aplicar ${subtopic.label} en proyectos reales
-- Resolver problemas relacionados con ${subtopic.label}
-- Explicar los conceptos clave a otros compañeros
+${contentData.explanation || subtopic.description}
 
-📖 **Recursos adicionales:**
-- Documentación oficial: https://developer.mozilla.org/
-- Ejercicios prácticos disponibles en la plataforma
-- Foro de discusión para resolver dudas
+## 💡 Analogía
+
+${contentData.analogy || `Piensa en ${subtopic.label} como...`}
+
+## 📚 Ejemplos prácticos
+
+${contentData.examples?.map((ex: string, idx: number) => `${idx + 1}. ${ex}`).join('\n\n') || '• Ejemplo práctico disponible en clase.'}
+
+## 🤔 Preguntas para reflexionar
+
+${contentData.critical_questions?.map((q: string, idx: number) => `${idx + 1}. ${q}`).join('\n\n') || '• ¿Cómo aplicarías este concepto en un proyecto real?\n• ¿Qué relación tiene con lo aprendido anteriormente?'}
+
+## ✅ Ejercicio práctico
+
+${contentData.practice_task || `Realiza un ejercicio que aplique ${subtopic.label} en un contexto real.`}
+
+## 📖 Recursos adicionales
+
+${contentData.resources?.map((r: string) => `• ${r}`).join('\n') || '• Documentación oficial\n• Tutoriales en línea'}
 `
+                        } else {
+                            // Fallback si no se pudo generar contenido
+                            educationalContent = generateFallbackContent(subtopic)
+                        }
+                    } catch (error) {
+                        console.error(`Error generando contenido para ${subtopic.label}:`, error)
+                        educationalContent = generateFallbackContent(subtopic)
+                    }
 
+                    // Crear el material en Classroom
                     try {
                         const response = await fetch(`https://mygateway.up.railway.app/api/classroom/${classroomCourseId}/material-by-subtopic`, {
                             method: 'POST',
@@ -324,8 +360,7 @@ ${realExamples.map((ex: string, idx: number) => `${idx + 1}. ${ex}`).join('\n') 
                             console.log(`✅ Material creado: ${subtopic.label}`)
                         } else {
                             failedCount++
-                            const errorData = await response.text()
-                            console.error(`❌ Error creando material ${subtopic.label}:`, errorData)
+                            console.error(`❌ Error creando material ${subtopic.label}:`, await response.text())
                         }
                     } catch (error) {
                         failedCount++
@@ -333,12 +368,47 @@ ${realExamples.map((ex: string, idx: number) => `${idx + 1}. ${ex}`).join('\n') 
                     }
 
                     // Pequeña pausa para evitar rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 200))
+                    await new Promise(resolve => setTimeout(resolve, 300))
                 }
             }
         }
 
         return { materialCount, failedCount }
+    }
+
+// Función auxiliar para contenido de fallback
+    function generateFallbackContent(subtopic: any): string {
+        return `
+## 🎯 ¿Por qué aprender esto?
+
+${subtopic.description}
+
+## 📖 Explicación detallada
+
+Este concepto es fundamental para entender ${subtopic.label}. 
+Para dominarlo completamente, practica los ejercicios relacionados y asegúrate de comprender los prerrequisitos antes de avanzar.
+
+## 📚 Ejemplos prácticos
+
+• Ejemplo 1: Aplicación práctica de ${subtopic.label}
+• Ejemplo 2: Caso de uso real en la industria
+• Ejemplo 3: Ejercicio resuelto paso a paso
+
+## 🤔 Preguntas para reflexionar
+
+1. ¿Cómo se aplica ${subtopic.label} en un contexto real?
+2. ¿Qué relación tiene con otros conceptos del curso?
+
+## ✅ Ejercicio práctico
+
+Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un problema real.
+
+## 📖 Recursos adicionales
+
+• Documentación oficial
+• Tutoriales en video
+• Foro de discusión
+`
     }
 
     // Publicar en Google Classroom
