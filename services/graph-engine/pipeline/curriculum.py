@@ -1,13 +1,11 @@
 """
-Auto-Curriculum Generator
---------------------------
-Dado el título y descripción de un curso, usa DeepSeek para:
-
-1. Extraer N conceptos clave como nodos del grafo
-2. Generar contenido educativo para cada concepto (explicación + ejemplos)
-3. Inferir prerequisitos entre conceptos como edges
-4. Validar que el grafo resultante es un DAG (sin ciclos)
-5. Retornar la estructura lista para insertar en Supabase
+Auto-Curriculum Generator - Versión Noruega (dybdelæring)
+--------------------------------------------------------
+Basado en el sistema educativo noruego:
+- Aprendizaje profundo (dybdelæring)
+- Problemas del mundo real
+- Pensamiento crítico
+- Contexto cultural
 """
 
 import os
@@ -35,6 +33,10 @@ def _clean_json_response(raw: str) -> str:
             raw = raw[4:]
     raw = raw.strip()
     raw = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', raw)
+    # Reparar comillas comunes
+    raw = raw.replace('\\"', '"')
+    raw = raw.replace('"{', '{')
+    raw = raw.replace('}"', '}')
     return raw
 
 
@@ -42,18 +44,12 @@ def _generate_fallback_concepts(title: str, num_concepts: int, difficulty_level:
     """Genera conceptos de fallback si la API falla"""
     logger.warning(f"Usando fallback para {title}")
 
-    level_multiplier = {
-        "beginner": 1,
-        "intermediate": 2,
-        "advanced": 3,
-        "expert": 4
-    }.get(difficulty_level, 2)
+    level_multiplier = {"beginner": 1, "intermediate": 2, "advanced": 3, "expert": 4}.get(difficulty_level, 2)
 
     concepts = []
     base_topics = [
-        "Introducción", "Fundamentos", "Conceptos Básicos",
-        "Aplicaciones Prácticas", "Casos de Estudio",
-        "Mejores Prácticas", "Técnicas Avanzadas", "Optimización"
+        "Introducción y Fundamentos", "Conceptos Básicos", "Aplicaciones Prácticas",
+        "Casos de Estudio", "Mejores Prácticas", "Técnicas Avanzadas", "Optimización", "Proyecto Final"
     ]
 
     for i in range(min(num_concepts, len(base_topics))):
@@ -62,16 +58,9 @@ def _generate_fallback_concepts(title: str, num_concepts: int, difficulty_level:
             "label": f"{base_topics[i]} de {title}",
             "description": f"Exploración del concepto {base_topics[i].lower()} aplicado a {title}",
             "difficulty": difficulty,
-            "content": f"Este es el contenido educativo para el concepto '{base_topics[i]} de {title}'. " +
-                      f"En este módulo aprenderás los aspectos fundamentales y avanzados de este tema. " +
-                      f"El nivel de dificultad es {difficulty} de 5.",
-            "examples": [
-                f"Ejemplo práctico 1 de {base_topics[i].lower()}",
-                f"Ejemplo práctico 2 de {base_topics[i].lower()}",
-                f"Ejemplo práctico 3 de {base_topics[i].lower()}"
-            ]
+            "content": f"Este es el contenido educativo para '{base_topics[i]} de {title}'. Enfoque noruego: aprendizaje profundo y resolución de problemas reales.",
+            "examples": [f"Ejemplo en contexto noruego: {base_topics[i].lower()}", f"Ejemplo internacional: {base_topics[i].lower()}"]
         })
-
     return concepts
 
 
@@ -82,79 +71,14 @@ def extract_concepts_with_content(
     num_concepts: int = 8,
     difficulty_level: str = "intermediate",
 ) -> list[dict]:
-    """Usa DeepSeek para extraer conceptos clave de un curso con contenido educativo."""
-    logger.info(f"Extrayendo {num_concepts} conceptos para: {title} (nivel: {difficulty_level})")
-
-    difficulty_map = {
-        "beginner": "principiante - conceptos fundamentales, explicaciones simples",
-        "intermediate": "intermedio - conceptos con algo de profundidad, ejemplos prácticos",
-        "advanced": "avanzado - conceptos complejos, ejemplos detallados de casos reales",
-        "expert": "experto/certificación - conceptos de nivel profesional, preparación para certificación"
-    }
-
-    level_description = difficulty_map.get(difficulty_level, difficulty_map["intermediate"])
-
-    prompt = f"""Extract {num_concepts} key concepts for a course.
-
-Course title: {title}
-Course description: {description}
-Domain: {domain}
-Level: {level_description}
-
-For each concept, provide exactly these fields:
-- label: short name (2-4 words)
-- description: one sentence explanation
-- difficulty: integer 1-5
-- content: detailed explanation (2-3 sentences)
-- examples: array of 2-3 strings
-
-Return ONLY valid JSON array. Example:
-[
-  {{"label": "Variables", "description": "Store and manage data", "difficulty": 1, "content": "Variables are containers...", "examples": ["x = 5", "name = 'John'"]}}
-]
-
-IMPORTANT: Use double quotes. No trailing commas. Escape quotes with backslash."""
-
-    try:
-        response = deepseek_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=1500
-        )
-
-        raw = response.choices[0].message.content.strip()
-        logger.debug(f"Respuesta raw: {raw[:200]}...")
-
-        cleaned = _clean_json_response(raw)
-        concepts = json.loads(cleaned)
-
-        mapped_concepts = []
-        for i, c in enumerate(concepts):
-            mapped_concepts.append({
-                "label": c.get("label", f"Concepto {i+1}"),
-                "description": c.get("description", f"Descripción del concepto {i+1}"),
-                "difficulty": min(max(c.get("difficulty", 3), 1), 5),
-                "content": c.get("content", f"Contenido educativo para {c.get('label', f'concepto {i+1}')}"),
-                "examples": c.get("examples", ["Ejemplo 1", "Ejemplo 2"])
-            })
-
-        logger.info(f"Conceptos extraídos correctamente: {len(mapped_concepts)}")
-        return mapped_concepts
-
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decodificando JSON: {e}")
-        logger.error(f"Respuesta problemática: {raw[:500]}...")
-        return _generate_fallback_concepts(title, num_concepts, difficulty_level)
-    except Exception as e:
-        logger.error(f"Error en extract_concepts_with_content: {e}")
-        return _generate_fallback_concepts(title, num_concepts, difficulty_level)
+    """Versión simplificada - ya no se usa directamente para roadmaps"""
+    logger.info(f"Extrayendo {num_concepts} conceptos para: {title}")
+    return _generate_fallback_concepts(title, num_concepts, difficulty_level)
 
 
 def infer_prerequisites(concepts: list[dict]) -> list[dict]:
-    """Usa DeepSeek para inferir prerequisitos entre conceptos."""
+    """Usa DeepSeek para inferir prerequisitos entre conceptos"""
     logger.info(f"Infiriendo prerequisitos para {len(concepts)} conceptos")
-
     concept_labels = [c["label"] for c in concepts]
 
     prompt = f"""Given these concepts, determine prerequisites.
@@ -176,14 +100,10 @@ Example: [{{"source": "Variables", "target": "Functions", "strength": 0.9}}]"""
             temperature=0.5,
             max_tokens=800
         )
-
         raw = response.choices[0].message.content.strip()
         cleaned = _clean_json_response(raw)
         edges = json.loads(cleaned)
-
-        logger.info(f"Prerequisitos inferidos: {len(edges)} edges")
         return edges
-
     except Exception as e:
         logger.error(f"Error en infer_prerequisites: {e}")
         fallback_edges = []
@@ -198,20 +118,17 @@ Example: [{{"source": "Variables", "target": "Functions", "strength": 0.9}}]"""
 
 
 def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[dict]]:
-    """Verifica que el grafo es un DAG válido (sin ciclos)."""
+    """Verifica que el grafo es un DAG válido (sin ciclos)"""
     label_to_idx = {c["label"]: i for i, c in enumerate(concepts)}
-
     G = nx.DiGraph()
     G.add_nodes_from(range(len(concepts)))
-
     clean_edges = []
+
     for edge in edges:
         src = label_to_idx.get(edge.get("source"))
         tgt = label_to_idx.get(edge.get("target"))
-
         if src is None or tgt is None:
             continue
-
         G.add_edge(src, tgt)
         if not nx.is_directed_acyclic_graph(G):
             G.remove_edge(src, tgt)
@@ -220,7 +137,6 @@ def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[di
             clean_edges.append(edge)
 
     is_dag = nx.is_directed_acyclic_graph(G)
-    logger.info(f"Validación DAG: {is_dag}, edges limpios: {len(clean_edges)}")
     return is_dag, clean_edges
 
 
@@ -231,17 +147,10 @@ def generate_curriculum(
     num_concepts: int = 8,
     difficulty_level: str = "intermediate",
 ) -> dict:
-    """Pipeline completo: título → grafo de conocimiento validado con contenido educativo."""
-    logger.info(f"Generando currículum: '{title}' (nivel: {difficulty_level})")
-
+    """Pipeline para curriculum tradicional (mantenido por compatibilidad)"""
     concepts = extract_concepts_with_content(title, description, domain, num_concepts, difficulty_level)
     edges = infer_prerequisites(concepts)
     is_valid, clean_edges = validate_dag(concepts, edges)
-
-    logger.success(
-        f"Currículum generado: {len(concepts)} conceptos, "
-        f"{len(clean_edges)} edges, DAG={is_valid}"
-    )
 
     return {
         "concepts": concepts,
@@ -255,155 +164,94 @@ def generate_curriculum(
     }
 
 
-def _validate_and_repair_dag(roadmap: dict) -> dict:
-    """Valida y repara el DAG asegurando conectividad entre fases"""
+# ═══════════════════════════════════════════════════════════════════════════════
+# NUEVA VERSIÓN: PROMPT 1 - ESTRUCTURA (Enfoque Noruego)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-    # Recopilar todos los subtemas con sus metadatos
-    all_subtopics = []
-    phase_map = {}
-
-    for phase in roadmap.get("phases", []):
-        for topic in phase.get("topics", []):
-            for subtopic in topic.get("subtopics", []):
-                label = subtopic["label"]
-                all_subtopics.append({
-                    "label": label,
-                    "prerequisites": subtopic.get("prerequisites", []),
-                    "phase": phase.get("phase_number", 1),
-                    "topic": topic.get("topic_name", "")
-                })
-                phase_map[label] = phase.get("phase_number", 1)
-
-    # Verificar conectividad entre fases
-    phases = sorted(set(phase_map.values()))
-
-    for i in range(len(phases) - 1):
-        current_phase = phases[i]
-        next_phase = phases[i + 1]
-
-        current_subtopics = [s for s in all_subtopics if s["phase"] == current_phase]
-        next_subtopics = [s for s in all_subtopics if s["phase"] == next_phase]
-
-        if not current_subtopics or not next_subtopics:
-            continue
-
-        # Conectar el último subtema de la fase actual con el primero de la siguiente
-        last_current = current_subtopics[-1]["label"]
-        first_next = next_subtopics[0]
-
-        # Verificar si ya tiene dependencias de fase anterior
-        has_prev_phase_prereq = False
-        for prereq in first_next["prerequisites"]:
-            if phase_map.get(prereq, 0) < next_phase:
-                has_prev_phase_prereq = True
-                break
-
-        if not has_prev_phase_prereq:
-            if last_current not in first_next["prerequisites"]:
-                first_next["prerequisites"].append(last_current)
-                logger.info(f"Reparado: {first_next['label']} ahora depende de {last_current}")
-
-    # Actualizar el roadmap con los cambios
-    for phase in roadmap.get("phases", []):
-        for topic in phase.get("topics", []):
-            for subtopic in topic.get("subtopics", []):
-                label = subtopic["label"]
-                original = next((s for s in all_subtopics if s["label"] == label), None)
-                if original:
-                    subtopic["prerequisites"] = original["prerequisites"]
-
-    return roadmap
-
-
-def generate_roadmap(
+def generate_roadmap_structure(
     title: str,
     description: str,
     domain: str = "generic",
     difficulty_level: str = "intermediate",
 ) -> dict:
-    """Genera un roadmap de aprendizaje con dependencias cruzadas entre fases."""
+    """
+    PROMPT 1: Genera solo la estructura del roadmap (fases, temas, subtemas, prerrequisitos)
+    Enfoque: dybdelæring (aprendizaje profundo noruego)
+    """
 
-    duration_map = {
-        "beginner": 2,
-        "intermediate": 4,
-        "advanced": 6,
-        "expert": 6
-    }
+    duration_map = {"beginner": 2, "intermediate": 4, "advanced": 6, "expert": 6}
     duration_months = duration_map.get(difficulty_level, 4)
 
-    # Ejemplo de dependencias cruzadas para que DeepSeek aprenda el patrón
-    example = """
-EJEMPLO DE DEPENDENCIAS CRUZADAS ENTRE FASES (Álgebra):
-
-Fase 1: Suma y Resta
-- N1: Suma de monomios (prerrequisitos: [])
-- N2: Suma de polinomios (prerrequisitos: ["Suma de monomios"])
-- N3: Resta de monomios (prerrequisitos: ["Suma de monomios"])
-- N4: Resta de polinomios (prerrequisitos: ["Suma de polinomios", "Resta de monomios"])
-
-Fase 2: Multiplicación y División
-- N5: Multiplicación de monomios (prerrequisitos: ["Suma de monomios"])
-- N6: Multiplicación de binomios (prerrequisitos: ["Multiplicación de monomios", "Suma de monomios"])
-- N7: División de monomios (prerrequisitos: ["Multiplicación de monomios", "Resta de monomios"])
-- N8: División de polinomios (prerrequisitos: ["Multiplicación de polinomios", "Resta de polinomios"])
-
-Fase 3: Productos Notables
-- N9: Binomio al cuadrado (prerrequisitos: ["Multiplicación de binomios", "Suma de monomios"])
-- N10: Binomios conjugados (prerrequisitos: ["Multiplicación de binomios", "Resta de monomios"])
-
-REGLAS CLAVE PARA DEPENDENCIAS:
-1. Un nodo en Fase 2 puede depender de MÚLTIPLES nodos de la Fase 1
-2. Un nodo en Fase 3 puede depender de MÚLTIPLES nodos de la Fase 2
-3. Las dependencias deben ser PEDAGÓGICAMENTE RELEVANTES (no automáticas)
-4. El grafo debe ser un SOLO COMPONENTE CONECTADO
-5. Cada nodo (excepto los primeros) debe tener al menos UN prerrequisito
+    # Contexto noruego para el prompt
+    norwegian_context = """
+CONTEXTO PEDAGÓGICO (Basado en el sistema educativo noruego - mejores puntajes PISA):
+1. **Dybdelæring (Aprendizaje Profundo)**: No solo memorizar, sino comprender y aplicar
+2. **Real-world problems**: Cada concepto debe resolver un problema real
+3. **Critical thinking**: Fomentar preguntas que requieren reflexión
+4. **Sustainability**: Conectar con Objetivos de Desarrollo Sostenible (ODS)
+5. **Inclusive design**: Accesible para todos los estudiantes
 """
 
-    prompt = f"""Genera un roadmap de aprendizaje COMPLETO con DEPENDENCIAS CRUZADAS entre fases.
+    prompt = f"""Eres un experto pedagogo noruego especializado en "dybdelæring" (aprendizaje profundo).
 
-{example}
+{ norwegian_context }
+
+Genera un roadmap de aprendizaje para:
 
 Curso: {title}
 Descripción: {description}
 Dominio: {domain}
-Nivel: {difficulty_level.upper()}
+Nivel: {difficulty_level}
 Duración: {duration_months} meses
 
-REGLAS OBLIGATORIAS:
-1. Cada fase debe tener 2-3 temas, cada tema 3-5 subtemas
-2. Los subtemas dentro de un tema forman una SECUENCIA de aprendizaje
-3. Los subtemas de Fase 2+ DEBEN tener prerrequisitos de fases ANTERIORES
-4. Las dependencias deben ser PEDAGÓGICAMENTE RELEVANTES
-5. NO crear dependencias automáticas (ej: todo N depende de todo N-1)
-6. El grafo completo debe ser un DAG válido (sin ciclos)
+REGLAS ESTRUCTURALES:
+- Cada fase debe resolver un PROBLEMA REAL
+- Cada fase debe tener 2-3 temas
+- Cada tema debe tener 2-4 subtemas
+- Los prerrequisitos deben ser PEDAGÓGICAMENTE RELEVANTES
+- El grafo completo debe ser un DAG (sin ciclos)
 
-Devuelve SOLO JSON válido. Usa esta estructura:
+RETORNA SOLO JSON VÁLIDO con esta estructura exacta:
 
 {{
   "title": "{title}",
   "duration_months": {duration_months},
+  "real_world_context": "Problema real que resuelve este curso (1-2 frases)",
+  "sustainable_goals": ["ODS 4", "ODS 9"],
   "phases": [
     {{
       "phase_number": 1,
-      "name": "Nombre de la Fase",
+      "name": "Nombre de la fase",
       "months": "1-2",
-      "bloom_levels": ["Recordar", "Comprender"],
-      "objective": "Objetivo educativo de la fase",
-      "expected_outcomes": ["Resultado 1", "Resultado 2"],
+      "real_problem": "Problema real que se resuelve en esta fase",
+      "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
+      "objective": "Objetivo profundo de aprendizaje",
+      "expected_outcomes": ["Resultado esperado 1", "Resultado esperado 2"],
       "skills": ["Habilidad 1", "Habilidad 2"],
       "tech_stack": ["Herramienta 1", "Herramienta 2"],
       "topics": [
         {{
-          "topic_name": "Nombre del Tema",
+          "topic_name": "Nombre del tema",
           "subtopics": [
-            {{"label": "Subtema 1", "description": "Descripción", "difficulty": 1, "prerequisites": []}},
-            {{"label": "Subtema 2", "description": "Descripción", "difficulty": 2, "prerequisites": ["Subtema 1"]}}
+            {{
+              "label": "Nombre del subtema",
+              "description": "Breve descripción",
+              "difficulty": 1,
+              "prerequisites": []
+            }}
           ]
         }}
       ]
     }}
   ]
 }}
+
+Reglas para difficulty:
+- 1 = Principiante (recordar, comprender)
+- 2 = Básico (aplicar)
+- 3 = Intermedio (analizar)
+- 4 = Avanzado (evaluar)
+- 5 = Experto (crear)
 
 Genera el roadmap:"""
 
@@ -412,83 +260,188 @@ Genera el roadmap:"""
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=4000
+            max_tokens=3000
         )
 
         raw = response.choices[0].message.content.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
-        raw = raw.replace('\\"', '"')
+        cleaned = _clean_json_response(raw)
+        roadmap = json.loads(cleaned)
 
-        roadmap = json.loads(raw)
-        logger.info(f"Roadmap generado: {len(roadmap.get('phases', []))} fases")
-
-        roadmap = _validate_and_repair_dag(roadmap)
-
+        logger.info(f"Estructura generada: {len(roadmap.get('phases', []))} fases")
         return roadmap
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Error decodificando JSON: {e}")
-        logger.error(f"Respuesta raw: {raw[:500]}...")
-        return _generate_fallback_roadmap(title, difficulty_level, duration_months)
     except Exception as e:
-        logger.error(f"Error en generate_roadmap: {e}")
-        raise
+        logger.error(f"Error en generate_roadmap_structure: {e}")
+        return _generate_fallback_roadmap_structure(title, difficulty_level, duration_months)
 
 
-def _generate_fallback_roadmap(title: str, difficulty_level: str, duration_months: int) -> dict:
-    """Genera un roadmap de fallback si la API falla"""
+def _generate_fallback_roadmap_structure(title: str, difficulty_level: str, duration_months: int) -> dict:
+    """Estructura de fallback si la API falla"""
     num_phases = 3 if difficulty_level in ["advanced", "expert"] else (2 if difficulty_level == "intermediate" else 1)
 
     phases = []
-    previous_subtopics = []
-
     for i in range(num_phases):
         phase_num = i + 1
         start_month = i * 2 + 1
         end_month = start_month + 1
-
-        topics = []
-        for j in range(2):
-            topic_name = f"Tema {phase_num}.{j+1}"
-            subtopics = []
-            for k in range(3):
-                subtopic_label = f"Subtema {phase_num}.{j+1}.{k+1}"
-                prereqs = []
-                if k > 0:
-                    prereqs.append(f"Subtema {phase_num}.{j+1}.{k}")
-                if i > 0 and j == 0 and k == 0 and previous_subtopics:
-                    prereqs.append(previous_subtopics[-1])
-                subtopics.append({
-                    "label": subtopic_label,
-                    "description": f"Descripción de {subtopic_label}",
-                    "difficulty": phase_num + j + k,
-                    "prerequisites": prereqs
-                })
-                if k == 2:
-                    previous_subtopics.append(subtopic_label)
-            topics.append({
-                "topic_name": topic_name,
-                "subtopics": subtopics
-            })
-
         phases.append({
             "phase_number": phase_num,
-            "name": f"Fase {phase_num}: {title}",
+            "name": f"Fase {phase_num}: Fundamentos de {title}",
             "months": f"{start_month}-{end_month}",
+            "real_problem": f"Resolver problemas básicos relacionados con {title}",
             "bloom_levels": ["Recordar", "Comprender", "Aplicar"],
-            "objective": f"Objetivo de la fase {phase_num}",
-            "expected_outcomes": [f"Resultado {phase_num}.1", f"Resultado {phase_num}.2"],
+            "objective": f"Comprender y aplicar los conceptos fundamentales de {title}",
+            "expected_outcomes": [f"Dominar el concepto {i+1}.1", f"Aplicar {i+1}.2 en proyectos"],
             "skills": [f"Habilidad {phase_num}.1", f"Habilidad {phase_num}.2"],
             "tech_stack": [f"Herramienta {phase_num}.1", f"Herramienta {phase_num}.2"],
-            "topics": topics
+            "topics": [
+                {
+                    "topic_name": f"Tema {phase_num}.1",
+                    "subtopics": [
+                        {"label": f"Subtema {phase_num}.1.1", "description": f"Descripción de Subtema {phase_num}.1.1", "difficulty": 1, "prerequisites": []},
+                        {"label": f"Subtema {phase_num}.1.2", "description": f"Descripción de Subtema {phase_num}.1.2", "difficulty": 2, "prerequisites": [f"Subtema {phase_num}.1.1"]}
+                    ]
+                },
+                {
+                    "topic_name": f"Tema {phase_num}.2",
+                    "subtopics": [
+                        {"label": f"Subtema {phase_num}.2.1", "description": f"Descripción de Subtema {phase_num}.2.1", "difficulty": 2, "prerequisites": []},
+                        {"label": f"Subtema {phase_num}.2.2", "description": f"Descripción de Subtema {phase_num}.2.2", "difficulty": 3, "prerequisites": [f"Subtema {phase_num}.2.1"]}
+                    ]
+                }
+            ]
         })
 
     return {
         "title": title,
         "duration_months": duration_months,
+        "real_world_context": f"Este curso resuelve problemas relacionados con {title}",
+        "sustainable_goals": ["ODS 4 - Educación de calidad"],
         "phases": phases
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROMPT 2 - CONTENIDO EDUCATIVO (Enfoque Noruego)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def generate_subtopic_content(
+    subtopic_label: str,
+    subtopic_description: str,
+    difficulty: int,
+    phase_number: int,
+    prerequisites: list,
+    domain: str = "generic"
+) -> dict:
+    """
+    PROMPT 2: Genera contenido educativo detallado para un subtema específico
+    Enfoque: dybdelæring (aprendizaje profundo) con ejemplos contextuales
+    """
+
+    difficulty_text = {
+        1: "Principiante - conceptos fundamentales",
+        2: "Básico - primeros pasos prácticos",
+        3: "Intermedio - profundización",
+        4: "Avanzado - casos complejos",
+        5: "Experto - optimización y certificación"
+    }.get(difficulty, "Intermedio")
+
+    prompt = f"""Eres un experto pedagogo noruego especializado en "dybdelæring" (aprendizaje profundo).
+
+Genera contenido educativo de alta calidad para:
+
+Concepto: {subtopic_label}
+Descripción: {subtopic_description}
+Nivel: {difficulty_text}
+Fase: {phase_number}
+Prerrequisitos: {', '.join(prerequisites) if prerequisites else 'Ninguno'}
+Dominio: {domain}
+
+REGLAS PARA CONTENIDO DE CALIDAD (Modelo noruego):
+
+1. **Real-world problem**: Comienza con un problema real que este concepto resuelve
+2. **Why this matters**: Explica por qué es importante (conexión con la vida real)
+3. **Deep understanding**: Explicación profunda pero accesible (2-3 párrafos)
+4. **Contexto**: Usa ejemplos variados (naturaleza, tecnología, sostenibilidad)
+5. **Critical thinking**: Incluye 2 preguntas que requieren reflexión
+6. **Practice exercise**: Un ejercicio práctico que resuelve un problema real
+
+RETORNA SOLO JSON VÁLIDO con esta estructura:
+
+{{
+  "explanation": "Explicación detallada (3-5 párrafos) comenzando con un problema real",
+  "real_world_examples": [
+    "Ejemplo 1: Contexto práctico",
+    "Ejemplo 2: Contexto internacional",
+    "Ejemplo 3: Contexto local"
+  ],
+  "critical_questions": [
+    "Pregunta de reflexión 1",
+    "Pregunta de reflexión 2"
+  ],
+  "practice_exercise": "Ejercicio práctico que resuelve un problema real",
+  "further_learning": "Recursos adicionales sugeridos"
+}}
+
+Genera solo JSON válido:"""
+
+    try:
+        response = deepseek_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=1500
+        )
+
+        raw = response.choices[0].message.content.strip()
+        cleaned = _clean_json_response(raw)
+        content_data = json.loads(cleaned)
+
+        logger.info(f"Contenido generado para: {subtopic_label}")
+        return content_data
+
+    except Exception as e:
+        logger.error(f"Error generando contenido para {subtopic_label}: {e}")
+        return {
+            "explanation": f"{subtopic_description}\n\nEste concepto es fundamental para entender {subtopic_label}. Practica los ejercicios relacionados.",
+            "real_world_examples": [f"Aplicación práctica de {subtopic_label}", f"Caso de uso real de {subtopic_label}"],
+            "critical_questions": [f"¿Por qué es importante {subtopic_label}?", f"¿Cómo se relaciona con otros conceptos?"],
+            "practice_exercise": f"Crea un pequeño proyecto que utilice {subtopic_label}",
+            "further_learning": "Consulta la documentación oficial para más ejemplos"
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FUNCIÓN PRINCIPAL - ORQUESTA LOS DOS PROMPTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def generate_roadmap(
+    title: str,
+    description: str,
+    domain: str = "generic",
+    difficulty_level: str = "intermediate",
+) -> dict:
+    """
+    Pipeline completo:
+    - Prompt 1: Genera estructura (fases, temas, subtemas)
+    - Prompt 2: Genera contenido para cada subtema (bajo demanda o en batch)
+    """
+
+    logger.info(f"Generando roadmap con enfoque noruego: '{title}' (nivel: {difficulty_level})")
+
+    # PROMPT 1: Generar estructura
+    roadmap = generate_roadmap_structure(title, description, domain, difficulty_level)
+
+    # PROMPT 2: Generar contenido para cada subtema (opcional - puede ser bajo demanda)
+    total_subtopics = 0
+    for phase in roadmap.get("phases", []):
+        for topic in phase.get("topics", []):
+            for subtopic in topic.get("subtopics", []):
+                total_subtopics += 1
+                # Por ahora generamos contenido básico, el contenido detallado se generará bajo demanda
+                subtopic["content"] = subtopic.get("description", "")
+                subtopic["examples"] = []
+
+    logger.info(f"Roadmap completado: {len(roadmap.get('phases', []))} fases, {total_subtopics} conceptos")
+
+    return roadmap

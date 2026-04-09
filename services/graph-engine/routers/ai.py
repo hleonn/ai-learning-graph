@@ -9,6 +9,7 @@ from pipeline.embeddings import generate_course_embeddings
 from pipeline.recommender import recommend_path
 import numpy as np
 
+
 router = APIRouter()
 
 
