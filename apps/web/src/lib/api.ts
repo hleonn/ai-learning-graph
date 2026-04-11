@@ -95,7 +95,21 @@ export const generateRoadmap = async (payload: {
     domain: string
     difficulty_level: string
 }) => {
-    const response = await api.post('/ai/roadmap/generate', payload)
-    // El endpoint devuelve el roadmap directamente
-    return response.data
+    // Usar fetch directamente para evitar problemas con axios
+    const response = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+        throw new Error(`Error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log('📦 Datos recibidos del servidor:', data)
+    console.log('📦 Tiene phases?', data?.phases ? `Sí, ${data.phases.length} fases` : 'No')
+    return data
 }
