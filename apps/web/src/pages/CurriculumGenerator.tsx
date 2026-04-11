@@ -138,9 +138,11 @@ export default function CurriculumGenerator() {
 
         try {
             const data = await generateRoadmap(form)
-            setRoadmap(data)
-            if (data.phases && data.phases.length > 0) {
-                setExpandedPhases({ [data.phases[0].phase_number]: true })
+            // El endpoint ahora devuelve el roadmap directamente, no data.curriculum
+            const roadmapData = data.curriculum || data
+            setRoadmap(roadmapData)
+            if (roadmapData.phases && roadmapData.phases.length > 0) {
+                setExpandedPhases({ [roadmapData.phases[0].phase_number]: true })
             }
         } catch (e) {
             setError('Error generando el roadmap. Verifica que el servidor está activo.')
