@@ -564,9 +564,21 @@ export default function GraphView() {
                                         {expandedPhases[phase.phase_number] && (
                                             <div style={s.phaseContentLeft}>
                                                 <div style={s.bloomLevelsLeft}>
-                                                    {phase.bloom_levels.map(level => (
-                                                        <span key={level} style={s.bloomBadgeLeft}>{level}</span>
-                                                    ))}
+                                                    {phase.bloom_levels.map(level => {
+                                                        // Traducir si viene en inglés
+                                                        const translated = {
+                                                            'Remember': 'Recordar',
+                                                            'Understand': 'Comprender',
+                                                            'Apply': 'Aplicar',
+                                                            'Analyze': 'Analizar',
+                                                            'Evaluate': 'Evaluar',
+                                                            'Create': 'Crear'
+                                                        }[level] || level
+                                                        return (
+                                                            <span key={level}
+                                                                  style={s.bloomBadgeLeft}>{translated}</span>
+                                                        )
+                                                    })}
                                                 </div>
                                                 <p style={s.phaseObjectiveLeft}>{phase.objective.substring(0, 100)}...</p>
                                                 {phase.topics.map((topic, topicIdx) => {
@@ -583,15 +595,21 @@ export default function GraphView() {
                                                     topicProgress = topicTotal > 0 ? Math.round((topicCompleted / topicTotal) * 100) : 0
                                                     return (
                                                         <div key={topicKey} style={s.topicItemLeft}>
-                                                            <div style={s.topicHeaderLeft} onClick={() => toggleTopic(topicKey)}>
+                                                            <div style={s.topicHeaderLeft}
+                                                                 onClick={() => toggleTopic(topicKey)}>
                                                                 <span style={s.topicNameLeft}>{topic.topic_name}</span>
                                                                 <div style={s.topicHeaderRight}>
-                                                                    <span style={s.topicProgress}>{topicProgress}%</span>
-                                                                    <span style={s.expandIcon}>{expandedTopics[topicKey] ? '▼' : '▶'}</span>
+                                                                    <span
+                                                                        style={s.topicProgress}>{topicProgress}%</span>
+                                                                    <span
+                                                                        style={s.expandIcon}>{expandedTopics[topicKey] ? '▼' : '▶'}</span>
                                                                 </div>
                                                             </div>
                                                             <div style={s.topicProgressBar}>
-                                                                <div style={{...s.topicProgressFill, width: `${topicProgress}%`}} />
+                                                                <div style={{
+                                                                    ...s.topicProgressFill,
+                                                                    width: `${topicProgress}%`
+                                                                }}/>
                                                             </div>
                                                             {expandedTopics[topicKey] && (
                                                                 <div style={s.subtopicsListLeft}>
@@ -620,13 +638,21 @@ export default function GraphView() {
                                                                                 }}
                                                                             >
                                                                                 <div style={s.subtopicHeaderLeft}>
-                                                                                    <span style={s.subtopicLabelLeft}>{subtopic.label}</span>
-                                                                                    <span style={{...s.subtopicProgress, color: masteryColor(subProgress)}}>
+                                                                                    <span
+                                                                                        style={s.subtopicLabelLeft}>{subtopic.label}</span>
+                                                                                    <span style={{
+                                                                                        ...s.subtopicProgress,
+                                                                                        color: masteryColor(subProgress)
+                                                                                    }}>
                                                                                         {Math.round(subProgress * 100)}%
                                                                                     </span>
                                                                                 </div>
                                                                                 <div style={s.subtopicProgressBar}>
-                                                                                    <div style={{...s.subtopicProgressFill, width: `${subProgress * 100}%`, background: masteryColor(subProgress)}} />
+                                                                                    <div style={{
+                                                                                        ...s.subtopicProgressFill,
+                                                                                        width: `${subProgress * 100}%`,
+                                                                                        background: masteryColor(subProgress)
+                                                                                    }}/>
                                                                                 </div>
                                                                             </div>
                                                                         )

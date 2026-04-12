@@ -772,8 +772,9 @@ Genera solo JSON válido, sin markdown, sin explicaciones adicionales."""
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=2000
+            temperature=0.5,
+            max_tokens=3600
+            timeout=120
         )
 
         raw = response.choices[0].message.content.strip()
