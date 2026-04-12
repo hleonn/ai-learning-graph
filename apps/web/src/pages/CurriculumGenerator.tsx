@@ -137,20 +137,37 @@ export default function CurriculumGenerator() {
         setIsSaved(false)
 
         try {
-            const roadmapData = await generateRoadmap(form)
+            const response = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: form.title,
+                    description: form.description,
+                    domain: form.domain,
+                    difficulty_level: form.difficulty_level,
+                }),
+            })
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`)
+            }
+
+            const roadmapData = await response.json()
             console.log('Roadmap recibido:', roadmapData)
 
             if (!roadmapData || !roadmapData.phases) {
-                throw new Error('Respuesta inválida del servidor')
+                throw new Error('Respuesta inválida del servidor: no se encontraron fases')
             }
 
             setRoadmap(roadmapData)
             if (roadmapData.phases && roadmapData.phases.length > 0) {
                 setExpandedPhases({ [roadmapData.phases[0].phase_number]: true })
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error('Error:', e)
-            setError('Error generando el roadmap. Verifica que el servidor está activo.')
+            setError(`Error generando el roadmap: ${e.message}`)
         } finally {
             setLoading(false)
         }
