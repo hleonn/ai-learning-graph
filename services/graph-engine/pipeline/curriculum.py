@@ -773,7 +773,7 @@ Genera solo JSON válido, sin markdown, sin explicaciones adicionales."""
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=3600
+            max_tokens=3600,
             timeout=120
         )
 
