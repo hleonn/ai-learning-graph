@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-// import { generateRoadmap } from '../lib/api'
 
 interface Subtopic {
     label: string
@@ -44,7 +43,6 @@ function diffLabel(d: number): string {
 
 const API_URL = 'https://mygateway.up.railway.app'
 
-// Función para calcular posiciones basadas en el orden topológico
 function calculatePositionsFromRoadmap(roadmap: RoadmapData): Record<string, { x: number; y: number }> {
     const positions: Record<string, { x: number; y: number }> = {}
 
@@ -137,6 +135,14 @@ export default function CurriculumGenerator() {
         setIsSaved(false)
 
         try {
+            console.log('📡 Enviando petición a:', 'https://mygateway.up.railway.app/ai/roadmap/generate')
+            console.log('📦 Body:', JSON.stringify({
+                title: form.title,
+                description: form.description,
+                domain: form.domain,
+                difficulty_level: form.difficulty_level,
+            }))
+
             const response = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
                 method: 'POST',
                 headers: {
@@ -150,51 +156,68 @@ export default function CurriculumGenerator() {
                 }),
             })
 
+            console.log('📡 Response status:', response.status)
+            console.log('📡 Response ok:', response.ok)
+            console.log('📡 Headers:', Object.fromEntries(response.headers.entries()))
+
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`)
             }
 
-            // CAMBIO IMPORTANTE: Usar .text() primero para debug
             const rawText = await response.text()
-            console.log('=== RAW RESPONSE ===')
-            console.log(rawText)
+            console.log('=== RAW RESPONSE (primeros 500 chars) ===')
+            console.log(rawText.substring(0, 500))
+            console.log('=== LONGITUD TOTAL:', rawText.length, 'caracteres ===')
 
             let roadmapData
             try {
                 roadmapData = JSON.parse(rawText)
-            } catch (e) {
-                console.error('Error parsing JSON:', e)
-                throw new Error('El servidor no devolvió JSON válido')
+            } catch (e: any) {
+                console.error('❌ Error parsing JSON:', e.message)
+                console.error('❌ Raw text que causó error:', rawText)
+                throw new Error(`El servidor no devolvió JSON válido: ${e.message}`)
             }
 
             console.log('=== PARSED DATA ===')
             console.log('Tipo:', typeof roadmapData)
             console.log('Keys:', Object.keys(roadmapData))
-
-            // Verificar estructura
-            if (!roadmapData || typeof roadmapData !== 'object') {
-                throw new Error('Respuesta inválida: no es un objeto')
+            console.log('¿Tiene "phases"?', roadmapData?.phases ? `Sí, ${roadmapData.phases.length} fases` : 'NO')
+            console.log('¿Tiene "data"?', roadmapData?.data ? 'Sí' : 'NO')
+            if (roadmapData?.data) {
+                console.log('data.keys:', Object.keys(roadmapData.data))
+                console.log('data.phases?', roadmapData.data?.phases ? `Sí, ${roadmapData.data.phases.length}` : 'NO')
             }
 
-            // Buscar phases en diferentes niveles
-            let phases = roadmapData.phases
-            if (!phases && roadmapData.data?.phases) {
+            // Buscar phases en cualquier nivel
+            let actualData = roadmapData
+            let phases = null
+
+            if (roadmapData?.phases) {
+                phases = roadmapData.phases
+                actualData = roadmapData
+            } else if (roadmapData?.data?.phases) {
                 phases = roadmapData.data.phases
-                roadmapData = roadmapData.data
+                actualData = roadmapData.data
+            } else if (Array.isArray(roadmapData) && roadmapData[0]?.phases) {
+                phases = roadmapData[0].phases
+                actualData = roadmapData[0]
             }
 
             if (!phases || !Array.isArray(phases) || phases.length === 0) {
-                console.error('Estructura recibida:', roadmapData)
+                console.error('❌ No se encontraron phases en ninguna estructura')
+                console.error('❌ Estructura completa recibida:', JSON.stringify(roadmapData, null, 2).substring(0, 1000))
                 throw new Error('No se encontraron fases en la respuesta del servidor')
             }
 
-            setRoadmap(roadmapData)
+            console.log('✅ Phases encontradas:', phases.length)
+
+            setRoadmap(actualData)
             if (phases.length > 0) {
                 setExpandedPhases({ [phases[0].phase_number]: true })
             }
 
         } catch (e: any) {
-            console.error('Error:', e)
+            console.error('❌ Error en handleGenerate:', e)
             setError(`Error generando el roadmap: ${e.message}`)
         } finally {
             setLoading(false)
@@ -215,7 +238,6 @@ export default function CurriculumGenerator() {
         }))
     }
 
-    // Guardar curso en Supabase (sin redirigir)
     const handleSaveCourse = async () => {
         if (!roadmap) return
 
@@ -316,7 +338,6 @@ export default function CurriculumGenerator() {
         }
     }
 
-    // Crear materiales para cada subtema en Classroom usando contenido REAL generado por IA
     const createClassroomMaterials = async (classroomCourseId: string) => {
         const token = localStorage.getItem('google_token')
         let materialCount = 0
@@ -325,11 +346,9 @@ export default function CurriculumGenerator() {
         for (const phase of roadmap!.phases) {
             for (const topic of phase.topics) {
                 for (const subtopic of topic.subtopics) {
-                    // Generar contenido educativo bajo demanda con Prompt 2
                     let educationalContent = ""
 
                     try {
-                        // Llamar al endpoint para generar contenido
                         const contentResponse = await fetch('https://mygateway.up.railway.app/api/ai/generate-subtopic-content', {
                             method: 'POST',
                             headers: {
@@ -350,7 +369,6 @@ export default function CurriculumGenerator() {
                         if (contentResponse.ok) {
                             const contentData = await contentResponse.json()
 
-                            // Construir el contenido educativo completo
                             educationalContent = `
 ## 🎯 ¿Por qué aprender esto?
 
@@ -381,7 +399,6 @@ ${contentData.practice_task || `Realiza un ejercicio que aplique ${subtopic.labe
 ${contentData.resources?.map((r: string) => `• ${r}`).join('\n') || '• Documentación oficial\n• Tutoriales en línea'}
 `
                         } else {
-                            // Fallback si no se pudo generar contenido
                             educationalContent = generateFallbackContent(subtopic)
                         }
                     } catch (error) {
@@ -389,7 +406,6 @@ ${contentData.resources?.map((r: string) => `• ${r}`).join('\n') || '• Docum
                         educationalContent = generateFallbackContent(subtopic)
                     }
 
-                    // Crear el material en Classroom
                     try {
                         const response = await fetch(`https://mygateway.up.railway.app/api/classroom/${classroomCourseId}/material-by-subtopic`, {
                             method: 'POST',
@@ -418,7 +434,6 @@ ${contentData.resources?.map((r: string) => `• ${r}`).join('\n') || '• Docum
                         console.error(`❌ Error creando material ${subtopic.label}:`, error)
                     }
 
-                    // Pequeña pausa para evitar rate limiting
                     await new Promise(resolve => setTimeout(resolve, 300))
                 }
             }
@@ -427,7 +442,6 @@ ${contentData.resources?.map((r: string) => `• ${r}`).join('\n') || '• Docum
         return { materialCount, failedCount }
     }
 
-// Función auxiliar para contenido de fallback
     function generateFallbackContent(subtopic: any): string {
         return `
 ## 🎯 ¿Por qué aprender esto?
@@ -462,7 +476,6 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
 `
     }
 
-    // Publicar en Google Classroom
     const publishToClassroom = async () => {
         if (!roadmap) {
             alert('Primero debes generar un roadmap')
@@ -477,7 +490,6 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
 
         setLoading(true)
         try {
-            // Si no está guardado, guardar primero automáticamente
             let courseIdForClassroom = savedCourseId
 
             if (!courseIdForClassroom) {
@@ -505,7 +517,6 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
                 courseIdForClassroom = courseData[0]?.id || courseData.id
                 setSavedCourseId(courseIdForClassroom)
 
-                // Crear nodos y edges
                 for (const phase of roadmap.phases) {
                     for (const topic of phase.topics) {
                         for (const subtopic of topic.subtopics) {
@@ -547,7 +558,6 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
                 alert(`✅ Curso "${form.title}" guardado localmente`)
             }
 
-            // Publicar en Classroom
             const classroomResponse = await fetch('https://mygateway.up.railway.app/api/classroom/create-course', {
                 method: 'POST',
                 headers: {
@@ -567,12 +577,10 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
                 throw new Error(classroomData.error || 'Error al crear el curso en Classroom')
             }
 
-            // Crear materiales para cada subtema usando contenido REAL
             const { materialCount, failedCount } = await createClassroomMaterials(classroomData.courseId)
 
             alert(`✅ Curso publicado en Google Classroom!\n\n📎 Enlace: ${classroomData.alternateLink}\n🔑 Código de clase: ${classroomData.enrollmentCode}\n📚 Materiales creados: ${materialCount} (${failedCount} fallaron)\n\n⚠️ IMPORTANTE: El curso está en modo PROVISIONED. Actívalo manualmente desde Google Classroom.`)
 
-            // Abrir enlace en nueva pestaña
             window.open(classroomData.alternateLink, '_blank')
 
         } catch (error: any) {
