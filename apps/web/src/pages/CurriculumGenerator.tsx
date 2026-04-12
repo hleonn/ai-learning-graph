@@ -135,14 +135,6 @@ export default function CurriculumGenerator() {
         setIsSaved(false)
 
         try {
-            console.log('📡 Enviando petición a:', 'https://mygateway.up.railway.app/ai/roadmap/generate')
-            console.log('📦 Body:', JSON.stringify({
-                title: form.title,
-                description: form.description,
-                domain: form.domain,
-                difficulty_level: form.difficulty_level,
-            }))
-
             const response = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
                 method: 'POST',
                 headers: {
@@ -156,60 +148,50 @@ export default function CurriculumGenerator() {
                 }),
             })
 
-            console.log('📡 Response status:', response.status)
-            console.log('📡 Response ok:', response.ok)
-            console.log('📡 Headers:', Object.fromEntries(response.headers.entries()))
-
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`)
             }
 
-            const rawText = await response.text()
-            console.log('=== RAW RESPONSE (primeros 500 chars) ===')
-            console.log(rawText.substring(0, 500))
-            console.log('=== LONGITUD TOTAL:', rawText.length, 'caracteres ===')
+            const roadmapData = await response.json()
 
-            let roadmapData
-            try {
-                roadmapData = JSON.parse(rawText)
-            } catch (e: any) {
-                console.error('❌ Error parsing JSON:', e.message)
-                console.error('❌ Raw text que causó error:', rawText)
-                throw new Error(`El servidor no devolvió JSON válido: ${e.message}`)
+            // Verificación simple sin Object.keys
+            if (!roadmapData) {
+                throw new Error('Respuesta vacía del servidor')
             }
 
-            console.log('=== PARSED DATA ===')
-            console.log('Tipo:', typeof roadmapData)
-            console.log('Keys:', Object.keys(roadmapData))
-            console.log('¿Tiene "phases"?', roadmapData?.phases ? `Sí, ${roadmapData.phases.length} fases` : 'NO')
-            console.log('¿Tiene "data"?', roadmapData?.data ? 'Sí' : 'NO')
-            if (roadmapData?.data) {
-                console.log('data.keys:', Object.keys(roadmapData.data))
-                console.log('data.phases?', roadmapData.data?.phases ? `Sí, ${roadmapData.data.phases.length}` : 'NO')
-            }
-
-            // Buscar phases en cualquier nivel
-            let actualData = roadmapData
+            // Buscar phases en diferentes lugares
             let phases = null
+            let actualData = null
 
-            if (roadmapData?.phases) {
+            if (roadmapData.phases && Array.isArray(roadmapData.phases)) {
                 phases = roadmapData.phases
                 actualData = roadmapData
-            } else if (roadmapData?.data?.phases) {
+            } else if (roadmapData.data && roadmapData.data.phases && Array.isArray(roadmapData.data.phases)) {
                 phases = roadmapData.data.phases
                 actualData = roadmapData.data
-            } else if (Array.isArray(roadmapData) && roadmapData[0]?.phases) {
+            } else if (Array.isArray(roadmapData) && roadmapData.length > 0 && roadmapData[0].phases) {
                 phases = roadmapData[0].phases
                 actualData = roadmapData[0]
             }
 
-            if (!phases || !Array.isArray(phases) || phases.length === 0) {
-                console.error('❌ No se encontraron phases en ninguna estructura')
-                console.error('❌ Estructura completa recibida:', JSON.stringify(roadmapData, null, 2).substring(0, 1000))
+            if (!phases || phases.length === 0) {
+                // Si no encuentra phases, intenta usar el roadmapData directamente si tiene estructura similar
+                if (roadmapData.title && roadmapData.duration_months && !roadmapData.phases) {
+                    // Posiblemente el servidor devolvió una estructura diferente
+                    console.error('Estructura inesperada, intentando usar directamente:', roadmapData)
+                    throw new Error('La respuesta del servidor no contiene "phases". Contacta al administrador.')
+                }
                 throw new Error('No se encontraron fases en la respuesta del servidor')
             }
 
-            console.log('✅ Phases encontradas:', phases.length)
+            // Asegurar que actualData tenga la estructura correcta
+            if (!actualData) {
+                actualData = {
+                    title: form.title,
+                    duration_months: 4,
+                    phases: phases
+                }
+            }
 
             setRoadmap(actualData)
             if (phases.length > 0) {
@@ -217,7 +199,7 @@ export default function CurriculumGenerator() {
             }
 
         } catch (e: any) {
-            console.error('❌ Error en handleGenerate:', e)
+            console.error('Error:', e)
             setError(`Error generando el roadmap: ${e.message}`)
         } finally {
             setLoading(false)
