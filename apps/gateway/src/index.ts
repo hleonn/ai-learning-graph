@@ -212,18 +212,31 @@ app.use('/auth', authRouter)
 // ── Proxy → Graph Engine ──────────────────────────────────────────────────────
 async function proxyToGraphEngine(req: express.Request, res: express.Response, prefix: string) {
     try {
+        console.log(`📤 Proxy: ${req.method} ${prefix}${req.path}`);
+
         const url = `${GRAPH_ENGINE_URL}/${prefix}${req.path}`
+
         const response = await axios({
             method: req.method,
             url,
             data: req.body,
             headers: { 'Content-Type': 'application/json' },
+            timeout: 120000, // ← AÑADE ESTO: 120 segundos
         })
-        res.json(response.data)
+
+        console.log(`✅ Proxy éxito: ${response.status}`);
+        res.json(response.data);
+
     } catch (error: any) {
-        const status = error.response?.status || 500
-        const message = error.response?.data || { error: 'Graph Engine no disponible' }
-        res.status(status).json(message)
+        console.error(`❌ Proxy error:`, error.message);
+
+        if (error.code === 'ECONNABORTED') {
+            res.status(504).json({ error: 'El servidor tardó demasiado en responder' });
+        } else {
+            const status = error.response?.status || 500;
+            const message = error.response?.data || { error: 'Graph Engine no disponible' };
+            res.status(status).json(message);
+        }
     }
 }
 
