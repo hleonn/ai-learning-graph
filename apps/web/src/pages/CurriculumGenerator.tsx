@@ -122,6 +122,7 @@ export default function CurriculumGenerator() {
     const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({})
     const [savedCourseId, setSavedCourseId] = useState<string | null>(null)
     const [isSaved, setIsSaved] = useState(false)
+    const [saveProgress, setSaveProgress] = useState<{ current: number; total: number } | null>(null)
 
     const handleGenerate = async () => {
         if (!form.title.trim()) {
@@ -221,9 +222,21 @@ export default function CurriculumGenerator() {
         setLoading(true)
         setError(null)
 
+        // Calcular total de operaciones (nodos + edges)
+        let totalSubtopics = 0
+        for (const phase of roadmap.phases) {
+            for (const topic of phase.topics) {
+                totalSubtopics += topic.subtopics.length
+            }
+        }
+        const totalOperations = totalSubtopics + totalSubtopics // nodos + edges
+        let completedOperations = 0
+
+        setSaveProgress({ current: 0, total: totalOperations })
+
         try {
             const positions = calculatePositionsFromRoadmap(roadmap)
-            console.log('Posiciones calculadas:', positions)
+            const labelToId = new Map<string, string>()
 
             const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                 method: 'POST',
@@ -248,22 +261,17 @@ export default function CurriculumGenerator() {
                 throw new Error('No se pudo obtener el ID del curso')
             }
 
-            console.log('Curso creado con ID:', courseId)
             setSavedCourseId(courseId)
             setIsSaved(true)
 
             let nodeCount = 0
             let edgeCount = 0
 
-            // Mapa para guardar la relación label -> id del nodo
-            const labelToId = new Map<string, string>()
-
-            // PRIMERO: Crear todos los nodos y guardar sus IDs
+            // Crear nodos
             for (const phase of roadmap.phases) {
                 for (const topic of phase.topics) {
                     for (const subtopic of topic.subtopics) {
                         const pos = positions[subtopic.label] || { x: 100, y: 100 }
-
                         const nodeResponse = await fetch(`${API_URL}/graph/${courseId}/nodes`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -290,14 +298,15 @@ export default function CurriculumGenerator() {
                                 labelToId.set(subtopic.label, nodeId)
                                 nodeCount++
                             }
-                        } else {
-                            console.error(`Error creating node ${subtopic.label}:`, await nodeResponse.text())
                         }
+
+                        completedOperations++
+                        setSaveProgress({ current: completedOperations, total: totalOperations })
                     }
                 }
             }
 
-            // SEGUNDO: Crear los edges usando los IDs reales
+            // Crear edges
             for (const phase of roadmap.phases) {
                 for (const topic of phase.topics) {
                     for (const subtopic of topic.subtopics) {
@@ -316,24 +325,23 @@ export default function CurriculumGenerator() {
                                         prerequisite_strength: 0.9,
                                     })
                                 })
-
-                                if (edgeResponse.ok) {
-                                    edgeCount++
-                                } else {
-                                    console.error(`Error creating edge ${prereqLabel} -> ${subtopic.label}:`, await edgeResponse.text())
-                                }
+                                if (edgeResponse.ok) edgeCount++
                             }
+                            completedOperations++
+                            setSaveProgress({ current: completedOperations, total: totalOperations })
                         }
                     }
                 }
             }
 
+            setSaveProgress(null)
             alert(`✅ Curso "${form.title}" guardado exitosamente con ${nodeCount} conceptos y ${edgeCount} relaciones`)
 
         } catch (error: any) {
             console.error('Error saving course:', error)
             setError(`Error al guardar: ${error.message}`)
             alert(`Error al guardar el curso: ${error.message}`)
+            setSaveProgress(null)
         } finally {
             setLoading(false)
         }
@@ -717,18 +725,45 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
 
                         <div style={s.buttonContainer}>
                             <button
-                                style={{ ...s.saveBtn }}
+                                style={{...s.saveBtn}}
                                 onClick={handleSaveCourse}
                                 disabled={loading}
                             >
                                 {loading ? 'Guardando...' : '💾 1. Guardar curso'}
                             </button>
+                            {saveProgress && (
+                                <div style={s.progressBarContainer}>
+                                    <div style={s.progressBarTrack}>
+                                        <div
+                                            style={{
+                                                ...s.progressBarFill,
+                                                width: `${(saveProgress.current / saveProgress.total) * 100}%`
+                                            }}
+                                        />
+                                    </div>
+                                    <span style={s.progressText}>
+            Guardando: {Math.round((saveProgress.current / saveProgress.total) * 100)}%
+            ({saveProgress.current}/{saveProgress.total})
+        </span>
+                                </div>
+                            )}
                             <button
-                                style={{ ...s.classroomBtn }}
+                                style={{...s.classroomBtn}}
                                 onClick={publishToClassroom}
                                 disabled={loading}
                             >
                                 {loading ? 'Publicando...' : '📚 2. Publicar en Classroom'}
+                            </button>
+                            <button
+                                style={{...s.programBtn,
+                                opacity: !roadmap ? 0.5 : 1,
+                                    cursor: !roadmap ? 'not-allowed' : 'pointer'
+                                }}
+                                onClick={() => {/* TODO: funcionalidad pendiente */
+                                }}
+                                disabled={!roadmap}
+                            >
+                                📋 Programa del curso
                             </button>
                         </div>
 
@@ -913,4 +948,40 @@ const s: Record<string, React.CSSProperties> = {
     diffBadge: { fontSize: 10, fontWeight: 600, color: '#fff', padding: '2px 8px', borderRadius: 20 },
     subtopicDesc: { fontSize: 12, color: '#6B6E6A', lineHeight: 1.4, marginBottom: 8 },
     prereqs: { fontSize: 11, color: '#1D9E75', background: '#E1F5EE', padding: '4px 8px', borderRadius: 4, display: 'inline-block' },
+    progressBarContainer: {
+        marginTop: 12,
+        padding: '8px 12px',
+        background: '#F1EFE8',
+        borderRadius: 8,
+    },
+    progressBarTrack: {
+        height: 8,
+        background: '#E8E6E1',
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    progressBarFill: {
+        height: '100%',
+        background: '#1D9E75',
+        borderRadius: 4,
+        transition: 'width 0.3s ease',
+    },
+    progressText: {
+        fontSize: 11,
+        color: '#2C2C2A',
+        marginTop: 6,
+        display: 'block',
+        textAlign: 'center',
+    },
+    programBtn: {
+        background: '#6B6E6A',
+        color: '#fff',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '10px 20px',
+        borderRadius: 8,
+        fontSize: 14,
+        fontWeight: 600,
+        flex: 1,
+    },
 }
