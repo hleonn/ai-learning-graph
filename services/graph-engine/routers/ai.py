@@ -365,6 +365,9 @@ def generate_roadmap_endpoint(req: RoadmapRequest):
         domain=req.domain,
         difficulty_level=req.difficulty_level,
     )
+
+    return result
+
 class SubtopicContentRequest(BaseModel):
     subtopic_label: str
     subtopic_description: str
