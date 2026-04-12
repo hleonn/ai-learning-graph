@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { generateRoadmap } from '../lib/api'
+// import { generateRoadmap } from '../lib/api'
 
 interface Subtopic {
     label: string

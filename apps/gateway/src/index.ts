@@ -193,22 +193,22 @@ app.use('/health', healthRouter)
 app.use('/courses', coursesRouter)
 app.use('/auth', authRouter)
 // ── Ruta específica para roadmap generate (DEBE IR ANTES DEL PROXY DE /ai) ─────
-app.post('/ai/roadmap/generate', async (req: Request, res: Response) => {
-    console.log('🎯 Ruta específica /ai/roadmap/generate')
-    try {
-        const response = await axios({
-            method: 'POST',
-            url: `${GRAPH_ENGINE_URL}/ai/roadmap/generate`,
-            data: req.body,
-            headers: { 'Content-Type': 'application/json' },
-        })
-        console.log('✅ Respuesta:', response.status)
-        res.json(response.data)
-    } catch (error: any) {
-        console.error('❌ Error:', error.message)
-        res.status(error.response?.status || 500).json(error.response?.data || { error: 'Error' })
-    }
-})
+// app.post('/ai/roadmap/generate', async (req: Request, res: Response) => {
+//     console.log('🎯 Ruta específica /ai/roadmap/generate')
+//     try {
+//         const response = await axios({
+//             method: 'POST',
+//             url: `${GRAPH_ENGINE_URL}/ai/roadmap/generate`,
+//             data: req.body,
+//             headers: { 'Content-Type': 'application/json' },
+//         })
+//         console.log('✅ Respuesta:', response.status)
+//         res.json(response.data)
+//     } catch (error: any) {
+//         console.error('❌ Error:', error.message)
+//         res.status(error.response?.status || 500).json(error.response?.data || { error: 'Error' })
+//     }
+// })
 // ── Proxy → Graph Engine ──────────────────────────────────────────────────────
 async function proxyToGraphEngine(req: express.Request, res: express.Response, prefix: string) {
     try {
