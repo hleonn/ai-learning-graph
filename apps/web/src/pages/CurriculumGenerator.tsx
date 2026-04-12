@@ -154,12 +154,10 @@ export default function CurriculumGenerator() {
 
             const roadmapData = await response.json()
 
-            // Verificación simple sin Object.keys
             if (!roadmapData) {
                 throw new Error('Respuesta vacía del servidor')
             }
 
-            // Buscar phases en diferentes lugares
             let phases = null
             let actualData = null
 
@@ -175,16 +173,13 @@ export default function CurriculumGenerator() {
             }
 
             if (!phases || phases.length === 0) {
-                // Si no encuentra phases, intenta usar el roadmapData directamente si tiene estructura similar
                 if (roadmapData.title && roadmapData.duration_months && !roadmapData.phases) {
-                    // Posiblemente el servidor devolvió una estructura diferente
                     console.error('Estructura inesperada, intentando usar directamente:', roadmapData)
                     throw new Error('La respuesta del servidor no contiene "phases". Contacta al administrador.')
                 }
                 throw new Error('No se encontraron fases en la respuesta del servidor')
             }
 
-            // Asegurar que actualData tenga la estructura correcta
             if (!actualData) {
                 actualData = {
                     title: form.title,
@@ -260,6 +255,10 @@ export default function CurriculumGenerator() {
             let nodeCount = 0
             let edgeCount = 0
 
+            // Mapa para guardar la relación label -> id del nodo
+            const labelToId = new Map<string, string>()
+
+            // PRIMERO: Crear todos los nodos y guardar sus IDs
             for (const phase of roadmap.phases) {
                 for (const topic of phase.topics) {
                     for (const subtopic of topic.subtopics) {
@@ -285,24 +284,44 @@ export default function CurriculumGenerator() {
                         })
 
                         if (nodeResponse.ok) {
-                            nodeCount++
+                            const nodeData = await nodeResponse.json()
+                            const nodeId = nodeData.id || nodeData[0]?.id
+                            if (nodeId) {
+                                labelToId.set(subtopic.label, nodeId)
+                                nodeCount++
+                            }
                         } else {
                             console.error(`Error creating node ${subtopic.label}:`, await nodeResponse.text())
                         }
+                    }
+                }
+            }
 
-                        for (const prereq of subtopic.prerequisites) {
-                            const edgeResponse = await fetch(`${API_URL}/graph/${courseId}/edges`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    source: prereq,
-                                    target: subtopic.label,
-                                    prerequisite_strength: 0.9,
+            // SEGUNDO: Crear los edges usando los IDs reales
+            for (const phase of roadmap.phases) {
+                for (const topic of phase.topics) {
+                    for (const subtopic of topic.subtopics) {
+                        const targetId = labelToId.get(subtopic.label)
+                        if (!targetId) continue
+
+                        for (const prereqLabel of subtopic.prerequisites) {
+                            const sourceId = labelToId.get(prereqLabel)
+                            if (sourceId && targetId) {
+                                const edgeResponse = await fetch(`${API_URL}/graph/${courseId}/edges`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        source_id: sourceId,
+                                        target_id: targetId,
+                                        prerequisite_strength: 0.9,
+                                    })
                                 })
-                            })
 
-                            if (edgeResponse.ok) {
-                                edgeCount++
+                                if (edgeResponse.ok) {
+                                    edgeCount++
+                                } else {
+                                    console.error(`Error creating edge ${prereqLabel} -> ${subtopic.label}:`, await edgeResponse.text())
+                                }
                             }
                         }
                     }
@@ -331,7 +350,8 @@ export default function CurriculumGenerator() {
                     let educationalContent = ""
 
                     try {
-                        const contentResponse = await fetch('https://mygateway.up.railway.app/api/ai/generate-subtopic-content', {
+                        // CORRECCIÓN: Quitar /api/ de la URL
+                        const contentResponse = await fetch('https://mygateway.up.railway.app/ai/generate-subtopic-content', {
                             method: 'POST',
                             headers: {
                                 'Authorization': `Bearer ${token}`,
@@ -478,6 +498,7 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
                 console.log('Curso no guardado localmente, guardando primero...')
 
                 const positions = calculatePositionsFromRoadmap(roadmap)
+                const labelToId = new Map<string, string>()
 
                 const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
                     method: 'POST',
@@ -499,11 +520,12 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
                 courseIdForClassroom = courseData[0]?.id || courseData.id
                 setSavedCourseId(courseIdForClassroom)
 
+                // Crear nodos
                 for (const phase of roadmap.phases) {
                     for (const topic of phase.topics) {
                         for (const subtopic of topic.subtopics) {
                             const pos = positions[subtopic.label] || { x: 100, y: 100 }
-                            await fetch(`${API_URL}/graph/${courseIdForClassroom}/nodes`, {
+                            const nodeResponse = await fetch(`${API_URL}/graph/${courseIdForClassroom}/nodes`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -522,16 +544,34 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
                                 })
                             })
 
-                            for (const prereq of subtopic.prerequisites) {
-                                await fetch(`${API_URL}/graph/${courseIdForClassroom}/edges`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        source: prereq,
-                                        target: subtopic.label,
-                                        prerequisite_strength: 0.9,
+                            if (nodeResponse.ok) {
+                                const nodeData = await nodeResponse.json()
+                                const nodeId = nodeData.id || nodeData[0]?.id
+                                if (nodeId) labelToId.set(subtopic.label, nodeId)
+                            }
+                        }
+                    }
+                }
+
+                // Crear edges
+                for (const phase of roadmap.phases) {
+                    for (const topic of phase.topics) {
+                        for (const subtopic of topic.subtopics) {
+                            const targetId = labelToId.get(subtopic.label)
+                            if (!targetId) continue
+                            for (const prereqLabel of subtopic.prerequisites) {
+                                const sourceId = labelToId.get(prereqLabel)
+                                if (sourceId && targetId) {
+                                    await fetch(`${API_URL}/graph/${courseIdForClassroom}/edges`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            source_id: sourceId,
+                                            target_id: targetId,
+                                            prerequisite_strength: 0.9,
+                                        })
                                     })
-                                })
+                                }
                             }
                         }
                     }
