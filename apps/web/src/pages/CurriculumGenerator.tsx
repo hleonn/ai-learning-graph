@@ -155,6 +155,12 @@ export default function CurriculumGenerator() {
             }
 
             const roadmapData = await response.json()
+            console.log('=== RESPUESTA COMPLETA DEL SERVIDOR ===')
+            console.log('Tipo de roadmapData:', typeof roadmapData)
+            console.log('Contenido:', JSON.stringify(roadmapData, null, 2))
+            console.log('¿Tiene phases?', roadmapData?.phases)
+            console.log('¿Tiene data?.phases?', roadmapData?.data?.phases)
+            console.log('Keys del objeto:', Object.keys(roadmapData))
             console.log('Roadmap recibido:', roadmapData)
 
             if (!roadmapData || !roadmapData.phases) {
