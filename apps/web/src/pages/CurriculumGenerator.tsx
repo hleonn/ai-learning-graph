@@ -154,23 +154,45 @@ export default function CurriculumGenerator() {
                 throw new Error(`HTTP error! status: ${response.status}`)
             }
 
-            const roadmapData = await response.json()
-            console.log('=== RESPUESTA COMPLETA DEL SERVIDOR ===')
-            console.log('Tipo de roadmapData:', typeof roadmapData)
-            console.log('Contenido:', JSON.stringify(roadmapData, null, 2))
-            console.log('¿Tiene phases?', roadmapData?.phases)
-            console.log('¿Tiene data?.phases?', roadmapData?.data?.phases)
-            console.log('Keys del objeto:', Object.keys(roadmapData))
-            console.log('Roadmap recibido:', roadmapData)
+            // CAMBIO IMPORTANTE: Usar .text() primero para debug
+            const rawText = await response.text()
+            console.log('=== RAW RESPONSE ===')
+            console.log(rawText)
 
-            if (!roadmapData || !roadmapData.phases) {
-                throw new Error('Respuesta inválida del servidor: no se encontraron fases')
+            let roadmapData
+            try {
+                roadmapData = JSON.parse(rawText)
+            } catch (e) {
+                console.error('Error parsing JSON:', e)
+                throw new Error('El servidor no devolvió JSON válido')
+            }
+
+            console.log('=== PARSED DATA ===')
+            console.log('Tipo:', typeof roadmapData)
+            console.log('Keys:', Object.keys(roadmapData))
+
+            // Verificar estructura
+            if (!roadmapData || typeof roadmapData !== 'object') {
+                throw new Error('Respuesta inválida: no es un objeto')
+            }
+
+            // Buscar phases en diferentes niveles
+            let phases = roadmapData.phases
+            if (!phases && roadmapData.data?.phases) {
+                phases = roadmapData.data.phases
+                roadmapData = roadmapData.data
+            }
+
+            if (!phases || !Array.isArray(phases) || phases.length === 0) {
+                console.error('Estructura recibida:', roadmapData)
+                throw new Error('No se encontraron fases en la respuesta del servidor')
             }
 
             setRoadmap(roadmapData)
-            if (roadmapData.phases && roadmapData.phases.length > 0) {
-                setExpandedPhases({ [roadmapData.phases[0].phase_number]: true })
+            if (phases.length > 0) {
+                setExpandedPhases({ [phases[0].phase_number]: true })
             }
+
         } catch (e: any) {
             console.error('Error:', e)
             setError(`Error generando el roadmap: ${e.message}`)
