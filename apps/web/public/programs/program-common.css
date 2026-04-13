@@ -1,0 +1,820 @@
+/* public/programs/program-common.css */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 20px;
+    min-height: 100vh;
+}
+
+/* Botón de descarga/impresión */
+.action-container {
+    width: 100%;
+    max-width: 900px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.action-btn {
+    background: white;
+    color: #1a1a1a;
+    border: 1px solid #ccc;
+    padding: 10px 24px;
+    border-radius: 30px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+    background: #f0f0f0;
+    border-color: #999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.action-btn.primary {
+    background: #1a1a1a;
+    color: white;
+    border-color: #1a1a1a;
+}
+
+.action-btn.primary:hover {
+    background: #333;
+}
+
+/* Contenedor principal */
+.program {
+    max-width: 900px;
+    width: 100%;
+    background: white;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    border-radius: 16px;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Header */
+.header {
+    background: #1a1a1a;
+    padding: 30px 30px 25px;
+    color: white;
+}
+
+.header h1 {
+    font-size: 2.2rem;
+    margin-bottom: 5px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.header h2 {
+    font-size: 1.2rem;
+    font-weight: 400;
+    opacity: 0.9;
+    margin-bottom: 20px;
+}
+
+.badge-container {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    padding: 4px 12px;
+    border-radius: 30px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+/* Stats */
+.stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: #f8f8f8;
+    padding: 15px 25px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.stat {
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 3px;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-weight: 500;
+}
+
+/* Content */
+.content {
+    padding: 25px 30px;
+}
+
+.section {
+    margin-bottom: 20px;
+}
+
+.section-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 12px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid #1a1a1a;
+    letter-spacing: -0.2px;
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin: 10px 0;
+}
+
+.card {
+    background: #f8f8f8;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+.card h4 {
+    color: #1a1a1a;
+    margin-bottom: 5px;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.card p {
+    color: #444;
+    font-size: 0.8rem;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.tags {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.tag {
+    background: #e0e0e0;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+.project-card {
+    background: white;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+.project-card h4 {
+    color: #1a1a1a;
+    margin-bottom: 5px;
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.project-card p {
+    color: #444;
+    font-size: 0.8rem;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+/* Skills Matrix */
+.skills-matrix {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.skill-group {
+    background: #f8f8f8;
+    border-radius: 6px;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+}
+
+.skill-group h4 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 5px;
+    padding-bottom: 3px;
+    border-bottom: 2px solid #1a1a1a;
+}
+
+.skill-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+
+.skill-item {
+    background: #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+/* ===== ROADMAP ESTILO METRO ===== */
+.metro-roadmap {
+    margin: 15px 0;
+    background: #f8f8f8;
+    border-radius: 12px;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+.metro-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    position: relative;
+}
+
+.metro-line::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 25px;
+    right: 25px;
+    height: 3px;
+    background: #1a1a1a;
+    z-index: 1;
+}
+
+.metro-station {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    flex: 1;
+}
+
+.station-dot {
+    width: 40px;
+    height: 40px;
+    background: #1a1a1a;
+    border: 3px solid white;
+    border-radius: 50%;
+    margin: 0 auto 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.station-name {
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 2px;
+    font-size: 0.8rem;
+}
+
+.station-week {
+    font-size: 0.65rem;
+    color: #666;
+}
+
+.route-card {
+    background: white;
+    border-radius: 8px;
+    padding: 8px;
+    border: 1px solid #e0e0e0;
+    position: relative;
+    overflow: hidden;
+}
+
+.route-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 3px;
+    height: 100%;
+    background: #1a1a1a;
+}
+
+.route-header {
+    margin-bottom: 5px;
+    padding-left: 5px;
+}
+
+.route-phase {
+    font-size: 0.65rem;
+    color: #666;
+    margin-bottom: 1px;
+}
+
+.route-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1a1a1a;
+}
+
+.route-content {
+    padding-left: 5px;
+}
+
+.route-destinations {
+    list-style: none;
+    margin-bottom: 5px;
+}
+
+.route-destinations li {
+    font-size: 0.65rem;
+    color: #444;
+    margin-bottom: 2px;
+    padding-left: 12px;
+    position: relative;
+}
+
+.route-destinations li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: #1a1a1a;
+    font-weight: 700;
+    font-size: 0.65rem;
+}
+
+.route-build {
+    margin-top: 5px;
+    padding: 4px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+/* Career Outcomes */
+.outcome-list {
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px 15px;
+}
+
+.outcome-list li {
+    margin-bottom: 2px;
+    padding-left: 18px;
+    position: relative;
+    color: #333;
+    font-size: 0.8rem;
+}
+
+.outcome-list li::before {
+    content: "✓";
+    color: #1a1a1a;
+    position: absolute;
+    left: 0;
+    font-weight: 700;
+}
+
+.instructor-box {
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+    background: #f8f8f8;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+.instructor-avatar {
+    width: 50px;
+    height: 50px;
+    background: #1a1a1a;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.instructor-info h3 {
+    color: #1a1a1a;
+    margin-bottom: 3px;
+    font-size: 1rem;
+}
+
+.instructor-info p {
+    color: #444;
+    font-size: 0.8rem;
+    margin-bottom: 3px;
+    line-height: 1.4;
+}
+
+.footer {
+    background: #f0f0f0;
+    padding: 15px 25px;
+    text-align: center;
+    border-top: 1px solid #ccc;
+}
+
+.footer h3 {
+    font-size: 1.3rem;
+    color: #1a1a1a;
+    margin-bottom: 8px;
+}
+
+.footer-info {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin: 8px 0;
+    color: #444;
+    font-size: 0.8rem;
+}
+
+.footer small {
+    color: #666;
+    font-size: 0.65rem;
+}
+
+/* Page break control */
+.page-break-before {
+    page-break-before: always;
+}
+
+.keep-together {
+    page-break-inside: avoid;
+}
+
+/* ===== ESTILOS PARA IMPRESIÓN ===== */
+@media print {
+    @page {
+        size: letter;
+        margin: 0.5cm;
+    }
+
+    body {
+        background: white;
+        padding: 0;
+        margin: 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .action-container {
+        display: none;
+    }
+
+    .program {
+        max-width: 100%;
+        box-shadow: none;
+        border-radius: 0;
+        margin: 0;
+    }
+
+    .header {
+        background: white;
+        color: black;
+        border-bottom: 2px solid black;
+        padding: 15px 20px !important;
+    }
+
+    .header h1, .header h2 {
+        color: black;
+    }
+
+    .badge {
+        background: #f0f0f0;
+        color: black;
+        border: 1px solid #999;
+    }
+
+    .stats {
+        background: white;
+        border-bottom: 1px solid black;
+        padding: 10px 20px !important;
+    }
+
+    .stat-number {
+        color: black;
+    }
+
+    .stat-label {
+        color: #333;
+    }
+
+    .content {
+        padding: 15px 20px !important;
+    }
+
+    .section {
+        margin-bottom: 12px !important;
+    }
+
+    .section-title {
+        color: black;
+        border-bottom: 2px solid black;
+        margin-bottom: 8px !important;
+        padding-bottom: 3px !important;
+        font-size: 1.1rem !important;
+    }
+
+    .skills-matrix {
+        gap: 5px !important;
+        margin: 5px 0 8px !important;
+    }
+
+    .skill-group {
+        background: white;
+        border: 1px solid #999;
+        padding: 6px !important;
+    }
+
+    .skill-group h4 {
+        font-size: 0.8rem !important;
+        margin-bottom: 3px !important;
+        padding-bottom: 2px !important;
+    }
+
+    .skill-item {
+        background: #f0f0f0;
+        border: 1px solid #999;
+        color: black;
+        padding: 1px 4px !important;
+        font-size: 0.55rem !important;
+    }
+
+    .grid-2 {
+        gap: 8px !important;
+        margin: 3px 0 !important;
+    }
+
+    .card {
+        background: white;
+        border: 1px solid #999;
+        padding: 6px !important;
+    }
+
+    .card h4 {
+        font-size: 0.85rem !important;
+        margin-bottom: 2px !important;
+    }
+
+    .card p {
+        font-size: 0.7rem !important;
+        margin-bottom: 3px !important;
+    }
+
+    .project-card {
+        background: white;
+        border: 1px solid #999;
+        padding: 6px !important;
+    }
+
+    .project-card h4 {
+        font-size: 0.85rem !important;
+    }
+
+    .project-card p {
+        font-size: 0.7rem !important;
+        margin-bottom: 3px !important;
+    }
+
+    .metro-roadmap {
+        background: white;
+        border: 1px solid #999;
+        padding: 10px !important;
+        margin: 5px 0 !important;
+    }
+
+    .station-dot {
+        background: black;
+        color: white;
+        border: 2px solid white;
+        width: 30px !important;
+        height: 30px !important;
+        font-size: 0.85rem !important;
+    }
+
+    .metro-line::before {
+        background: black;
+    }
+
+    .route-card {
+        background: white;
+        border: 1px solid #999;
+        padding: 5px !important;
+    }
+
+    .route-card::before {
+        background: black;
+    }
+
+    .route-phase {
+        font-size: 0.55rem !important;
+    }
+
+    .route-title {
+        font-size: 0.75rem !important;
+    }
+
+    .route-destinations li {
+        font-size: 0.55rem !important;
+        margin-bottom: 1px !important;
+        padding-left: 10px !important;
+    }
+
+    .route-destinations li::before {
+        color: black;
+        font-size: 0.55rem !important;
+    }
+
+    .route-build {
+        background: #f0f0f0;
+        border: 1px solid #999;
+        padding: 2px !important;
+        margin-top: 3px !important;
+        font-size: 0.5rem !important;
+    }
+
+    .tag {
+        background: #f0f0f0;
+        border: 1px solid #999;
+        color: black;
+    }
+
+    .tag[style*="background: #1a1a1a"] {
+        background: black !important;
+        color: white !important;
+        border: 1px solid black;
+    }
+
+    .outcome-list {
+        gap: 2px 10px !important;
+    }
+
+    .outcome-list li {
+        font-size: 0.7rem !important;
+        margin-bottom: 1px !important;
+        padding-left: 14px !important;
+    }
+
+    .outcome-list li::before {
+        color: black;
+    }
+
+    .instructor-box {
+        background: white;
+        border: 1px solid #999;
+        padding: 8px !important;
+        gap: 8px !important;
+    }
+
+    .instructor-avatar {
+        background: black;
+        color: white;
+        width: 35px !important;
+        height: 35px !important;
+        font-size: 1.2rem !important;
+    }
+
+    .instructor-info h3 {
+        font-size: 0.85rem !important;
+    }
+
+    .instructor-info p {
+        font-size: 0.7rem !important;
+        line-height: 1.3 !important;
+    }
+
+    .footer {
+        background: white;
+        border-top: 2px solid black;
+        padding: 8px 15px !important;
+    }
+
+    .footer h3 {
+        font-size: 1.1rem !important;
+        margin-bottom: 3px !important;
+    }
+
+    .footer-info {
+        gap: 10px !important;
+        margin: 3px 0 !important;
+        font-size: 0.7rem !important;
+    }
+
+    .footer small {
+        font-size: 0.55rem !important;
+    }
+
+    .skills-matrix,
+    .grid-2,
+    .metro-roadmap,
+    .outcome-list,
+    .instructor-box,
+    .footer {
+        page-break-inside: avoid !important;
+    }
+
+    .page-break-before {
+        page-break-before: always;
+    }
+
+    p, div, h1, h2, h3, h4 {
+        margin: 0;
+    }
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+    .header h1 {
+        font-size: 1.8rem;
+    }
+
+    .stats {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+
+    .grid-2, .skills-matrix, .outcome-list {
+        grid-template-columns: 1fr;
+    }
+
+    .content {
+        padding: 15px;
+    }
+
+    .instructor-box {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .footer-info {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .metro-line {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .metro-line::before {
+        display: none;
+    }
+
+    [style*="grid-template-columns: repeat(3, 1fr)"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    [style*="display: flex; justify-content: center"] {
+        flex-direction: column !important;
+        align-items: center !important;
+    }
+
+    .route-card[style*="width"] {
+        width: 100% !important;
+        min-width: auto !important;
+    }
+}

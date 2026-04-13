@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { generateAndDownloadPDF } from '../utils/generateProgramPDF'
 
 interface Subtopic {
     label: string
@@ -553,6 +554,28 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
         }
     }
 
+    // ✅ Función para generar el PDF del programa del curso
+    const handleGenerateProgramPDF = async () => {
+        if (!roadmap) {
+            alert('Primero debes generar un roadmap')
+            return
+        }
+
+        try {
+            setLoading(true)
+            await generateAndDownloadPDF(
+                roadmap,
+                form.title,
+                form.description || `Curso de ${form.title}`
+            )
+        } catch (error: any) {
+            console.error('Error generando PDF:', error)
+            alert(`Error al generar el programa: ${error.message}`)
+        } finally {
+            setLoading(false)
+        }
+    }
+
     return (
         <div style={s.page}>
             <div style={s.header}>
@@ -676,8 +699,8 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
                                     opacity: !roadmap ? 0.5 : 1,
                                     cursor: !roadmap ? 'not-allowed' : 'pointer'
                                 }}
-                                onClick={() => {/* TODO: funcionalidad pendiente */}}
-                                disabled={!roadmap}
+                                onClick={handleGenerateProgramPDF}
+                                disabled={!roadmap || loading}
                             >
                                 📋 Programa del curso
                             </button>
@@ -832,7 +855,7 @@ const s: Record<string, React.CSSProperties> = {
     btn: { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
     loadingNote: { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
     error: { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
-    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, height: '100%', overflowY: 'hidden' },
+    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, height: '100%', overflow: 'hidden' },
     statsRow: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
     statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
     statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
@@ -870,7 +893,7 @@ const s: Record<string, React.CSSProperties> = {
         fontSize: 12,
         textAlign: 'center'
     },
-    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20, flex: 1, overflowY: 'auto', paddingRight: 8, minHeight: 0, },
+    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20, flex: 1, overflowY: 'auto', paddingRight: 8, minHeight: 0 },
     phaseCard: { background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', overflow: 'hidden' },
     phaseHeader: { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: '#F9F9F8', cursor: 'pointer', borderBottom: '1px solid #F1EFE8', flexWrap: 'wrap' },
     phaseNumber: { fontSize: 14, fontWeight: 700, color: '#1D9E75', background: '#E1F5EE', padding: '4px 12px', borderRadius: 20 },
