@@ -131,16 +131,17 @@ export default function CurriculumGenerator() {
         const positions = calculatePositionsFromRoadmap(roadmap)
         const labelToId = new Map<string, string>()
 
-        // Calcular total de operaciones
+        // Calcular total de operaciones (nodos + edges)
         let totalSubtopics = 0
         for (const phase of roadmap.phases) {
             for (const topic of phase.topics) {
                 totalSubtopics += topic.subtopics.length
             }
         }
-        const totalOperations = totalSubtopics * 2 // nodos + edges (aprox)
+        const totalOperations = totalSubtopics * 2
         let completedOperations = 0
 
+        // Mostrar progreso desde el inicio
         setSaveProgress({ current: 0, total: totalOperations })
 
         // Crear curso si no existe
@@ -165,7 +166,7 @@ export default function CurriculumGenerator() {
             setIsSaved(true)
         }
 
-        // Crear nodos
+        // Crear nodos (actualizar progreso)
         for (const phase of roadmap.phases) {
             for (const topic of phase.topics) {
                 for (const subtopic of topic.subtopics) {
@@ -201,7 +202,7 @@ export default function CurriculumGenerator() {
             }
         }
 
-        // Crear edges
+        // Crear edges (actualizar progreso)
         for (const phase of roadmap.phases) {
             for (const topic of phase.topics) {
                 for (const subtopic of topic.subtopics) {
@@ -495,7 +496,8 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
         setLoading(true)
         try {
             // Guardar el curso usando la función compartida (con barra de progreso)
-            const courseId = await saveCourseWithProgress(savedCourseId || undefined)
+            await saveCourseWithProgress(savedCourseId || undefined)
+            // const courseId = await saveCourseWithProgress(savedCourseId || undefined)
 
             const classroomResponse = await fetch('https://mygateway.up.railway.app/api/classroom/create-course', {
                 method: 'POST',
@@ -778,12 +780,12 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
 }
 
 const s: Record<string, React.CSSProperties> = {
-    page: { display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8' },
+    page: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8',overflow: 'hidden', },
     header: { display: 'flex', alignItems: 'center', gap: 16, padding: '12px 24px', background: '#1E3A5F' },
     back: { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
     title: { fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 },
     subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: '2px 0 0' },
-    body: { display: 'flex', gap: 24, padding: 24, alignItems: 'flex-start', flexWrap: 'wrap' },
+    body: { display: 'flex', gap: 24, padding: 24, alignItems: 'flex-start', flexWrap: 'wrap', flex: 1, overflow: 'hidden', },
     formPanel: { background: '#fff', borderRadius: 12, border: '0.5px solid #D3D1C7', padding: 24, width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 },
     field: { display: 'flex', flexDirection: 'column', gap: 6 },
     label: { fontSize: 13, fontWeight: 500, color: '#2C2C2A' },
@@ -794,7 +796,7 @@ const s: Record<string, React.CSSProperties> = {
     btn: { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
     loadingNote: { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
     error: { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
-    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' },
+    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, height: '100%', overflowY: 'hidden' },
     statsRow: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
     statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
     statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
@@ -832,7 +834,7 @@ const s: Record<string, React.CSSProperties> = {
         fontSize: 12,
         textAlign: 'center'
     },
-    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20, maxHeight: 'calc(100vh - 300px)', overflowY: 'auto', paddingRight: 8 },
+    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20, flex:1, overflowY: 'auto', paddingRight: 8 },
     phaseCard: { background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', overflow: 'hidden' },
     phaseHeader: { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: '#F9F9F8', cursor: 'pointer', borderBottom: '1px solid #F1EFE8', flexWrap: 'wrap' },
     phaseNumber: { fontSize: 14, fontWeight: 700, color: '#1D9E75', background: '#E1F5EE', padding: '4px 12px', borderRadius: 20 },
