@@ -124,6 +124,114 @@ export default function CurriculumGenerator() {
     const [isSaved, setIsSaved] = useState(false)
     const [saveProgress, setSaveProgress] = useState<{ current: number; total: number } | null>(null)
 
+    // Función compartida para guardar el curso con barra de progreso
+    const saveCourseWithProgress = async (existingCourseId?: string): Promise<string> => {
+        if (!roadmap) throw new Error('No hay roadmap')
+
+        const positions = calculatePositionsFromRoadmap(roadmap)
+        const labelToId = new Map<string, string>()
+
+        // Calcular total de operaciones
+        let totalSubtopics = 0
+        for (const phase of roadmap.phases) {
+            for (const topic of phase.topics) {
+                totalSubtopics += topic.subtopics.length
+            }
+        }
+        const totalOperations = totalSubtopics * 2 // nodos + edges (aprox)
+        let completedOperations = 0
+
+        setSaveProgress({ current: 0, total: totalOperations })
+
+        // Crear curso si no existe
+        let courseId = existingCourseId
+        if (!courseId) {
+            const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: form.title,
+                    description: form.description || `Curso de ${form.title}`,
+                    domain: form.domain,
+                    difficulty_level: form.difficulty_level,
+                    roadmap: roadmap,
+                })
+            })
+            if (!courseResponse.ok) throw new Error(`Error creating course: ${courseResponse.status}`)
+            const courseData = await courseResponse.json()
+            courseId = courseData[0]?.id || courseData.id
+            if (!courseId) throw new Error('No se pudo obtener el ID del curso')
+            setSavedCourseId(courseId)
+            setIsSaved(true)
+        }
+
+        // Crear nodos
+        for (const phase of roadmap.phases) {
+            for (const topic of phase.topics) {
+                for (const subtopic of topic.subtopics) {
+                    const pos = positions[subtopic.label] || { x: 100, y: 100 }
+                    const nodeResponse = await fetch(`${API_URL}/graph/${courseId}/nodes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            label: subtopic.label,
+                            description: subtopic.description,
+                            difficulty: subtopic.difficulty,
+                            phase: phase.phase_number,
+                            topic: topic.topic_name,
+                            bloom_levels: phase.bloom_levels,
+                            expected_outcomes: phase.expected_outcomes,
+                            skills: phase.skills,
+                            position_x: pos.x,
+                            position_y: pos.y,
+                            content: subtopic.content || '',
+                            examples: subtopic.examples || []
+                        })
+                    })
+
+                    if (nodeResponse.ok) {
+                        const nodeData = await nodeResponse.json()
+                        const nodeId = nodeData.id || nodeData[0]?.id
+                        if (nodeId) labelToId.set(subtopic.label, nodeId)
+                    }
+
+                    completedOperations++
+                    setSaveProgress({ current: completedOperations, total: totalOperations })
+                }
+            }
+        }
+
+        // Crear edges
+        for (const phase of roadmap.phases) {
+            for (const topic of phase.topics) {
+                for (const subtopic of topic.subtopics) {
+                    const targetId = labelToId.get(subtopic.label)
+                    if (!targetId) continue
+
+                    for (const prereqLabel of subtopic.prerequisites) {
+                        const sourceId = labelToId.get(prereqLabel)
+                        if (sourceId && targetId) {
+                            await fetch(`${API_URL}/graph/${courseId}/edges`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    source_id: sourceId,
+                                    target_id: targetId,
+                                    prerequisite_strength: 0.9,
+                                })
+                            })
+                        }
+                        completedOperations++
+                        setSaveProgress({ current: completedOperations, total: totalOperations })
+                    }
+                }
+            }
+        }
+
+        setSaveProgress(null)
+        return courseId
+    }
+
     const handleGenerate = async () => {
         if (!form.title.trim()) {
             setError('El título del curso es requerido')
@@ -222,126 +330,13 @@ export default function CurriculumGenerator() {
         setLoading(true)
         setError(null)
 
-        // Calcular total de operaciones (nodos + edges)
-        let totalSubtopics = 0
-        for (const phase of roadmap.phases) {
-            for (const topic of phase.topics) {
-                totalSubtopics += topic.subtopics.length
-            }
-        }
-        const totalOperations = totalSubtopics + totalSubtopics // nodos + edges
-        let completedOperations = 0
-
-        setSaveProgress({ current: 0, total: totalOperations })
-
         try {
-            const positions = calculatePositionsFromRoadmap(roadmap)
-            const labelToId = new Map<string, string>()
-
-            const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title: form.title,
-                    description: form.description || `Curso de ${form.title}`,
-                    domain: form.domain,
-                    difficulty_level: form.difficulty_level,
-                    roadmap: roadmap,
-                })
-            })
-
-            if (!courseResponse.ok) {
-                throw new Error(`Error creating course: ${courseResponse.status}`)
-            }
-
-            const courseData = await courseResponse.json()
-            const courseId = courseData[0]?.id || courseData.id
-
-            if (!courseId) {
-                throw new Error('No se pudo obtener el ID del curso')
-            }
-
-            setSavedCourseId(courseId)
-            setIsSaved(true)
-
-            let nodeCount = 0
-            let edgeCount = 0
-
-            // Crear nodos
-            for (const phase of roadmap.phases) {
-                for (const topic of phase.topics) {
-                    for (const subtopic of topic.subtopics) {
-                        const pos = positions[subtopic.label] || { x: 100, y: 100 }
-                        const nodeResponse = await fetch(`${API_URL}/graph/${courseId}/nodes`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                label: subtopic.label,
-                                description: subtopic.description,
-                                difficulty: subtopic.difficulty,
-                                phase: phase.phase_number,
-                                topic: topic.topic_name,
-                                bloom_levels: phase.bloom_levels,
-                                expected_outcomes: phase.expected_outcomes,
-                                skills: phase.skills,
-                                position_x: pos.x,
-                                position_y: pos.y,
-                                content: subtopic.content || '',
-                                examples: subtopic.examples || []
-                            })
-                        })
-
-                        if (nodeResponse.ok) {
-                            const nodeData = await nodeResponse.json()
-                            const nodeId = nodeData.id || nodeData[0]?.id
-                            if (nodeId) {
-                                labelToId.set(subtopic.label, nodeId)
-                                nodeCount++
-                            }
-                        }
-
-                        completedOperations++
-                        setSaveProgress({ current: completedOperations, total: totalOperations })
-                    }
-                }
-            }
-
-            // Crear edges
-            for (const phase of roadmap.phases) {
-                for (const topic of phase.topics) {
-                    for (const subtopic of topic.subtopics) {
-                        const targetId = labelToId.get(subtopic.label)
-                        if (!targetId) continue
-
-                        for (const prereqLabel of subtopic.prerequisites) {
-                            const sourceId = labelToId.get(prereqLabel)
-                            if (sourceId && targetId) {
-                                const edgeResponse = await fetch(`${API_URL}/graph/${courseId}/edges`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        source_id: sourceId,
-                                        target_id: targetId,
-                                        prerequisite_strength: 0.9,
-                                    })
-                                })
-                                if (edgeResponse.ok) edgeCount++
-                            }
-                            completedOperations++
-                            setSaveProgress({ current: completedOperations, total: totalOperations })
-                        }
-                    }
-                }
-            }
-
-            setSaveProgress(null)
-            alert(`✅ Curso "${form.title}" guardado exitosamente con ${nodeCount} conceptos y ${edgeCount} relaciones`)
-
+            await saveCourseWithProgress(savedCourseId || undefined)
+            alert(`✅ Curso "${form.title}" guardado exitosamente`)
         } catch (error: any) {
             console.error('Error saving course:', error)
             setError(`Error al guardar: ${error.message}`)
             alert(`Error al guardar el curso: ${error.message}`)
-            setSaveProgress(null)
         } finally {
             setLoading(false)
         }
@@ -358,7 +353,6 @@ export default function CurriculumGenerator() {
                     let educationalContent = ""
 
                     try {
-                        // CORRECCIÓN: Quitar /api/ de la URL
                         const contentResponse = await fetch('https://mygateway.up.railway.app/ai/generate-subtopic-content', {
                             method: 'POST',
                             headers: {
@@ -500,93 +494,8 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
 
         setLoading(true)
         try {
-            let courseIdForClassroom = savedCourseId
-
-            if (!courseIdForClassroom) {
-                console.log('Curso no guardado localmente, guardando primero...')
-
-                const positions = calculatePositionsFromRoadmap(roadmap)
-                const labelToId = new Map<string, string>()
-
-                const courseResponse = await fetch('https://mygateway.up.railway.app/courses', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: form.title,
-                        description: form.description || `Curso de ${form.title}`,
-                        domain: form.domain,
-                        difficulty_level: form.difficulty_level,
-                        roadmap: roadmap,
-                    })
-                })
-
-                if (!courseResponse.ok) {
-                    throw new Error(`Error creating course: ${courseResponse.status}`)
-                }
-
-                const courseData = await courseResponse.json()
-                courseIdForClassroom = courseData[0]?.id || courseData.id
-                setSavedCourseId(courseIdForClassroom)
-
-                // Crear nodos
-                for (const phase of roadmap.phases) {
-                    for (const topic of phase.topics) {
-                        for (const subtopic of topic.subtopics) {
-                            const pos = positions[subtopic.label] || { x: 100, y: 100 }
-                            const nodeResponse = await fetch(`${API_URL}/graph/${courseIdForClassroom}/nodes`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    label: subtopic.label,
-                                    description: subtopic.description,
-                                    difficulty: subtopic.difficulty,
-                                    phase: phase.phase_number,
-                                    topic: topic.topic_name,
-                                    bloom_levels: phase.bloom_levels,
-                                    expected_outcomes: phase.expected_outcomes,
-                                    skills: phase.skills,
-                                    position_x: pos.x,
-                                    position_y: pos.y,
-                                    content: subtopic.content || '',
-                                    examples: subtopic.examples || []
-                                })
-                            })
-
-                            if (nodeResponse.ok) {
-                                const nodeData = await nodeResponse.json()
-                                const nodeId = nodeData.id || nodeData[0]?.id
-                                if (nodeId) labelToId.set(subtopic.label, nodeId)
-                            }
-                        }
-                    }
-                }
-
-                // Crear edges
-                for (const phase of roadmap.phases) {
-                    for (const topic of phase.topics) {
-                        for (const subtopic of topic.subtopics) {
-                            const targetId = labelToId.get(subtopic.label)
-                            if (!targetId) continue
-                            for (const prereqLabel of subtopic.prerequisites) {
-                                const sourceId = labelToId.get(prereqLabel)
-                                if (sourceId && targetId) {
-                                    await fetch(`${API_URL}/graph/${courseIdForClassroom}/edges`, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                            source_id: sourceId,
-                                            target_id: targetId,
-                                            prerequisite_strength: 0.9,
-                                        })
-                                    })
-                                }
-                            }
-                        }
-                    }
-                }
-                setIsSaved(true)
-                alert(`✅ Curso "${form.title}" guardado localmente`)
-            }
+            // Guardar el curso usando la función compartida (con barra de progreso)
+            const courseId = await saveCourseWithProgress(savedCourseId || undefined)
 
             const classroomResponse = await fetch('https://mygateway.up.railway.app/api/classroom/create-course', {
                 method: 'POST',
@@ -618,6 +527,7 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
             alert(`Error al publicar: ${error.message}`)
         } finally {
             setLoading(false)
+            setSaveProgress(null)
         }
     }
 
@@ -725,47 +635,48 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
 
                         <div style={s.buttonContainer}>
                             <button
-                                style={{...s.saveBtn}}
+                                style={{ ...s.saveBtn }}
                                 onClick={handleSaveCourse}
                                 disabled={loading}
                             >
                                 {loading ? 'Guardando...' : '💾 1. Guardar curso'}
                             </button>
-                            {saveProgress && (
-                                <div style={s.progressBarContainer}>
-                                    <div style={s.progressBarTrack}>
-                                        <div
-                                            style={{
-                                                ...s.progressBarFill,
-                                                width: `${(saveProgress.current / saveProgress.total) * 100}%`
-                                            }}
-                                        />
-                                    </div>
-                                    <span style={s.progressText}>
-            Guardando: {Math.round((saveProgress.current / saveProgress.total) * 100)}%
-            ({saveProgress.current}/{saveProgress.total})
-        </span>
-                                </div>
-                            )}
                             <button
-                                style={{...s.classroomBtn}}
+                                style={{ ...s.classroomBtn }}
                                 onClick={publishToClassroom}
                                 disabled={loading}
                             >
                                 {loading ? 'Publicando...' : '📚 2. Publicar en Classroom'}
                             </button>
                             <button
-                                style={{...s.programBtn,
-                                opacity: !roadmap ? 0.5 : 1,
+                                style={{
+                                    ...s.programBtn,
+                                    opacity: !roadmap ? 0.5 : 1,
                                     cursor: !roadmap ? 'not-allowed' : 'pointer'
                                 }}
-                                onClick={() => {/* TODO: funcionalidad pendiente */
-                                }}
+                                onClick={() => {/* TODO: funcionalidad pendiente */}}
                                 disabled={!roadmap}
                             >
                                 📋 Programa del curso
                             </button>
                         </div>
+
+                        {saveProgress && (
+                            <div style={s.progressBarContainer}>
+                                <div style={s.progressBarTrack}>
+                                    <div
+                                        style={{
+                                            ...s.progressBarFill,
+                                            width: `${(saveProgress.current / saveProgress.total) * 100}%`
+                                        }}
+                                    />
+                                </div>
+                                <span style={s.progressText}>
+                                    Guardando curso: {Math.round((saveProgress.current / saveProgress.total) * 100)}%
+                                    ({saveProgress.current}/{saveProgress.total} operaciones)
+                                </span>
+                            </div>
+                        )}
 
                         {isSaved && savedCourseId && (
                             <div style={s.successBadge}>
@@ -883,7 +794,7 @@ const s: Record<string, React.CSSProperties> = {
     btn: { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
     loadingNote: { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
     error: { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
-    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 },
+    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' },
     statsRow: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
     statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
     statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
@@ -921,7 +832,7 @@ const s: Record<string, React.CSSProperties> = {
         fontSize: 12,
         textAlign: 'center'
     },
-    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20 },
+    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20, maxHeight: 'calc(100vh - 300px)', overflowY: 'auto', paddingRight: 8 },
     phaseCard: { background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', overflow: 'hidden' },
     phaseHeader: { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: '#F9F9F8', cursor: 'pointer', borderBottom: '1px solid #F1EFE8', flexWrap: 'wrap' },
     phaseNumber: { fontSize: 14, fontWeight: 700, color: '#1D9E75', background: '#E1F5EE', padding: '4px 12px', borderRadius: 20 },
