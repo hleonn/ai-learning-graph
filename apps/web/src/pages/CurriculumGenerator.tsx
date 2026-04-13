@@ -345,6 +345,7 @@ export default function CurriculumGenerator() {
     }
 
     const createClassroomMaterials = async (classroomCourseId: string) => {
+        console.log('🔵 INICIO createClassroomMaterials');
         const token = localStorage.getItem('google_token')
         let materialCount = 0
         let failedCount = 0
@@ -356,8 +357,9 @@ export default function CurriculumGenerator() {
                 totalMaterials += topic.subtopics.length
             }
         }
-
+        console.log(`🔵 Total materiales a crear: ${totalMaterials}`);
         setPublishProgress({ current: 0, total: totalMaterials })
+        console.log('🔵 publishProgress seteado:', { current: 0, total: totalMaterials });
 
         for (const phase of roadmap!.phases) {
             for (const topic of phase.topics) {
@@ -460,7 +462,7 @@ ${contentData.resources?.map((r: string) => `• ${r}`).join('\n') || '• Docum
                 }
             }
         }
-
+        console.log(`🔵 FIN createClassroomMaterials: ${materialCount} creados, ${failedCount} fallaron`);
         setPublishProgress(null)
         return { materialCount, failedCount }
     }
@@ -830,7 +832,7 @@ const s: Record<string, React.CSSProperties> = {
     btn: { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
     loadingNote: { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
     error: { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
-    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, height: '100%', overflowY: 'auto' },
+    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, height: '100%', overflowY: 'hidden' },
     statsRow: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
     statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
     statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },
@@ -868,7 +870,7 @@ const s: Record<string, React.CSSProperties> = {
         fontSize: 12,
         textAlign: 'center'
     },
-    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20, paddingRight: 8 },
+    roadmapContainer: { display: 'flex', flexDirection: 'column', gap: 20, flex: 1, overflowY: 'auto', paddingRight: 8, minHeight: 0, },
     phaseCard: { background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', overflow: 'hidden' },
     phaseHeader: { display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: '#F9F9F8', cursor: 'pointer', borderBottom: '1px solid #F1EFE8', flexWrap: 'wrap' },
     phaseNumber: { fontSize: 14, fontWeight: 700, color: '#1D9E75', background: '#E1F5EE', padding: '4px 12px', borderRadius: 20 },
