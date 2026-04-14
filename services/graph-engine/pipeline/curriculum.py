@@ -75,10 +75,10 @@ def _generate_fallback_structure(title: str, difficulty_level: str, duration_mon
             start_month = int(i * months_per_phase) + 1
             if i == num_phases - 1:
                 end_month = duration_months
-        else:
-            end_month = int((i + 1) * months_per_phase)
-            if end_month <= start_month:
-                end_month = start_month + 1
+            else:
+                end_month = int((i + 1) * months_per_phase)
+                if end_month <= start_month:
+                    end_month = start_month + 1
 
         phases.append({
             "phase_number": phase_num,
