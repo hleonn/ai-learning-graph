@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from routers import health, graph, mastery, ai
+from routers import bootcamp
 
 app = FastAPI(
     title="AI Learning Graph — Graph Engine",
@@ -33,7 +34,7 @@ app.include_router(health.router,   tags=["Health"])
 app.include_router(graph.router,    prefix="/graph",   tags=["Graph"])
 app.include_router(mastery.router,  prefix="/mastery", tags=["Mastery"])
 app.include_router(ai.router,       prefix="/ai",      tags=["AI"])
-
+app.include_router(bootcamp.router)
 @app.on_event("startup")
 async def startup():
     logger.info("Graph Engine arrancando...")
