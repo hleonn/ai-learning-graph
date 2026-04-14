@@ -30,16 +30,19 @@ interface RoadmapData {
     phases: Phase[]
 }
 
-// Función auxiliar para obtener el nivel de dificultad
-function getDifficultyLevel(roadmap: RoadmapData): string {
-    const totalPhases = roadmap.phases.length
-    if (totalPhases <= 2) return 'Principiante'
-    if (totalPhases <= 4) return 'Intermedio'
-    return 'Avanzado'
+// Función auxiliar para obtener el nivel de dificultad (CORREGIDA)
+function getDifficultyLevel(difficultyLevel: string): string {
+    const levelMap: Record<string, string> = {
+        'beginner': 'Principiante',
+        'intermediate': 'Intermedio',
+        'advanced': 'Avanzado',
+        'expert': 'Experto'
+    }
+    return levelMap[difficultyLevel] || 'Intermedio'
 }
 
-// Función para generar el HTML del programa
-function generateProgramHTML(roadmap: RoadmapData, courseTitle: string, courseDescription: string): string {
+// Función para generar el HTML del programa (CORREGIDA - añadido difficultyLevel)
+function generateProgramHTML(roadmap: RoadmapData, courseTitle: string, courseDescription: string, difficultyLevel: string): string {
     // Calcular estadísticas
     const totalPhases = roadmap.phases.length
     let totalConcepts = 0
@@ -56,7 +59,7 @@ function generateProgramHTML(roadmap: RoadmapData, courseTitle: string, courseDe
             <div class="metro-line">
         `
 
-        roadmap.phases.forEach((phase) => {  // ← CORREGIDO: eliminado idx
+        roadmap.phases.forEach((phase) => {
             html += `
                 <div class="metro-station">
                     <div class="station-dot">${phase.phase_number}</div>
@@ -553,11 +556,11 @@ function generateProgramHTML(roadmap: RoadmapData, courseTitle: string, courseDe
             page-break-before: always;
         }
 
-        /* ===== ESTILOS PARA IMPRESIÓN ===== */
+        /* ===== ESTILOS PARA IMPRESIÓN (CORREGIDOS - menos espacios) ===== */
         @media print {
             @page {
                 size: letter;
-                margin: 0.8cm;
+                margin: 0.4cm;
             }
 
             body {
@@ -583,69 +586,168 @@ function generateProgramHTML(roadmap: RoadmapData, courseTitle: string, courseDe
                 background: white;
                 color: black;
                 border-bottom: 2px solid black;
-                padding: 15px 20px !important;
+                padding: 10px 15px !important;
             }
 
             .header::before {
                 display: none;
             }
 
-            .header h1, .header h2 {
-                color: black;
+            .header h1 {
+                font-size: 1.4rem !important;
+                margin-bottom: 2px !important;
+            }
+
+            .header h2 {
+                font-size: 0.8rem !important;
+                margin-bottom: 8px !important;
+            }
+
+            .badge-container {
+                gap: 6px;
             }
 
             .badge {
                 background: #f0f0f0;
                 color: black;
                 border: 1px solid #999;
+                font-size: 0.6rem !important;
+                padding: 2px 8px !important;
             }
 
             .stats {
                 background: white;
                 border-bottom: 1px solid black;
-                padding: 10px 20px !important;
+                padding: 6px 15px !important;
             }
 
             .stat-number {
-                color: black;
+                font-size: 1.2rem !important;
+            }
+
+            .stat-label {
+                font-size: 0.55rem !important;
+            }
+
+            .content {
+                padding: 10px 15px !important;
+            }
+
+            .metro-roadmap {
+                margin: 8px 0 !important;
+                padding: 10px !important;
+            }
+
+            .metro-line {
+                margin-bottom: 10px !important;
             }
 
             .metro-line::before {
-                background: black;
+                top: 15px !important;
+                height: 2px !important;
             }
 
             .station-dot {
-                background: black;
-                color: white;
-                border: 2px solid white;
+                width: 28px !important;
+                height: 28px !important;
+                font-size: 0.8rem !important;
+            }
+
+            .station-name {
+                font-size: 0.6rem !important;
+            }
+
+            .station-week {
+                font-size: 0.5rem !important;
+            }
+
+            .route-card {
+                padding: 8px !important;
+                margin-bottom: 8px !important;
             }
 
             .route-card::before {
-                background: black;
+                width: 3px !important;
+            }
+
+            .route-phase {
+                font-size: 0.55rem !important;
+            }
+
+            .route-title {
+                font-size: 0.8rem !important;
             }
 
             .bloom-tag {
-                background: #f0f0f0;
-                border: 1px solid #999;
+                font-size: 0.5rem !important;
+                padding: 1px 6px !important;
             }
 
             .phase-objective {
-                background: #f8f8f8;
-                border: 1px solid #ddd;
+                font-size: 0.65rem !important;
+                padding: 4px 6px !important;
+                margin-bottom: 6px !important;
             }
 
-            .subtopic-item {
-                border: 1px solid #ddd;
+            .phase-details {
+                gap: 8px !important;
+                margin-bottom: 8px !important;
+            }
+
+            .detail-column {
+                font-size: 0.6rem !important;
+            }
+
+            .detail-column li {
+                font-size: 0.55rem !important;
+                margin-bottom: 1px !important;
+            }
+
+            .topics-section {
+                margin-top: 6px !important;
+                padding-top: 6px !important;
+            }
+
+            .topic-item {
+                margin-bottom: 6px !important;
+                padding: 4px !important;
+            }
+
+            .topic-name {
+                font-size: 0.65rem !important;
+                margin-bottom: 3px !important;
+            }
+
+            .subtopic-label {
+                font-size: 0.6rem !important;
+            }
+
+            .subtopic-desc {
+                font-size: 0.55rem !important;
             }
 
             .prereq-badge {
-                background: #e1f5ee;
-                border: 1px solid #1d9e75;
+                font-size: 0.5rem !important;
+                padding: 1px 4px !important;
             }
 
             .footer {
-                background: white;
-                border-top: 2px solid black;
+                padding: 8px 15px !important;
+            }
+
+            .footer h3 {
+                font-size: 0.9rem !important;
+                margin-bottom: 4px !important;
+            }
+
+            .footer-info {
+                gap: 8px !important;
+                margin: 4px 0 !important;
+                font-size: 0.6rem !important;
+            }
+
+            .footer small {
+                font-size: 0.5rem !important;
             }
 
             .route-card,
@@ -690,7 +792,7 @@ function generateProgramHTML(roadmap: RoadmapData, courseTitle: string, courseDe
         <h2>${courseDescription || 'Programa de aprendizaje estructurado por fases'}</h2>
         <div class="badge-container">
             <span class="badge">${roadmap.duration_months} Meses · Part-Time</span>
-            <span class="badge">Nivel: ${getDifficultyLevel(roadmap)}</span>
+            <span class="badge">Nivel: ${getDifficultyLevel(difficultyLevel)}</span>
             <span class="badge">${totalPhases} Fases · ${totalConcepts} Conceptos</span>
             <span class="badge">AI-Augmented Learning</span>
         </div>
@@ -742,9 +844,9 @@ function generateProgramHTML(roadmap: RoadmapData, courseTitle: string, courseDe
 </html>`
 }
 
-// Función principal para generar y descargar el PDF
-export async function generateAndDownloadPDF(roadmap: RoadmapData, courseTitle: string, courseDescription: string) {
-    const html = generateProgramHTML(roadmap, courseTitle, courseDescription)
+// Función principal para generar y descargar el PDF (CORREGIDA - añadido difficultyLevel)
+export async function generateAndDownloadPDF(roadmap: RoadmapData, courseTitle: string, courseDescription: string, difficultyLevel: string) {
+    const html = generateProgramHTML(roadmap, courseTitle, courseDescription, difficultyLevel)
 
     // Crear un blob con el HTML
     const blob = new Blob([html], { type: 'text/html' })
@@ -761,9 +863,9 @@ export async function generateAndDownloadPDF(roadmap: RoadmapData, courseTitle: 
     return printWindow
 }
 
-// Función para descargar directamente como archivo HTML (alternativa)
-export function downloadAsHTML(roadmap: RoadmapData, courseTitle: string, courseDescription: string) {
-    const html = generateProgramHTML(roadmap, courseTitle, courseDescription)
+// Función para descargar directamente como archivo HTML (CORREGIDA - añadido difficultyLevel)
+export function downloadAsHTML(roadmap: RoadmapData, courseTitle: string, courseDescription: string, difficultyLevel: string) {
+    const html = generateProgramHTML(roadmap, courseTitle, courseDescription, difficultyLevel)
     const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
 

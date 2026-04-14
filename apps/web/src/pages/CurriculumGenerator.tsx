@@ -566,7 +566,8 @@ Realiza un proyecto pequeño que utilice ${subtopic.label} para resolver un prob
             await generateAndDownloadPDF(
                 roadmap,
                 form.title,
-                form.description || `Curso de ${form.title}`
+                form.description || `Curso de ${form.title}`,
+                form.difficulty_level
             )
         } catch (error: any) {
             console.error('Error generando PDF:', error)
@@ -855,7 +856,7 @@ const s: Record<string, React.CSSProperties> = {
     btn: { padding: '10px 0', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600 },
     loadingNote: { fontSize: 12, color: '#888780', textAlign: 'center', lineHeight: 1.6 },
     error: { fontSize: 13, color: '#A32D2D', background: '#FCEBEB', padding: '8px 12px', borderRadius: 8 },
-    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, height: '100%', overflow: 'hidden' },
+    resultPanel: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20, height: 'calc(100vh - 180px)', overflow: 'hidden' },
     statsRow: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' },
     statCard: { background: '#fff', borderRadius: 8, border: '0.5px solid #D3D1C7', padding: '12px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
     statNum: { fontSize: 24, fontWeight: 700, color: '#1E3A5F' },

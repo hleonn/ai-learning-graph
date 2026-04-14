@@ -67,8 +67,11 @@ def _generate_fallback_structure(title: str, difficulty_level: str, duration_mon
     phases = []
     for i in range(num_phases):
         phase_num = i + 1
-        start_month = i * 2 + 1
-        end_month = start_month + 1
+        months_per_phase = duration_months / num_phases
+        start_month = int(i * months_per_phase) + 1
+        end_month = int((i + 1) * months_per_phase)
+        if end_month > duration_months:
+            end_month = duration_months
         phases.append({
             "phase_number": phase_num,
             "name": f"Fase {phase_num}: Fundamentos de {title}",
