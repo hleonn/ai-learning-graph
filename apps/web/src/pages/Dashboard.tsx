@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCourses, getStudentMastery } from '../lib/api'
 import HeatmapView from '../components/HeatmapView'
+import { generateAndDownloadPDF } from '../utils/generateProgramPDF'
 
 interface Course {
     id: string
@@ -11,9 +12,12 @@ interface Course {
     difficulty_level?: string
     created_at: string
     google_classroom_id?: string
+    roadmap?: any
 }
 
 export default function Dashboard() {
+    const navigate = useNavigate()
+
     const [courses, setCourses] = useState<Course[]>([])
     const [allCourses, setAllCourses] = useState<Course[]>([])
     const [loading, setLoading] = useState(true)
@@ -38,8 +42,6 @@ export default function Dashboard() {
 
     // Heatmap state
     const [heatmapCourse, setHeatmapCourse] = useState<{ id: string; title: string } | null>(null)
-
-    const navigate = useNavigate()
 
     const getCurrentUser = async (): Promise<{ id: string; role: string } | null> => {
         const token = localStorage.getItem('google_token')
@@ -156,6 +158,43 @@ export default function Dashboard() {
             console.error('Error getting enrolled courses:', error)
         }
         return []
+    }
+
+    // Función para generar el programa del curso desde el Dashboard
+    const handleGenerateCourseProgram = async (course: Course) => {
+        try {
+            const token = localStorage.getItem('google_token')
+            if (!token) {
+                alert('Debes iniciar sesión')
+                return
+            }
+
+            const response = await fetch(`https://mygateway.up.railway.app/courses/${course.id}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+
+            if (!response.ok) {
+                throw new Error('Error al obtener el curso')
+            }
+
+            const courseData = await response.json()
+
+            if (!courseData.roadmap) {
+                alert('Este curso no tiene un roadmap generado')
+                return
+            }
+
+            await generateAndDownloadPDF(
+                courseData.roadmap,
+                course.title,
+                course.description || `Curso de ${course.title}`,
+                course.difficulty_level || 'intermediate'
+            )
+
+        } catch (error: any) {
+            console.error('Error generando programa:', error)
+            alert(`Error al generar el programa: ${error.message}`)
+        }
     }
 
     useEffect(() => {
@@ -402,6 +441,13 @@ export default function Dashboard() {
                                             <button style={styles.heatmapBtn} onClick={() => setHeatmapCourse({ id: course.id, title: course.title })}>
                                                 📊
                                             </button>
+                                            <button
+                                                style={styles.programBtn}
+                                                onClick={() => handleGenerateCourseProgram(course)}
+                                                title="Generar programa del curso"
+                                            >
+                                                📋 Programa
+                                            </button>
                                         </>
                                     )}
                                 </div>
@@ -491,6 +537,7 @@ const styles: Record<string, React.CSSProperties> = {
     viewGraphBtn: { flex: 1, background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500 },
     viewStudentsBtn: { background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, minWidth: 40 },
     heatmapBtn: { background: '#E1F5EE', color: '#1D9E75', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, minWidth: 40 },
+    programBtn: { background: '#6B6E6A', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, minWidth: 40 },
     deleteBtn: { background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, width: '100%' },
     center: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
     muted: { color: '#888780', fontSize: 16 },
