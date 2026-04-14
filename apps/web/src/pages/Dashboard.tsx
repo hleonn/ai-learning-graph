@@ -15,9 +15,27 @@ interface Course {
     roadmap?: any
 }
 
+// Tipo para las pestañas de navegación
+type TabType = 'courses' | 'programs' | 'classroom'
+
+// Interfaz para programas (bootcamps, diplomados, etc.)
+interface Program {
+    id: string
+    title: string
+    description: string
+    type: 'bootcamp' | 'diploma' | 'specialty' | 'workshop'
+    duration_weeks: number
+    courses_count: number
+    image_url?: string
+}
+
 export default function Dashboard() {
     const navigate = useNavigate()
 
+    // Estado de navegación
+    const [activeTab, setActiveTab] = useState<TabType>('courses')
+
+    // Estados existentes
     const [courses, setCourses] = useState<Course[]>([])
     const [allCourses, setAllCourses] = useState<Course[]>([])
     const [loading, setLoading] = useState(true)
@@ -29,6 +47,10 @@ export default function Dashboard() {
     const [courseAvgProgress, setCourseAvgProgress] = useState<Record<string, number>>({})
     const [userRole, setUserRole] = useState<string>('teacher')
     const [enrolledCourses, setEnrolledCourses] = useState<Set<string>>(new Set())
+
+    // Estados para programas (inicialmente vacíos)
+    const [programs, setPrograms] = useState<Program[]>([])
+    const [loadingPrograms, setLoadingPrograms] = useState(false)
 
     // Google Classroom state
     const [googleCourses, setGoogleCourses] = useState<any[]>([])
@@ -197,6 +219,46 @@ export default function Dashboard() {
         }
     }
 
+    // Función para cargar programas (futura implementación)
+    const loadPrograms = async () => {
+        setLoadingPrograms(true)
+        try {
+            // TODO: Conectar con API real cuando exista
+            // Por ahora datos de ejemplo para mostrar la estructura
+            const mockPrograms: Program[] = [
+                {
+                    id: '1',
+                    title: 'Data Science Bootcamp',
+                    description: 'Conviértete en Científico de Datos en 12 semanas',
+                    type: 'bootcamp',
+                    duration_weeks: 12,
+                    courses_count: 4
+                },
+                {
+                    id: '2',
+                    title: 'Diplomado en Desarrollo Full Stack',
+                    description: 'Domina frontend y backend con proyectos reales',
+                    type: 'diploma',
+                    duration_weeks: 16,
+                    courses_count: 6
+                },
+                {
+                    id: '3',
+                    title: 'Especialidad en Machine Learning',
+                    description: 'Aprende los algoritmos más avanzados de ML',
+                    type: 'specialty',
+                    duration_weeks: 8,
+                    courses_count: 3
+                }
+            ]
+            setPrograms(mockPrograms)
+        } catch (error) {
+            console.error('Error loading programs:', error)
+        } finally {
+            setLoadingPrograms(false)
+        }
+    }
+
     useEffect(() => {
         const init = async () => {
             try {
@@ -211,7 +273,6 @@ export default function Dashboard() {
                         await loadAllCoursesData(user.id)
                     }
 
-                    // Filtrar cursos según rol
                     if (user.role === 'student') {
                         const enrolled = await getEnrolledCourses(user.id)
                         setCourses(enrolled)
@@ -221,6 +282,10 @@ export default function Dashboard() {
                 } else {
                     setCourses(coursesData.courses)
                 }
+
+                // Cargar programas (datos mock por ahora)
+                await loadPrograms()
+
             } catch (err) {
                 setError('No se pudieron cargar los cursos')
             } finally {
@@ -352,6 +417,241 @@ export default function Dashboard() {
 
     const isTeacher = userRole === 'teacher'
 
+    // Renderizar contenido según la pestaña activa
+    const renderContent = () => {
+        switch (activeTab) {
+            case 'courses':
+                return (
+                    <div style={styles.section}>
+                        <h2 style={styles.sectionTitle}>Mis Cursos</h2>
+                        <div style={styles.grid4Cols}>
+                            {courses.map((course) => {
+                                const displayProgress = isTeacher ? courseAvgProgress[course.id] || 0 : courseProgress[course.id] || 0
+                                const progressLabel = isTeacher ? 'promedio clase' : 'completado'
+
+                                return (
+                                    <div key={course.id} style={styles.card}>
+                                        <div style={styles.cardHeader}>
+                                            <div style={styles.cardDomain}>{course.domain}</div>
+                                            <div style={styles.cardDifficulty}>
+                                                {course.difficulty_level === 'beginner' && '🔰 Principiante'}
+                                                {course.difficulty_level === 'intermediate' && '📘 Intermedio'}
+                                                {course.difficulty_level === 'advanced' && '🚀 Avanzado'}
+                                                {course.difficulty_level === 'expert' && '🎓 Certificación'}
+                                                {!course.difficulty_level && '📚 Estándar'}
+                                            </div>
+                                        </div>
+                                        <h3 style={styles.cardTitle}>{course.title}</h3>
+                                        <p style={styles.cardDesc}>{course.description.substring(0, 100)}...</p>
+
+                                        <div style={styles.progressContainer}>
+                                            <div style={styles.progressBar}>
+                                                <div style={{...styles.progressFill, width: `${displayProgress}%`}}/>
+                                            </div>
+                                            <span style={styles.progressText}>{displayProgress}% {progressLabel}</span>
+                                        </div>
+
+                                        <div style={styles.courseStats}>
+                                            <span>📊 {displayProgress}%</span>
+                                            <span>👥 {courseStudentsCount[course.id] || 0}</span>
+                                            <span>{isTeacher ? '👨‍🏫' : (enrolledCourses.has(course.id) ? '🔓' : '🔒')}</span>
+                                        </div>
+
+                                        <div style={styles.buttonGroup}>
+                                            <button style={styles.viewGraphBtn} onClick={() => navigate(`/graph/${course.id}`)}>
+                                                Ver grafo →
+                                            </button>
+                                            {isTeacher && (
+                                                <>
+                                                    <button style={styles.viewStudentsBtn} onClick={() => loadCourseStudents(course.id, course.title)}>
+                                                        👥
+                                                    </button>
+                                                    <button style={styles.heatmapBtn} onClick={() => setHeatmapCourse({ id: course.id, title: course.title })}>
+                                                        📊
+                                                    </button>
+                                                    <button
+                                                        style={styles.programBtn}
+                                                        onClick={() => handleGenerateCourseProgram(course)}
+                                                        title="Generar programa del curso"
+                                                    >
+                                                        📋 Programa
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        {isTeacher && (
+                                            <button style={styles.deleteBtn} onClick={() => deleteCourse(course.id, course.title)}>
+                                                🗑️ Eliminar
+                                            </button>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        {courses.length === 0 && (
+                            <div style={styles.emptyState}>
+                                <p>No tienes cursos disponibles. Genera uno nuevo con el botón "+ Generar currículo con AI"</p>
+                            </div>
+                        )}
+                    </div>
+                )
+
+            case 'programs':
+                return (
+                    <div style={styles.section}>
+                        <div style={styles.sectionHeader}>
+                            <h2 style={styles.sectionTitle}>Programas de Formación</h2>
+                            {isTeacher && (
+                                <button style={styles.generateBtn} onClick={() => alert('Próximamente: Crear nuevo programa')}>
+                                    + Crear programa
+                                </button>
+                            )}
+                        </div>
+                        <p style={styles.sectionDescription}>
+                            Bootcamps, diplomados, especialidades y talleres para una formación más completa.
+                        </p>
+
+                        {loadingPrograms ? (
+                            <p style={styles.muted}>Cargando programas...</p>
+                        ) : (
+                            <>
+                                {/* Bootcamps */}
+                                {programs.filter(p => p.type === 'bootcamp').length > 0 && (
+                                    <div style={styles.subsection}>
+                                        <h3 style={styles.subsectionTitle}>🚀 Bootcamps</h3>
+                                        <div style={styles.grid4Cols}>
+                                            {programs.filter(p => p.type === 'bootcamp').map((program) => (
+                                                <div key={program.id} style={styles.programCard}>
+                                                    <div style={styles.programBadge}>Bootcamp</div>
+                                                    <h3 style={styles.cardTitle}>{program.title}</h3>
+                                                    <p style={styles.cardDesc}>{program.description}</p>
+                                                    <div style={styles.programMeta}>
+                                                        <span>📅 {program.duration_weeks} semanas</span>
+                                                        <span>📚 {program.courses_count} cursos</span>
+                                                    </div>
+                                                    <button style={styles.programDetailBtn} onClick={() => alert(`Detalles de ${program.title}`)}>
+                                                        Ver programa →
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Diplomados */}
+                                {programs.filter(p => p.type === 'diploma').length > 0 && (
+                                    <div style={styles.subsection}>
+                                        <h3 style={styles.subsectionTitle}>🎓 Diplomados</h3>
+                                        <div style={styles.grid4Cols}>
+                                            {programs.filter(p => p.type === 'diploma').map((program) => (
+                                                <div key={program.id} style={styles.programCard}>
+                                                    <div style={styles.programBadge}>Diplomado</div>
+                                                    <h3 style={styles.cardTitle}>{program.title}</h3>
+                                                    <p style={styles.cardDesc}>{program.description}</p>
+                                                    <div style={styles.programMeta}>
+                                                        <span>📅 {program.duration_weeks} semanas</span>
+                                                        <span>📚 {program.courses_count} cursos</span>
+                                                    </div>
+                                                    <button style={styles.programDetailBtn} onClick={() => alert(`Detalles de ${program.title}`)}>
+                                                        Ver programa →
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Especialidades */}
+                                {programs.filter(p => p.type === 'specialty').length > 0 && (
+                                    <div style={styles.subsection}>
+                                        <h3 style={styles.subsectionTitle}>⚡ Especialidades</h3>
+                                        <div style={styles.grid4Cols}>
+                                            {programs.filter(p => p.type === 'specialty').map((program) => (
+                                                <div key={program.id} style={styles.programCard}>
+                                                    <div style={styles.programBadge}>Especialidad</div>
+                                                    <h3 style={styles.cardTitle}>{program.title}</h3>
+                                                    <p style={styles.cardDesc}>{program.description}</p>
+                                                    <div style={styles.programMeta}>
+                                                        <span>📅 {program.duration_weeks} semanas</span>
+                                                        <span>📚 {program.courses_count} cursos</span>
+                                                    </div>
+                                                    <button style={styles.programDetailBtn} onClick={() => alert(`Detalles de ${program.title}`)}>
+                                                        Ver programa →
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Talleres */}
+                                {programs.filter(p => p.type === 'workshop').length === 0 && (
+                                    <div style={styles.emptyState}>
+                                        <p>Próximamente: Talleres prácticos de corta duración.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )
+
+            case 'classroom':
+                return (
+                    <div style={styles.section}>
+                        <div style={styles.sectionHeader}>
+                            <h2 style={styles.sectionTitle}>Google Classroom</h2>
+                            {isTeacher && (
+                                <button
+                                    style={styles.generateBtn}
+                                    onClick={() => {
+                                        if (googleCourses.length === 0) loadGoogleCourses()
+                                        setShowGoogleCourses(!showGoogleCourses)
+                                    }}
+                                >
+                                    📚 {showGoogleCourses ? 'Ocultar' : 'Mostrar'} mis clases
+                                </button>
+                            )}
+                        </div>
+
+                        {showGoogleCourses && isTeacher && (
+                            <>
+                                {loadingGoogle ? (
+                                    <p>Cargando cursos de Google...</p>
+                                ) : googleCourses.length === 0 ? (
+                                    <div style={styles.emptyState}>
+                                        <p>No se encontraron cursos activos en Google Classroom</p>
+                                    </div>
+                                ) : (
+                                    <div style={styles.grid4Cols}>
+                                        {googleCourses.map((course) => (
+                                            <div key={course.id} style={styles.googleCard}>
+                                                <div style={styles.cardDomain}>Google Classroom</div>
+                                                <h3 style={styles.cardTitle}>{course.name}</h3>
+                                                {course.section && <p style={styles.cardDesc}>{course.section}</p>}
+                                                <button style={styles.syncBtn} onClick={() => syncGoogleCourse(course.id, course.name)} disabled={syncing === course.id}>
+                                                    {syncing === course.id ? 'Sincronizando...' : '📥 Importar'}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {!showGoogleCourses && (
+                            <div style={styles.emptyState}>
+                                <p>Haz clic en "Mostrar mis clases" para ver tus cursos de Google Classroom.</p>
+                            </div>
+                        )}
+                    </div>
+                )
+
+            default:
+                return null
+        }
+    }
+
     return (
         <div style={styles.page}>
             <div style={styles.header}>
@@ -361,21 +661,9 @@ export default function Dashboard() {
                         <p style={styles.subtitle}>Plataforma de conocimiento adaptativo</p>
                     </div>
                     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                        {isTeacher && (
+                        {isTeacher && activeTab === 'courses' && (
                             <button style={styles.generateBtn} onClick={() => navigate('/curriculum')}>
                                 + Generar currículo con AI
-                            </button>
-                        )}
-
-                        {userName && isTeacher && (
-                            <button
-                                style={styles.googleClassroomBtn}
-                                onClick={() => {
-                                    if (!showGoogleCourses && googleCourses.length === 0) loadGoogleCourses()
-                                    setShowGoogleCourses(!showGoogleCourses)
-                                }}
-                            >
-                                📚 {showGoogleCourses ? 'Ocultar' : 'Mostrar'} Google Classroom
                             </button>
                         )}
 
@@ -394,101 +682,32 @@ export default function Dashboard() {
                 </div>
             </div>
 
-            <div style={styles.section}>
-                <h2 style={styles.sectionTitle}>Cursos disponibles</h2>
-                <div style={styles.grid4Cols}>
-                    {courses.map((course) => {
-                        const displayProgress = isTeacher ? courseAvgProgress[course.id] || 0 : courseProgress[course.id] || 0
-                        const progressLabel = isTeacher ? 'promedio clase' : 'completado'
-
-                        return (
-                            <div key={course.id} style={styles.card}>
-                                <div style={styles.cardHeader}>
-                                    <div style={styles.cardDomain}>{course.domain}</div>
-                                    <div style={styles.cardDifficulty}>
-                                        {course.difficulty_level === 'beginner' && '🔰 Principiante'}
-                                        {course.difficulty_level === 'intermediate' && '📘 Intermedio'}
-                                        {course.difficulty_level === 'advanced' && '🚀 Avanzado'}
-                                        {course.difficulty_level === 'expert' && '🎓 Certificación'}
-                                        {!course.difficulty_level && '📚 Estándar'}
-                                    </div>
-                                </div>
-                                <h3 style={styles.cardTitle}>{course.title}</h3>
-                                <p style={styles.cardDesc}>{course.description.substring(0, 100)}...</p>
-
-                                <div style={styles.progressContainer}>
-                                    <div style={styles.progressBar}>
-                                        <div style={{...styles.progressFill, width: `${displayProgress}%`}}/>
-                                    </div>
-                                    <span style={styles.progressText}>{displayProgress}% {progressLabel}</span>
-                                </div>
-
-                                <div style={styles.courseStats}>
-                                    <span>📊 {displayProgress}%</span>
-                                    <span>👥 {courseStudentsCount[course.id] || 0}</span>
-                                    <span>{isTeacher ? '👨‍🏫' : (enrolledCourses.has(course.id) ? '🔓' : '🔒')}</span>
-                                </div>
-
-                                <div style={styles.buttonGroup}>
-                                    <button style={styles.viewGraphBtn} onClick={() => navigate(`/graph/${course.id}`)}>
-                                        Ver grafo →
-                                    </button>
-                                    {isTeacher && (
-                                        <>
-                                            <button style={styles.viewStudentsBtn} onClick={() => loadCourseStudents(course.id, course.title)}>
-                                                👥
-                                            </button>
-                                            <button style={styles.heatmapBtn} onClick={() => setHeatmapCourse({ id: course.id, title: course.title })}>
-                                                📊
-                                            </button>
-                                            <button
-                                                style={styles.programBtn}
-                                                onClick={() => handleGenerateCourseProgram(course)}
-                                                title="Generar programa del curso"
-                                            >
-                                                📋 Programa
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-
-                                {isTeacher && (
-                                    <button style={styles.deleteBtn} onClick={() => deleteCourse(course.id, course.title)}>
-                                        🗑️ Eliminar
-                                    </button>
-                                )}
-                            </div>
-                        )
-                    })}
-                </div>
+            {/* Navegación por pestañas */}
+            <div style={styles.tabsContainer}>
+                <button
+                    style={{ ...styles.tab, ...(activeTab === 'courses' ? styles.tabActive : {}) }}
+                    onClick={() => setActiveTab('courses')}
+                >
+                    📚 Mis Cursos
+                </button>
+                <button
+                    style={{ ...styles.tab, ...(activeTab === 'programs' ? styles.tabActive : {}) }}
+                    onClick={() => setActiveTab('programs')}
+                >
+                    🎓 Programas
+                </button>
+                <button
+                    style={{ ...styles.tab, ...(activeTab === 'classroom' ? styles.tabActive : {}) }}
+                    onClick={() => setActiveTab('classroom')}
+                >
+                    🏫 Google Classroom
+                </button>
             </div>
 
-            {showGoogleCourses && isTeacher && (
-                <div style={styles.section}>
-                    <h2 style={styles.sectionTitle}>Mis clases de Google Classroom</h2>
-                    {loadingGoogle ? (
-                        <p>Cargando cursos de Google...</p>
-                    ) : googleCourses.length === 0 ? (
-                        <div style={styles.emptyState}>
-                            <p>No se encontraron cursos activos en Google Classroom</p>
-                        </div>
-                    ) : (
-                        <div style={styles.grid4Cols}>
-                            {googleCourses.map((course) => (
-                                <div key={course.id} style={styles.googleCard}>
-                                    <div style={styles.cardDomain}>Google Classroom</div>
-                                    <h3 style={styles.cardTitle}>{course.name}</h3>
-                                    {course.section && <p style={styles.cardDesc}>{course.section}</p>}
-                                    <button style={styles.syncBtn} onClick={() => syncGoogleCourse(course.id, course.name)} disabled={syncing === course.id}>
-                                        {syncing === course.id ? 'Sincronizando...' : '📥 Importar'}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
+            {/* Contenido dinámico según pestaña */}
+            {renderContent()}
 
+            {/* Modales (mantienen su funcionalidad original) */}
             {showStudentsFor && selectedCourseStudents.length > 0 && (
                 <div style={styles.studentsModal}>
                     <div style={styles.studentsModalContent}>
@@ -516,42 +735,91 @@ export default function Dashboard() {
 
 const styles: Record<string, React.CSSProperties> = {
     page: { maxWidth: 1200, margin: '0 auto', padding: '40px 24px', fontFamily: 'system-ui, sans-serif' },
-    header: { marginBottom: 48 },
+    header: { marginBottom: 32 },
     title: { fontSize: 32, fontWeight: 700, color: '#1E3A5F', margin: 0 },
     subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
+
+    // Navegación por pestañas
+    tabsContainer: {
+        display: 'flex',
+        gap: 8,
+        borderBottom: '1px solid #D3D1C7',
+        marginBottom: 32,
+        paddingBottom: 0
+    },
+    tab: {
+        padding: '12px 24px',
+        fontSize: 15,
+        fontWeight: 500,
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        color: '#6B6E6A',
+        borderBottom: '2px solid transparent',
+        transition: 'all 0.2s ease'
+    },
+    tabActive: {
+        color: '#1E3A5F',
+        borderBottomColor: '#1E3A5F',
+        fontWeight: 600
+    },
+
     section: { marginBottom: 40 },
-    sectionTitle: { fontSize: 18, fontWeight: 600, color: '#2C2C2A', marginBottom: 20 },
-    grid4Cols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 },
+    sectionTitle: { fontSize: 20, fontWeight: 600, color: '#2C2C2A', marginBottom: 20 },
+    sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    sectionDescription: { fontSize: 14, color: '#888780', marginBottom: 24 },
+    subsection: { marginBottom: 32 },
+    subsectionTitle: { fontSize: 18, fontWeight: 600, color: '#1E3A5F', marginBottom: 16, paddingLeft: 4 },
+
+    grid4Cols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 },
+
+    // Tarjetas de cursos (existentes)
     card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column' },
     cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     cardDomain: { fontSize: 10, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em' },
     cardDifficulty: { fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#E8E6E1', color: '#1E3A5F' },
     cardTitle: { fontSize: 16, fontWeight: 600, color: '#1E3A5F', margin: '0 0 6px' },
     cardDesc: { fontSize: 12, color: '#6B6E6A', lineHeight: 1.4, margin: '0 0 12px' },
+
     progressContainer: { marginBottom: 10 },
     progressBar: { height: 4, background: '#F1EFE8', borderRadius: 2, overflow: 'hidden' },
     progressFill: { height: '100%', background: '#1D9E75', borderRadius: 2, transition: 'width 0.3s' },
     progressText: { fontSize: 10, color: '#888780', marginTop: 3, display: 'block', textAlign: 'center' },
+
     courseStats: { display: 'flex', gap: 8, justifyContent: 'space-between', fontSize: 10, color: '#888780', marginBottom: 10, padding: '6px 0', borderTop: '1px solid #F1EFE8', borderBottom: '1px solid #F1EFE8' },
+
     buttonGroup: { display: 'flex', gap: 6, marginBottom: 8 },
     viewGraphBtn: { flex: 1, background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500 },
     viewStudentsBtn: { background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, minWidth: 40 },
     heatmapBtn: { background: '#E1F5EE', color: '#1D9E75', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, minWidth: 40 },
     programBtn: { background: '#6B6E6A', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, minWidth: 40 },
     deleteBtn: { background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, width: '100%' },
+
+    // Tarjetas de programas
+    programCard: { background: 'linear-gradient(135deg, #fff 0%, #F9F9F8 100%)', border: '1px solid #D3D1C7', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', transition: 'transform 0.2s ease' },
+    programBadge: { display: 'inline-block', background: '#1E3A5F', color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 10px', borderRadius: 20, marginBottom: 10, width: 'fit-content' },
+    programMeta: { display: 'flex', gap: 12, fontSize: 11, color: '#888780', margin: '8px 0', padding: '8px 0', borderTop: '1px solid #F1EFE8', borderBottom: '1px solid #F1EFE8' },
+    programDetailBtn: { background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, marginTop: 8, width: '100%' },
+
+    // Google Classroom
+    googleCard: { background: '#fff', border: '1px solid #E8E6E1', borderRadius: 12, padding: 16, transition: 'all 0.2s ease' },
+    syncBtn: { background: '#E1F5EE', color: '#1D9E75', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, width: '100%', marginTop: 10 },
+
+    // Estados vacíos y comunes
+    emptyState: { background: '#fff', borderRadius: 12, padding: '60px 20px', textAlign: 'center', border: '1px solid #D3D1C7', color: '#6B6E6A' },
     center: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
-    muted: { color: '#888780', fontSize: 16 },
+    muted: { color: '#888780', fontSize: 16, textAlign: 'center' },
     error: { color: '#A32D2D', fontSize: 16 },
     generateBtn: { background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+
+    // Usuario
     userBadge: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 8, padding: '4px 10px', border: '1px solid #D3D1C7' },
     userPhoto: { width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' as const },
     userName: { fontSize: 12, fontWeight: 500, color: '#1E3A5F' },
     connected: { fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#E1F5EE', color: '#1D9E75' },
     googleBtn: { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-    googleClassroomBtn: { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-    googleCard: { background: '#fff', border: '1px solid #E8E6E1', borderRadius: 12, padding: 16, transition: 'all 0.2s ease' },
-    syncBtn: { background: '#E1F5EE', color: '#1D9E75', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, width: '100%', marginTop: 10 },
-    emptyState: { background: '#fff', borderRadius: 12, padding: '40px 20px', textAlign: 'center', border: '1px solid #D3D1C7', color: '#6B6E6A' },
+
+    // Modales
     studentsModal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
     studentsModalContent: { background: '#fff', borderRadius: 12, padding: 24, minWidth: 300, maxWidth: 500 },
 }
