@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard'
 import GraphView from './pages/GraphView'
 import CurriculumGenerator from './pages/CurriculumGenerator'
 import AuthCallback from './pages/AuthCallback'
+import BootcampCreator from './pages/BootcampCreator'
 
 function App() {
     return (
@@ -13,6 +14,7 @@ function App() {
                 <Route path="/graph/:courseId" element={<GraphView />} />
                 <Route path="/curriculum" element={<CurriculumGenerator />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/bootcamp" element={<BootcampCreator />} />
             </Routes>
         </BrowserRouter>
     )

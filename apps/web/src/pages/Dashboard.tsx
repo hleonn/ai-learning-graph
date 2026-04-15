@@ -665,6 +665,9 @@ export default function Dashboard() {
                             <button style={styles.generateBtn} onClick={() => navigate('/curriculum')}>
                                 + Generar currículo con AI
                             </button>
+                            <button style={styles.bootcampBtn} onClick={() => navigate('/bootcamp')}>
+                        🎓 Crear Bootcamp
+                    </button>
                         )}
 
                         {userName ? (
@@ -822,4 +825,14 @@ const styles: Record<string, React.CSSProperties> = {
     // Modales
     studentsModal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
     studentsModalContent: { background: '#fff', borderRadius: 12, padding: 24, minWidth: 300, maxWidth: 500 },
+    bootcampBtn: {
+        background: '#9B59B6',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        padding: '8px 16px',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 600,
+    },
 }
