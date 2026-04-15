@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCourses, createCourseWithRoadmap, checkMultipleCoursesGraphs, exportBootcampToGEXF } from '../lib/api'
+import { exportBootcampToGexfLocal } from '../utils/exportToGexf'
 
 interface Course {
     id: string
@@ -121,18 +122,44 @@ export default function BootcampCreator() {
         }
     }
 
+    // Exportar a GEXF - Versión corregida
     const handleExportGEXF = async () => {
-        if (!bootcampId || !bootcampBuilt) {
-            alert('Primero debes construir el bootcamp')
+        if (selectedCourses.length === 0) {
+            alert('No hay cursos seleccionados para exportar')
             return
         }
 
+        setLoading(true)
         try {
-            await exportBootcampToGEXF(bootcampId, bootcampTitle)
-            alert('✅ Archivo GEXF exportado correctamente. Puedes abrirlo con Gephi.')
+            // Si el bootcamp está construido virtualmente, usar exportación local
+            if (bootcampBuilt || selectedCourses.length > 0) {
+                const success = await exportBootcampToGexfLocal(
+                    bootcampId || `bootcamp-${Date.now()}`,
+                    bootcampTitle || 'Mi Bootcamp',
+                    selectedCourses
+                )
+
+                if (success) {
+                    alert(`✅ Archivo GEXF exportado correctamente.\n\n` +
+                        `Incluye ${selectedCourses.length} cursos con sus grafos.\n` +
+                        `Puedes abrirlo con Gephi para visualizar la estructura completa.`)
+                } else {
+                    throw new Error('Error en exportación local')
+                }
+            } else {
+                // Intentar con el método de API si existe
+                if (bootcampId) {
+                    await exportBootcampToGEXF(bootcampId, bootcampTitle)
+                    alert('✅ Archivo GEXF exportado correctamente. Puedes abrirlo con Gephi.')
+                } else {
+                    throw new Error('No hay bootcamp para exportar')
+                }
+            }
         } catch (error) {
             console.error('Error:', error)
-            alert('Error al exportar a GEXF')
+            alert('Error al exportar a GEXF. Verifica que los cursos tengan grafos.')
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -306,46 +333,65 @@ export default function BootcampCreator() {
         }
     }
 
-    // Construcción discreta del bootcamp
+    // Construcción virtual del bootcamp (sin backend - CORREGIDA)
     const buildBootcampDiscrete = async () => {
-        if (!bootcampId) {
-            alert('Primero debes obtener una recomendación')
-            return
-        }
-
         if (!allCoursesHaveGraphs) {
             alert('Verifica que todos los cursos tengan grafos primero')
             return
         }
 
+        if (selectedCourses.length === 0) {
+            alert('Selecciona al menos un curso para construir el bootcamp')
+            return
+        }
+
         setBuildingBootcamp(true)
+
         try {
-            const token = localStorage.getItem('google_token')
-            const composeResponse = await fetch('https://mygateway.up.railway.app/bootcamp/compose', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    bootcamp_id: bootcampId,
-                    course_ids: selectedCourses,
-                    student_id: null
-                })
+            // Crear una estructura virtual de bootcamp con los cursos seleccionados
+            const virtualModules: Module[] = selectedCourses.map((courseId, index) => {
+                const course = courses.find(c => c.id === courseId)
+                // const graphInfo = graphCheckResults.get(courseId)
+
+                return {
+                    id: `module-${index}`,
+                    name: course?.title || `Módulo ${index + 1}`,
+                    order: index + 1,
+                    description: course?.description || `Curso: ${course?.title || ''}`,
+                    node_ids: [],
+                    weight: 1 / selectedCourses.length,
+                    complexity: 0.5,
+                    prerequisites_modules: index > 0 ? [index - 1] : [],
+                    estimated_hours: 40
+                }
             })
 
-            if (!composeResponse.ok) {
-                throw new Error(`Error: ${composeResponse.status}`)
+            const virtualBootcamp: Bootcamp = {
+                id: bootcampId || `virtual-${Date.now()}`,
+                title: bootcampTitle,
+                description: bootcampDescription || `Bootcamp de ${bootcampTitle}`,
+                duration_weeks: durationWeeks,
+                total_weight: 1,
+                modules: virtualModules
             }
 
-            const bootcamp = await composeResponse.json()
-            setCreatedBootcamp(bootcamp)
+            setCreatedBootcamp(virtualBootcamp)
             setBootcampBuilt(true)
-            alert(`✅ Bootcamp "${bootcampTitle}" construido exitosamente con ${bootcamp.modules?.length || 0} módulos`)
+
+            // Mostrar resumen de cursos incluidos
+            const courseDetails = selectedCourses.map(courseId => {
+                const course = courses.find(c => c.id === courseId)
+                const graphInfo = graphCheckResults.get(courseId)
+                return `  📚 ${course?.title} (${graphInfo?.nodeCount || 0} nodos, ${graphInfo?.edgeCount || 0} edges)`
+            }).join('\n')
+
+            alert(`✅ Bootcamp "${bootcampTitle}" preparado virtualmente con ${selectedCourses.length} cursos.\n\n` +
+                `Cursos incluidos:\n${courseDetails}\n\n` +
+                `Los cursos están listos para exportar a Gephi.`)
 
         } catch (error) {
-            console.error('Error building bootcamp:', error)
-            alert('Error al construir el bootcamp')
+            console.error('Error building virtual bootcamp:', error)
+            alert('Error al preparar el bootcamp virtual')
         } finally {
             setBuildingBootcamp(false)
         }
@@ -616,7 +662,7 @@ export default function BootcampCreator() {
                         {/* Mostrar mensaje si los grafos están verificados */}
                         {allCoursesHaveGraphs && !bootcampBuilt && selectedCourses.length > 0 && (
                             <div style={styles.successMessage}>
-                                ✅ Todos los cursos tienen sus grafos. Puedes proceder con la construcción.
+                                ✅ Todos los cursos tienen sus grafos. Puedes proceder con la construcción virtual.
                             </div>
                         )}
 
@@ -627,10 +673,10 @@ export default function BootcampCreator() {
                             </div>
                         )}
 
-                        {/* Módulos generados después de construcción */}
+                        {/* Módulos generados después de construcción virtual */}
                         {createdBootcamp && (
                             <div style={styles.recommendationSection}>
-                                <h3 style={styles.sectionSubtitle}>📋 Módulos generados ({createdBootcamp.modules?.length || 0})</h3>
+                                <h3 style={styles.sectionSubtitle}>📋 Bootcamp Virtual - Módulos ({createdBootcamp.modules?.length || 0})</h3>
                                 <div style={styles.modulesList}>
                                     {createdBootcamp.modules?.map((module: Module) => (
                                         <div key={module.id} style={styles.modulePreview}>
@@ -641,13 +687,15 @@ export default function BootcampCreator() {
                                             <div style={styles.moduleName}>{module.name}</div>
                                             <div style={styles.moduleDesc}>{module.description}</div>
                                             <div style={styles.moduleMeta}>
-                                                <span>📦 {module.node_ids.length} conceptos</span>
                                                 <span>📊 Complejidad: {Math.round(module.complexity * 100)}%</span>
                                                 <span>⏱️ {module.estimated_hours}h estimadas</span>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
+                                <p style={{ fontSize: 12, color: '#888780', marginTop: 8, textAlign: 'center' }}>
+                                    ℹ️ Bootcamp virtual generado localmente. Los cursos mantienen sus grafos individuales.
+                                </p>
                             </div>
                         )}
 
@@ -656,9 +704,9 @@ export default function BootcampCreator() {
                             <button
                                 style={styles.exportBtn}
                                 onClick={handleExportGEXF}
-                                disabled={!bootcampBuilt}
+                                disabled={selectedCourses.length === 0 || loading}
                             >
-                                📊 Exportar a Gephi (GEXF)
+                                {loading ? '📊 Exportando...' : '📊 Exportar a Gephi (GEXF)'}
                             </button>
                         </div>
                     </div>
