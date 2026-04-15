@@ -662,14 +662,14 @@ export default function Dashboard() {
                     </div>
                     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                         {isTeacher && activeTab === 'courses' && (
-                            <>
-                            <button style={styles.generateBtn} onClick={() => navigate('/curriculum')}>
-                                + Generar currículo con AI
-                            </button>
-                            <button style={styles.bootcampBtn} onClick={() => navigate('/bootcamp')}>
-                        🎓 Crear Bootcamp
-                    </button>
-                            </>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button style={styles.generateBtn} onClick={() => navigate('/curriculum')}>
+                                    + Generar currículo con AI
+                                </button>
+                                <button style={styles.bootcampBtn} onClick={() => navigate('/bootcamp')}>
+                                    🎓 Crear Bootcamp
+                                </button>
+                            </div>
                         )}
 
                         {userName ? (
