@@ -15,7 +15,8 @@ import networkx as nx
 import openai
 from loguru import logger
 from dotenv import load_dotenv
-
+import uuid
+from db.client import supabase
 load_dotenv()
 
 # Configurar DeepSeek
@@ -466,5 +467,94 @@ def generate_roadmap(
 
     logger.info(f"✅ Roadmap generado: {len(roadmap.get('phases', []))} fases, {total_subtopics} conceptos")
     logger.info(f"💡 El contenido detallado se generará bajo demanda al publicar en Classroom")
+def save_course_graph(course_id: str, roadmap: dict) -> dict:
+    """
+    Guarda el grafo de un curso a partir del roadmap generado por IA.
+    Crea nodos (concept_nodes) y edges (concept_edges) en Supabase.
+    """
+    logger.info(f"Guardando grafo para curso {course_id}")
 
+    concepts = []
+    edges = []
+    label_to_id = {}
+
+    # Extraer conceptos y edges del roadmap
+    for phase in roadmap.get("phases", []):
+        phase_num = phase.get("phase_number", 1)
+        bloom_levels = phase.get("bloom_levels", [])
+        expected_outcomes = phase.get("expected_outcomes", [])
+        skills = phase.get("skills", [])
+        tech_stack = phase.get("tech_stack", [])
+
+        for topic in phase.get("topics", []):
+            topic_name = topic.get("topic_name", "")
+
+            for subtopic in topic.get("subtopics", []):
+                node_id = str(uuid.uuid4())
+                label = subtopic.get("label", "")
+
+                concepts.append({
+                    "id": node_id,
+                    "course_id": course_id,
+                    "label": label,
+                    "description": subtopic.get("description", ""),
+                    "difficulty": subtopic.get("difficulty", 1),
+                    "phase": phase_num,
+                    "topic": topic_name,
+                    "bloom_levels": bloom_levels,
+                    "expected_outcomes": expected_outcomes,
+                    "skills": skills,
+                    "tech_stack": tech_stack,
+                    "position_x": 0,
+                    "position_y": 0,
+                    "content": subtopic.get("content", ""),
+                    "examples": subtopic.get("examples", [])
+                })
+
+                label_to_id[label] = node_id
+
+                # Registrar edges por prerequisites
+                for prereq_label in subtopic.get("prerequisites", []):
+                    edges.append({
+                        "source_label": prereq_label,
+                        "target_label": label,
+                        "strength": 0.9
+                    })
+
+    # Guardar nodos en batches (para evitar timeout)
+    batch_size = 50
+    for i in range(0, len(concepts), batch_size):
+        batch = concepts[i:i+batch_size]
+        result = supabase.table("concept_nodes").insert(batch).execute()
+        if not result.data:
+            logger.error(f"Error guardando nodos batch {i}")
+
+    # Guardar edges
+    edges_created = 0
+    for edge in edges:
+        source_id = label_to_id.get(edge["source_label"])
+        target_id = label_to_id.get(edge["target_label"])
+
+        if source_id and target_id:
+            # Verificar si ya existe el edge
+            existing = supabase.table("concept_edges").select("id").eq("course_id", course_id).eq("source_id", source_id).eq("target_id", target_id).execute()
+
+            if not existing.data:
+                result = supabase.table("concept_edges").insert({
+                    "course_id": course_id,
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "prerequisite_strength": edge["strength"],
+                    "edge_type": "prerequisite"
+                }).execute()
+                if result.data:
+                    edges_created += 1
+
+    logger.info(f"✅ Grafo guardado: {len(concepts)} nodos, {edges_created} edges")
+
+    return {
+        "nodes_created": len(concepts),
+        "edges_created": edges_created,
+        "course_id": course_id
+    }
     return roadmap
