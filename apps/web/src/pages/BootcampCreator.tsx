@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCourses } from '../lib/api'
+import { getCourses, createCourseWithRoadmap, checkMultipleCoursesGraphs, exportBootcampToGEXF } from '../lib/api'
 
 interface Course {
     id: string
@@ -38,6 +38,15 @@ interface Bootcamp {
     total_weight: number
 }
 
+interface GenerationProgress {
+    current: number
+    total: number
+    courseName: string
+    status: 'generating' | 'building_graph' | 'completed' | 'failed'
+    nodeCount?: number
+    edgeCount?: number
+}
+
 export default function BootcampCreator() {
     const navigate = useNavigate()
     const [courses, setCourses] = useState<Course[]>([])
@@ -55,9 +64,11 @@ export default function BootcampCreator() {
     const [bootcampId, setBootcampId] = useState<string | null>(null)
     const [createdBootcamp, setCreatedBootcamp] = useState<Bootcamp | null>(null)
 
-    // Estados del nuevo flujo
+    // Estados del nuevo flujo con feedback mejorado
     const [generatingCourses, setGeneratingCourses] = useState(false)
+    const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null)
     const [checkingGraphs, setCheckingGraphs] = useState(false)
+    const [graphCheckResults, setGraphCheckResults] = useState<Map<string, { hasGraph: boolean; nodeCount: number; edgeCount: number }>>(new Map())
     const [buildingBootcamp, setBuildingBootcamp] = useState(false)
     const [allCoursesHaveGraphs, setAllCoursesHaveGraphs] = useState(false)
     const [generatedCourseIds, setGeneratedCourseIds] = useState<string[]>([])
@@ -111,125 +122,201 @@ export default function BootcampCreator() {
     }
 
     const handleExportGEXF = async () => {
-        if (!bootcampId) return
+        if (!bootcampId || !bootcampBuilt) {
+            alert('Primero debes construir el bootcamp')
+            return
+        }
 
         try {
-            const token = localStorage.getItem('google_token')
-            const response = await fetch(`https://mygateway.up.railway.app/bootcamp/export/gexf`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    bootcamp_id: bootcampId,
-                    include_weights: true
-                })
-            })
-
-            const blob = await response.blob()
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `bootcamp_${bootcampTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.gexf`
-            document.body.appendChild(a)
-            a.click()
-            document.body.removeChild(a)
-            URL.revokeObjectURL(url)
-
+            await exportBootcampToGEXF(bootcampId, bootcampTitle)
             alert('✅ Archivo GEXF exportado correctamente. Puedes abrirlo con Gephi.')
-
         } catch (error) {
             console.error('Error:', error)
             alert('Error al exportar a GEXF')
         }
     }
 
+    // Verificar grafos con información detallada usando la nueva API
     const checkCoursesGraphs = async (courseIds: string[]) => {
         setCheckingGraphs(true)
+
+        const results = await checkMultipleCoursesGraphs(courseIds)
+        setGraphCheckResults(results)
+
+        const allHaveGraphs = Array.from(results.values()).every(r => r.hasGraph)
+        setAllCoursesHaveGraphs(allHaveGraphs)
+        setCheckingGraphs(false)
+
+        // Mostrar feedback detallado
+        const courseNames = courses.filter(c => courseIds.includes(c.id))
+        const missingGraphs = Array.from(results.entries())
+            .filter(([, result]) => !result.hasGraph)
+            .map(([id]) => courseNames.find(c => c.id === id)?.title || id)
+
+        if (missingGraphs.length > 0) {
+            alert(`⚠️ Los siguientes cursos NO tienen grafos:\n${missingGraphs.join('\n')}\n\nDebes generarlos primero usando "Generar cursos faltantes".`)
+        } else {
+            const totalNodes = Array.from(results.values()).reduce((sum, r) => sum + r.nodeCount, 0)
+            const totalEdges = Array.from(results.values()).reduce((sum, r) => sum + r.edgeCount, 0)
+            alert(`✅ Todos los ${courseIds.length} cursos tienen sus grafos correctamente.\n📊 Total: ${totalNodes} nodos, ${totalEdges} edges`)
+        }
+
+        return allHaveGraphs
+    }
+
+    // Generar un curso completo usando la nueva API
+    const generateFullCourse = async (courseInfo: RecommendedCourse, index: number, total: number): Promise<string | null> => {
         try {
-            let allHaveGraphs = true
-            for (const courseId of courseIds) {
-                const response = await fetch(`https://mygateway.up.railway.app/graph/${courseId}`)
-                const data = await response.json()
-                if (!data.nodes || data.nodes.length === 0) {
-                    allHaveGraphs = false
-                    break
-                }
+            // 1. Generar roadmap con IA
+            setGenerationProgress({
+                current: index,
+                total: total,
+                courseName: courseInfo.title,
+                status: 'generating'
+            })
+
+            const roadmapResponse = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: courseInfo.title,
+                    description: courseInfo.description,
+                    domain: courseInfo.domain,
+                    difficulty_level: courseInfo.difficulty_level
+                })
+            })
+
+            if (!roadmapResponse.ok) {
+                throw new Error(`Error generando roadmap: ${roadmapResponse.status}`)
             }
-            setAllCoursesHaveGraphs(allHaveGraphs)
-            return allHaveGraphs
+
+            const roadmapData = await roadmapResponse.json()
+
+            // Extraer fases correctamente
+            let phases = null
+            if (roadmapData.phases && Array.isArray(roadmapData.phases)) {
+                phases = roadmapData.phases
+            } else if (roadmapData.data && roadmapData.data.phases) {
+                phases = roadmapData.data.phases
+            } else if (Array.isArray(roadmapData) && roadmapData[0]?.phases) {
+                phases = roadmapData[0].phases
+            }
+
+            if (!phases || phases.length === 0) {
+                throw new Error('No se generaron fases para el curso')
+            }
+
+            const finalRoadmap = {
+                title: courseInfo.title,
+                duration_months: phases.length,
+                phases: phases
+            }
+
+            // 2. Construir el grafo
+            setGenerationProgress({
+                current: index,
+                total: total,
+                courseName: courseInfo.title,
+                status: 'building_graph'
+            })
+
+            // Usar la nueva función que crea curso + grafo
+            const result = await createCourseWithRoadmap({
+                title: courseInfo.title,
+                description: courseInfo.description,
+                domain: courseInfo.domain,
+                difficulty_level: courseInfo.difficulty_level,
+                roadmap: finalRoadmap
+            })
+
+            if (!result.success) {
+                throw new Error(result.message)
+            }
+
+            setGenerationProgress(prev => prev ? {
+                ...prev,
+                status: 'completed',
+                nodeCount: result.nodeCount,
+                edgeCount: result.edgeCount
+            } : null)
+
+            return result.id
+
         } catch (error) {
-            console.error('Error checking graphs:', error)
-            return false
-        } finally {
-            setCheckingGraphs(false)
+            console.error(`Error generando curso ${courseInfo.title}:`, error)
+            setGenerationProgress(prev => prev ? { ...prev, status: 'failed' } : null)
+            return null
         }
     }
 
-    // Generar cursos faltantes con sus grafos
+    // Generar cursos faltantes con feedback visual detallado
     const generateMissingCourses = async () => {
-        if (!recommendation?.missing_courses?.length) return
-
-        setGeneratingCourses(true)
-        const newCourseIds = [...selectedCourses]
-        const newGeneratedIds: string[] = []
-
-        for (const missingCourse of recommendation.missing_courses) {
-            try {
-                // Generar roadmap
-                const genResponse = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: missingCourse.title,
-                        description: missingCourse.description,
-                        domain: missingCourse.domain,
-                        difficulty_level: missingCourse.difficulty_level
-                    })
-                })
-                const courseData = await genResponse.json()
-
-                // Guardar curso
-                const saveResponse = await fetch('https://mygateway.up.railway.app/courses', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: missingCourse.title,
-                        description: missingCourse.description,
-                        domain: missingCourse.domain,
-                        difficulty_level: missingCourse.difficulty_level,
-                        roadmap: courseData
-                    })
-                })
-                const savedCourse = await saveResponse.json()
-                const newCourseId = savedCourse[0]?.id || savedCourse.id
-
-                if (newCourseId) {
-                    newCourseIds.push(newCourseId)
-                    newGeneratedIds.push(newCourseId)
-                }
-            } catch (error) {
-                console.error(`Error generando curso ${missingCourse.title}:`, error)
-            }
+        if (!recommendation?.missing_courses?.length) {
+            alert('No hay cursos faltantes para generar')
+            return
         }
 
-        setSelectedCourses(newCourseIds)
+        const missingCourses = recommendation.missing_courses
+        const totalCourses = missingCourses.length
+        const existingSelected = [...selectedCourses]
+        const newGeneratedIds: string[] = []
+
+        setGeneratingCourses(true)
+
+        for (let i = 0; i < totalCourses; i++) {
+            const course = missingCourses[i]
+            const courseId = await generateFullCourse(course, i + 1, totalCourses)
+
+            if (courseId) {
+                newGeneratedIds.push(courseId)
+                existingSelected.push(courseId)
+            }
+
+            // Pequeña pausa entre cursos
+            await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+
+        // Actualizar estados
+        setSelectedCourses(existingSelected)
         setGeneratedCourseIds(newGeneratedIds)
         setGeneratingCourses(false)
 
-        // Mostrar feedback de cursos generados
-        if (newGeneratedIds.length > 0) {
-            alert(`✅ Se generaron ${newGeneratedIds.length} cursos correctamente. Ahora verifica los grafos.`)
+        // Limpiar progreso después de un momento
+        setTimeout(() => setGenerationProgress(null), 2000)
+
+        // Recargar lista de cursos disponibles
+        try {
+            const refreshedCourses = await getCourses()
+            setCourses(refreshedCourses.courses || [])
+        } catch (error) {
+            console.error('Error refreshing courses:', error)
         }
 
-        // Verificar grafos después de generar
-        await checkCoursesGraphs(newCourseIds)
+        // Mostrar resumen final
+        const successCount = newGeneratedIds.length
+        if (successCount === totalCourses) {
+            alert(`✅ Éxito: Se generaron ${totalCourses} cursos con sus grafos correctamente.\n\nAhora puedes verificar los grafos y construir el bootcamp.`)
+        } else {
+            alert(`⚠️ Parcial: ${successCount} de ${totalCourses} cursos generados. Revisa la consola para más detalles.`)
+        }
+
+        // Verificar automáticamente los grafos después de generar
+        if (existingSelected.length > 0) {
+            await checkCoursesGraphs(existingSelected)
+        }
     }
 
     // Construcción discreta del bootcamp
     const buildBootcampDiscrete = async () => {
-        if (!bootcampId || !allCoursesHaveGraphs) return
+        if (!bootcampId) {
+            alert('Primero debes obtener una recomendación')
+            return
+        }
+
+        if (!allCoursesHaveGraphs) {
+            alert('Verifica que todos los cursos tengan grafos primero')
+            return
+        }
 
         setBuildingBootcamp(true)
         try {
@@ -247,6 +334,10 @@ export default function BootcampCreator() {
                 })
             })
 
+            if (!composeResponse.ok) {
+                throw new Error(`Error: ${composeResponse.status}`)
+            }
+
             const bootcamp = await composeResponse.json()
             setCreatedBootcamp(bootcamp)
             setBootcampBuilt(true)
@@ -259,6 +350,31 @@ export default function BootcampCreator() {
             setBuildingBootcamp(false)
         }
     }
+
+    // Obtener nombre del curso por ID
+    const getCourseName = (courseId: string): string => {
+        const course = courses.find(c => c.id === courseId)
+        return course?.title || courseId.substring(0, 8)
+    }
+
+    // Calcular estadísticas de grafos
+    const getGraphStats = () => {
+        let totalNodes = 0
+        let totalEdges = 0
+        let withGraphs = 0
+
+        for (const [, result] of graphCheckResults) {
+            if (result.hasGraph) {
+                withGraphs++
+                totalNodes += result.nodeCount
+                totalEdges += result.edgeCount
+            }
+        }
+
+        return { withGraphs, totalNodes, totalEdges, total: graphCheckResults.size }
+    }
+
+    const graphStats = getGraphStats()
 
     return (
         <div style={styles.page}>
@@ -314,23 +430,40 @@ export default function BootcampCreator() {
                             {courses.length === 0 ? (
                                 <p style={styles.mutedText}>No hay cursos disponibles. Genera algunos primero.</p>
                             ) : (
-                                courses.map(course => (
-                                    <label key={course.id} style={styles.checkboxLabel}>
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedCourses.includes(course.id)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedCourses([...selectedCourses, course.id])
-                                                } else {
-                                                    setSelectedCourses(selectedCourses.filter(id => id !== course.id))
-                                                }
-                                            }}
-                                        />
-                                        <span>{course.title}</span>
-                                        <span style={styles.courseBadge}>{course.domain}</span>
-                                    </label>
-                                ))
+                                courses.map(course => {
+                                    const graphInfo = graphCheckResults.get(course.id)
+                                    let statusBadge = ''
+                                    let statusColor = {}
+
+                                    if (graphInfo) {
+                                        if (graphInfo.hasGraph) {
+                                            statusBadge = `✅ ${graphInfo.nodeCount} nodos`
+                                            statusColor = { color: '#1D9E75' }
+                                        } else {
+                                            statusBadge = '⚠️ sin grafo'
+                                            statusColor = { color: '#E24B4A' }
+                                        }
+                                    }
+
+                                    return (
+                                        <label key={course.id} style={styles.checkboxLabel}>
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedCourses.includes(course.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedCourses([...selectedCourses, course.id])
+                                                    } else {
+                                                        setSelectedCourses(selectedCourses.filter(id => id !== course.id))
+                                                    }
+                                                }}
+                                            />
+                                            <span>{course.title}</span>
+                                            <span style={styles.courseBadge}>{course.domain}</span>
+                                            {statusBadge && <span style={{...styles.graphBadge, ...statusColor}}>{statusBadge}</span>}
+                                        </label>
+                                    )
+                                })
                             )}
                         </div>
                     </div>
@@ -348,10 +481,70 @@ export default function BootcampCreator() {
                     <div style={styles.resultCard}>
                         <h2 style={styles.formTitle}>Recomendación IA</h2>
 
-                        {/* Feedback de cursos generados */}
-                        {generatedCourseIds.length > 0 && (
-                            <div style={styles.successMessage}>
-                                ✅ {generatedCourseIds.length} cursos generados correctamente.
+                        {/* Feedback visual de generación de cursos */}
+                        {generationProgress && (
+                            <div style={styles.progressContainer}>
+                                <div style={styles.progressHeader}>
+                                    <strong>📚 Generando curso {generationProgress.current} de {generationProgress.total}</strong>
+                                    <span style={styles.progressCourseName}>{generationProgress.courseName}</span>
+                                </div>
+                                <div style={styles.progressBarTrack}>
+                                    <div
+                                        style={{
+                                            ...styles.progressBarFill,
+                                            width: `${(generationProgress.current / generationProgress.total) * 100}%`
+                                        }}
+                                    />
+                                </div>
+                                <div style={styles.progressStatus}>
+                                    {generationProgress.status === 'generating' && (
+                                        <span>🔄 Generando roadmap con IA... (puede tomar hasta 60s)</span>
+                                    )}
+                                    {generationProgress.status === 'building_graph' && (
+                                        <span>🏗️ Construyendo grafo de aprendizaje...</span>
+                                    )}
+                                    {generationProgress.status === 'completed' && generationProgress.nodeCount && (
+                                        <span style={{ color: '#1D9E75' }}>
+                                            ✅ Curso completado: {generationProgress.nodeCount} nodos, {generationProgress.edgeCount} edges
+                                        </span>
+                                    )}
+                                    {generationProgress.status === 'failed' && (
+                                        <span style={{ color: '#E24B4A' }}>❌ Error en la generación</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Feedback de verificación de grafos */}
+                        {checkingGraphs && (
+                            <div style={styles.checkingContainer}>
+                                <div style={styles.spinner}></div>
+                                <span>🔍 Verificando grafos de los cursos seleccionados...</span>
+                            </div>
+                        )}
+
+                        {/* Resumen de verificación de grafos */}
+                        {graphCheckResults.size > 0 && !checkingGraphs && graphStats.total > 0 && (
+                            <div style={styles.graphSummary}>
+                                <details open>
+                                    <summary style={styles.graphSummaryTitle}>
+                                        📊 Estado de Grafos ({graphStats.withGraphs}/{graphStats.total} cursos con grafo)
+                                        {graphStats.totalNodes > 0 && ` · ${graphStats.totalNodes} nodos · ${graphStats.totalEdges} edges`}
+                                    </summary>
+                                    <div style={styles.graphSummaryList}>
+                                        {Array.from(graphCheckResults.entries()).map(([courseId, result]) => (
+                                            <div key={courseId} style={styles.graphSummaryItem}>
+                                                <span>{result.hasGraph ? '✅' : '❌'}</span>
+                                                <span style={{ flex: 1 }}>{getCourseName(courseId)}</span>
+                                                {result.hasGraph ? (
+                                                    <span style={styles.graphNodeCount}>{result.nodeCount} nodos, {result.edgeCount} edges</span>
+                                                ) : (
+                                                    <span style={{ color: '#E24B4A', fontSize: 11 }}>Sin grafo</span>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </details>
                             </div>
                         )}
 
@@ -359,7 +552,18 @@ export default function BootcampCreator() {
                         <div style={styles.recommendationSection}>
                             <h3>📚 Cursos existentes</h3>
                             {recommendation.existing_courses?.length > 0 ? (
-                                <ul>{recommendation.existing_courses.map(c => <li key={c.id}>✅ {c.title}</li>)}</ul>
+                                <ul>
+                                    {recommendation.existing_courses.map(c => {
+                                        const graphInfo = graphCheckResults.get(c.id)
+                                        const hasGraph = graphInfo?.hasGraph
+                                        return (
+                                            <li key={c.id}>
+                                                {hasGraph ? '✅' : '⚠️'} {c.title}
+                                                {!hasGraph && <span style={{ color: '#E24B4A', fontSize: 11, marginLeft: 8 }}>(sin grafo)</span>}
+                                            </li>
+                                        )
+                                    })}
+                                </ul>
                             ) : <p>No hay cursos seleccionados</p>}
                         </div>
 
@@ -368,8 +572,14 @@ export default function BootcampCreator() {
                             <h3>⚠️ Cursos recomendados (faltantes)</h3>
                             {recommendation.missing_courses?.length > 0 ? (
                                 <>
-                                    <ul>{recommendation.missing_courses.map((c: RecommendedCourse, idx:number) =>
-                                        <li key={idx}>📖 {c.title}</li>)}
+                                    <ul>
+                                        {recommendation.missing_courses.map((c: RecommendedCourse, idx:number) => (
+                                            <li key={idx}>
+                                                📖 {c.title}
+                                                {generatedCourseIds.length > idx && <span style={styles.generatedBadge}> ✅ Generado</span>}
+                                                <span style={styles.courseDomainBadge}>{c.domain}</span>
+                                            </li>
+                                        ))}
                                     </ul>
                                     <button
                                         style={styles.warningBtn}
@@ -404,37 +614,47 @@ export default function BootcampCreator() {
                         </div>
 
                         {/* Mostrar mensaje si los grafos están verificados */}
-                        {allCoursesHaveGraphs && !bootcampBuilt && (
+                        {allCoursesHaveGraphs && !bootcampBuilt && selectedCourses.length > 0 && (
                             <div style={styles.successMessage}>
                                 ✅ Todos los cursos tienen sus grafos. Puedes proceder con la construcción.
+                            </div>
+                        )}
+
+                        {/* Mostrar mensaje si faltan grafos */}
+                        {!allCoursesHaveGraphs && graphCheckResults.size > 0 && !checkingGraphs && (
+                            <div style={styles.warningMessage}>
+                                ⚠️ Algunos cursos no tienen grafos. Usa "Generar cursos faltantes" para crearlos.
                             </div>
                         )}
 
                         {/* Módulos generados después de construcción */}
                         {createdBootcamp && (
                             <div style={styles.recommendationSection}>
-                                <h3 style={styles.sectionSubtitle}>📋 Módulos generados</h3>
-                                {createdBootcamp.modules?.map((module: Module) => (
-                                    <div key={module.id} style={styles.modulePreview}>
-                                        <div style={styles.moduleHeader}>
-                                            <span style={styles.moduleOrder}>Módulo {module.order}</span>
-                                            <span style={styles.moduleWeight}>Peso: {Math.round(module.weight * 100)}%</span>
+                                <h3 style={styles.sectionSubtitle}>📋 Módulos generados ({createdBootcamp.modules?.length || 0})</h3>
+                                <div style={styles.modulesList}>
+                                    {createdBootcamp.modules?.map((module: Module) => (
+                                        <div key={module.id} style={styles.modulePreview}>
+                                            <div style={styles.moduleHeader}>
+                                                <span style={styles.moduleOrder}>Módulo {module.order}</span>
+                                                <span style={styles.moduleWeight}>Peso: {Math.round(module.weight * 100)}%</span>
+                                            </div>
+                                            <div style={styles.moduleName}>{module.name}</div>
+                                            <div style={styles.moduleDesc}>{module.description}</div>
+                                            <div style={styles.moduleMeta}>
+                                                <span>📦 {module.node_ids.length} conceptos</span>
+                                                <span>📊 Complejidad: {Math.round(module.complexity * 100)}%</span>
+                                                <span>⏱️ {module.estimated_hours}h estimadas</span>
+                                            </div>
                                         </div>
-                                        <div style={styles.moduleName}>{module.name}</div>
-                                        <div style={styles.moduleDesc}>{module.description}</div>
-                                        <div style={styles.moduleMeta}>
-                                            <span>📦 {module.node_ids.length} conceptos</span>
-                                            <span>📊 Complejidad: {Math.round(module.complexity * 100)}%</span>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         )}
 
                         {/* Botón de exportación */}
                         <div style={styles.buttonGroup}>
                             <button
-                                style={styles.secondaryBtn}
+                                style={styles.exportBtn}
                                 onClick={handleExportGEXF}
                                 disabled={!bootcampBuilt}
                             >
@@ -450,7 +670,7 @@ export default function BootcampCreator() {
 
 const styles: Record<string, React.CSSProperties> = {
     page: {
-        maxWidth: 1200,
+        maxWidth: 1400,
         margin: '0 auto',
         padding: '40px 24px',
         fontFamily: 'system-ui, sans-serif',
@@ -472,21 +692,23 @@ const styles: Record<string, React.CSSProperties> = {
     subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
     container: { display: 'flex', gap: 32, flexWrap: 'wrap' },
     formCard: { flex: 1, minWidth: 320, background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', padding: 24 },
-    resultCard: { flex: 1, minWidth: 320, background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', padding: 24 },
+    resultCard: { flex: 1, minWidth: 360, background: '#fff', borderRadius: 12, border: '1px solid #D3D1C7', padding: 24, maxHeight: '80vh', overflowY: 'auto' },
     formTitle: { fontSize: 20, fontWeight: 600, color: '#1E3A5F', marginBottom: 20 },
     field: { marginBottom: 16 },
     label: { display: 'block', fontSize: 13, fontWeight: 500, color: '#2C2C2A', marginBottom: 6 },
     input: { width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 14, fontFamily: 'inherit' },
     textarea: { width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 14, fontFamily: 'inherit', resize: 'vertical' },
     select: { width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #D3D1C7', fontSize: 14, background: '#fff', fontFamily: 'inherit' },
-    checkboxGroup: { display: 'flex', flexWrap: 'wrap', gap: 10, maxHeight: 200, overflowY: 'auto', padding: 10, border: '1px solid #F1EFE8', borderRadius: 8, background: '#F9F9F8' },
-    checkboxLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', padding: '2px 4px' },
-    courseBadge: { fontSize: 10, padding: '2px 6px', borderRadius: 10, background: '#E8E6E1', color: '#1E3A5F', marginLeft: 6 },
-    primaryBtn: { width: '100%', padding: '10px', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
+    checkboxGroup: { display: 'flex', flexWrap: 'wrap', gap: 10, maxHeight: 250, overflowY: 'auto', padding: 10, border: '1px solid #F1EFE8', borderRadius: 8, background: '#F9F9F8' },
+    checkboxLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 8px', borderRadius: 6, background: '#fff', border: '1px solid #E8E6E1' },
+    courseBadge: { fontSize: 10, padding: '2px 6px', borderRadius: 10, background: '#E8E6E1', color: '#1E3A5F' },
+    graphBadge: { fontSize: 10, marginLeft: 'auto' },
+    courseDomainBadge: { fontSize: 10, padding: '2px 6px', borderRadius: 10, background: '#E1F5EE', color: '#1D9E75', marginLeft: 8 },
+    primaryBtn: { width: '100%', padding: '12px', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
     secondaryBtn: { width: '100%', padding: '10px', background: '#6B6E6A', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
     warningBtn: {
         width: '100%',
-        padding: '10px',
+        padding: '12px',
         background: '#F5A623',
         color: '#fff',
         border: 'none',
@@ -498,8 +720,20 @@ const styles: Record<string, React.CSSProperties> = {
     },
     successBtn: {
         width: '100%',
-        padding: '10px',
+        padding: '12px',
         background: '#1D9E75',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 14,
+        fontWeight: 600,
+        marginTop: 8,
+    },
+    exportBtn: {
+        width: '100%',
+        padding: '10px',
+        background: '#9B59B6',
         color: '#fff',
         border: 'none',
         borderRadius: 8,
@@ -510,9 +744,18 @@ const styles: Record<string, React.CSSProperties> = {
     },
     successMessage: {
         marginTop: 12,
-        padding: '10px',
+        padding: '12px',
         background: '#E1F5EE',
         color: '#1D9E75',
+        borderRadius: 8,
+        fontSize: 13,
+        textAlign: 'center',
+    },
+    warningMessage: {
+        marginTop: 12,
+        padding: '12px',
+        background: '#FCEBEB',
+        color: '#E24B4A',
         borderRadius: 8,
         fontSize: 13,
         textAlign: 'center',
@@ -520,14 +763,113 @@ const styles: Record<string, React.CSSProperties> = {
     buttonGroup: { display: 'flex', gap: 12, marginTop: 16, flexDirection: 'column' },
     recommendationSection: { marginBottom: 20, padding: 12, background: '#F9F9F8', borderRadius: 8 },
     sectionSubtitle: { fontSize: 14, fontWeight: 600, color: '#1E3A5F', marginBottom: 10 },
-    courseList: { marginTop: 8, paddingLeft: 20, color: '#2C2C2A', fontSize: 13, lineHeight: 1.6 },
     mutedText: { fontSize: 13, color: '#888780', textAlign: 'center', padding: 10 },
     successText: { fontSize: 13, color: '#1D9E75', textAlign: 'center', padding: 10 },
+    modulesList: { maxHeight: 300, overflowY: 'auto' },
     modulePreview: { background: '#fff', border: '1px solid #E8E6E1', borderRadius: 8, padding: 12, marginBottom: 10 },
     moduleHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: 6 },
     moduleOrder: { fontSize: 11, fontWeight: 600, color: '#1D9E75', background: '#E1F5EE', padding: '2px 8px', borderRadius: 12 },
     moduleWeight: { fontSize: 11, color: '#888780' },
     moduleName: { fontSize: 14, fontWeight: 600, color: '#1E3A5F', marginBottom: 4 },
     moduleDesc: { fontSize: 12, color: '#6B6E6A', marginBottom: 8, lineHeight: 1.4 },
-    moduleMeta: { display: 'flex', gap: 12, fontSize: 10, color: '#888780', paddingTop: 6, borderTop: '1px solid #F1EFE8' },
+    moduleMeta: { display: 'flex', gap: 12, fontSize: 10, color: '#888780', paddingTop: 6, borderTop: '1px solid #F1EFE8', flexWrap: 'wrap' },
+    progressContainer: {
+        marginBottom: 16,
+        padding: '16px',
+        background: '#F9F9F8',
+        borderRadius: 8,
+        border: '1px solid #D3D1C7'
+    },
+    progressHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+        fontSize: 13,
+        flexWrap: 'wrap',
+        gap: 8
+    },
+    progressCourseName: {
+        color: '#1E3A5F',
+        fontWeight: 500
+    },
+    progressBarTrack: {
+        height: 8,
+        background: '#E8E6E1',
+        borderRadius: 4,
+        overflow: 'hidden',
+        marginBottom: 10
+    },
+    progressBarFill: {
+        height: '100%',
+        background: '#1D9E75',
+        borderRadius: 4,
+        transition: 'width 0.3s ease'
+    },
+    progressStatus: {
+        fontSize: 12,
+        color: '#6B6E6A'
+    },
+    checkingContainer: {
+        marginBottom: 16,
+        padding: '12px',
+        background: '#E8F0FE',
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12
+    },
+    spinner: {
+        width: 20,
+        height: 20,
+        border: '2px solid #D3D1C7',
+        borderTop: '2px solid #1E3A5F',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite'
+    },
+    graphSummary: {
+        marginBottom: 16,
+        padding: '8px 12px',
+        background: '#F1EFE8',
+        borderRadius: 8
+    },
+    graphSummaryTitle: {
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: 'pointer',
+        color: '#1E3A5F'
+    },
+    graphSummaryList: {
+        marginTop: 8,
+        fontSize: 12,
+        maxHeight: 200,
+        overflowY: 'auto'
+    },
+    graphSummaryItem: {
+        display: 'flex',
+        gap: 8,
+        padding: '6px 0',
+        borderBottom: '1px solid #E8E6E1',
+        alignItems: 'center'
+    },
+    graphNodeCount: {
+        fontSize: 10,
+        color: '#888780'
+    },
+    generatedBadge: {
+        fontSize: 10,
+        color: '#1D9E75',
+        marginLeft: 8
+    }
+}
+
+// Añadir animación al documento
+if (typeof document !== 'undefined') {
+    const style = document.createElement('style')
+    style.textContent = `
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    `
+    document.head.appendChild(style)
 }
