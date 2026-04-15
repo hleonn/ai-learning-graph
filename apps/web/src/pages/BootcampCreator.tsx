@@ -46,10 +46,22 @@ export default function BootcampCreator() {
     const [bootcampDescription, setBootcampDescription] = useState('')
     const [durationWeeks, setDurationWeeks] = useState(16)
     const [selectedCourses, setSelectedCourses] = useState<string[]>([])
-    const [recommendation, setRecommendation] = useState<any>(null)
-    const [creating, setCreating] = useState(false)
+    const [recommendation, setRecommendation] = useState<{
+        existing_courses: Course[]
+        missing_courses: RecommendedCourse[]
+        suggested_bootcamp: Bootcamp | null
+        learning_path_personalized: any
+    } | null>(null)
     const [bootcampId, setBootcampId] = useState<string | null>(null)
     const [createdBootcamp, setCreatedBootcamp] = useState<Bootcamp | null>(null)
+
+    // Estados del nuevo flujo
+    const [generatingCourses, setGeneratingCourses] = useState(false)
+    const [checkingGraphs, setCheckingGraphs] = useState(false)
+    const [buildingBootcamp, setBuildingBootcamp] = useState(false)
+    const [allCoursesHaveGraphs, setAllCoursesHaveGraphs] = useState(false)
+    const [generatedCourseIds, setGeneratedCourseIds] = useState<string[]>([])
+    const [bootcampBuilt, setBootcampBuilt] = useState(false)
 
     // Cargar cursos disponibles
     useEffect(() => {
@@ -98,87 +110,6 @@ export default function BootcampCreator() {
         }
     }
 
-    const handleCreateBootcamp = async () => {
-        if (!bootcampId) return
-
-        setCreating(true)
-        try {
-            const token = localStorage.getItem('google_token')
-
-            // Obtener IDs de cursos existentes
-            const courseIds = [...selectedCourses]
-
-            // Crear cursos faltantes si el usuario lo permite
-            if (recommendation?.missing_courses?.length > 0) {
-                const confirmMsg = `Faltan ${recommendation.missing_courses.length} cursos por generar:\n\n${recommendation.missing_courses.map((c: RecommendedCourse) => `• ${c.title}`).join('\n')}\n\n¿Deseas generarlos automáticamente?`
-
-                if (window.confirm(confirmMsg)) {
-                    for (const missingCourse of recommendation.missing_courses) {
-                        // Generar roadmap
-                        const genResponse = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                title: missingCourse.title,
-                                description: missingCourse.description,
-                                domain: missingCourse.domain,
-                                difficulty_level: missingCourse.difficulty_level
-                            })
-                        })
-                        const courseData = await genResponse.json()
-
-                        // Guardar curso
-                        const saveResponse = await fetch('https://mygateway.up.railway.app/courses', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                title: missingCourse.title,
-                                description: missingCourse.description,
-                                domain: missingCourse.domain,
-                                difficulty_level: missingCourse.difficulty_level,
-                                roadmap: courseData
-                            })
-                        })
-                        const savedCourse = await saveResponse.json()
-                        const newCourseId = savedCourse[0]?.id || savedCourse.id
-                        if (newCourseId) {
-                            courseIds.push(newCourseId)
-                        }
-                    }
-                }
-            }
-
-            if (courseIds.length === 0) {
-                alert('No hay cursos seleccionados para crear el bootcamp')
-                setCreating(false)
-                return
-            }
-
-            // Componer bootcamp
-            const composeResponse = await fetch('https://mygateway.up.railway.app/bootcamp/compose', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    bootcamp_id: bootcampId,
-                    course_ids: courseIds
-                })
-            })
-
-            const bootcamp = await composeResponse.json()
-            setCreatedBootcamp(bootcamp)
-            alert(`✅ Bootcamp "${bootcampTitle}" creado exitosamente con ${bootcamp.modules?.length || 0} módulos`)
-
-        } catch (error) {
-            console.error('Error:', error)
-            alert('Error al crear el bootcamp')
-        } finally {
-            setCreating(false)
-        }
-    }
-
     const handleExportGEXF = async () => {
         if (!bootcampId) return
 
@@ -211,6 +142,121 @@ export default function BootcampCreator() {
         } catch (error) {
             console.error('Error:', error)
             alert('Error al exportar a GEXF')
+        }
+    }
+
+    const checkCoursesGraphs = async (courseIds: string[]) => {
+        setCheckingGraphs(true)
+        try {
+            let allHaveGraphs = true
+            for (const courseId of courseIds) {
+                const response = await fetch(`https://mygateway.up.railway.app/graph/${courseId}`)
+                const data = await response.json()
+                if (!data.nodes || data.nodes.length === 0) {
+                    allHaveGraphs = false
+                    break
+                }
+            }
+            setAllCoursesHaveGraphs(allHaveGraphs)
+            return allHaveGraphs
+        } catch (error) {
+            console.error('Error checking graphs:', error)
+            return false
+        } finally {
+            setCheckingGraphs(false)
+        }
+    }
+
+    // Generar cursos faltantes con sus grafos
+    const generateMissingCourses = async () => {
+        if (!recommendation?.missing_courses?.length) return
+
+        setGeneratingCourses(true)
+        const newCourseIds = [...selectedCourses]
+        const newGeneratedIds: string[] = []
+
+        for (const missingCourse of recommendation.missing_courses) {
+            try {
+                // Generar roadmap
+                const genResponse = await fetch('https://mygateway.up.railway.app/ai/roadmap/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: missingCourse.title,
+                        description: missingCourse.description,
+                        domain: missingCourse.domain,
+                        difficulty_level: missingCourse.difficulty_level
+                    })
+                })
+                const courseData = await genResponse.json()
+
+                // Guardar curso
+                const saveResponse = await fetch('https://mygateway.up.railway.app/courses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: missingCourse.title,
+                        description: missingCourse.description,
+                        domain: missingCourse.domain,
+                        difficulty_level: missingCourse.difficulty_level,
+                        roadmap: courseData
+                    })
+                })
+                const savedCourse = await saveResponse.json()
+                const newCourseId = savedCourse[0]?.id || savedCourse.id
+
+                if (newCourseId) {
+                    newCourseIds.push(newCourseId)
+                    newGeneratedIds.push(newCourseId)
+                }
+            } catch (error) {
+                console.error(`Error generando curso ${missingCourse.title}:`, error)
+            }
+        }
+
+        setSelectedCourses(newCourseIds)
+        setGeneratedCourseIds(newGeneratedIds)
+        setGeneratingCourses(false)
+
+        // Mostrar feedback de cursos generados
+        if (newGeneratedIds.length > 0) {
+            alert(`✅ Se generaron ${newGeneratedIds.length} cursos correctamente. Ahora verifica los grafos.`)
+        }
+
+        // Verificar grafos después de generar
+        await checkCoursesGraphs(newCourseIds)
+    }
+
+    // Construcción discreta del bootcamp
+    const buildBootcampDiscrete = async () => {
+        if (!bootcampId || !allCoursesHaveGraphs) return
+
+        setBuildingBootcamp(true)
+        try {
+            const token = localStorage.getItem('google_token')
+            const composeResponse = await fetch('https://mygateway.up.railway.app/bootcamp/compose', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    bootcamp_id: bootcampId,
+                    course_ids: selectedCourses,
+                    student_id: null
+                })
+            })
+
+            const bootcamp = await composeResponse.json()
+            setCreatedBootcamp(bootcamp)
+            setBootcampBuilt(true)
+            alert(`✅ Bootcamp "${bootcampTitle}" construido exitosamente con ${bootcamp.modules?.length || 0} módulos`)
+
+        } catch (error) {
+            console.error('Error building bootcamp:', error)
+            alert('Error al construir el bootcamp')
+        } finally {
+            setBuildingBootcamp(false)
         }
     }
 
@@ -302,32 +348,69 @@ export default function BootcampCreator() {
                     <div style={styles.resultCard}>
                         <h2 style={styles.formTitle}>Recomendación IA</h2>
 
+                        {/* Feedback de cursos generados */}
+                        {generatedCourseIds.length > 0 && (
+                            <div style={styles.successMessage}>
+                                ✅ {generatedCourseIds.length} cursos generados correctamente.
+                            </div>
+                        )}
+
+                        {/* Cursos existentes */}
                         <div style={styles.recommendationSection}>
-                            <h3 style={styles.sectionSubtitle}>📚 Cursos existentes</h3>
+                            <h3>📚 Cursos existentes</h3>
                             {recommendation.existing_courses?.length > 0 ? (
-                                <ul style={styles.courseList}>
-                                    {recommendation.existing_courses.map((c: any) => (
-                                        <li key={c.id}>✅ {c.title}</li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p style={styles.mutedText}>No hay cursos seleccionados</p>
-                            )}
+                                <ul>{recommendation.existing_courses.map(c => <li key={c.id}>✅ {c.title}</li>)}</ul>
+                            ) : <p>No hay cursos seleccionados</p>}
                         </div>
 
+                        {/* Cursos faltantes */}
                         <div style={styles.recommendationSection}>
-                            <h3 style={styles.sectionSubtitle}>⚠️ Cursos recomendados (faltantes)</h3>
+                            <h3>⚠️ Cursos recomendados (faltantes)</h3>
                             {recommendation.missing_courses?.length > 0 ? (
-                                <ul style={styles.courseList}>
-                                    {recommendation.missing_courses.map((c: RecommendedCourse, idx: number) => (
-                                        <li key={idx}>📖 <strong>{c.title}</strong> - {c.description}</li>
-                                    ))}
-                                </ul>
-                            ) : (
-                                <p style={styles.successText}>✅ Tienes todos los cursos necesarios</p>
+                                <>
+                                    <ul>{recommendation.missing_courses.map((c: RecommendedCourse, idx:number) =>
+                                        <li key={idx}>📖 {c.title}</li>)}
+                                    </ul>
+                                    <button
+                                        style={styles.warningBtn}
+                                        onClick={generateMissingCourses}
+                                        disabled={generatingCourses}
+                                    >
+                                        {generatingCourses ? '⏳ Generando cursos...' : '🔧 Generar cursos faltantes'}
+                                    </button>
+                                </>
+                            ) : <p style={styles.successText}>✅ Tienes todos los cursos necesarios</p>}
+                        </div>
+
+                        {/* Botones de verificación y construcción */}
+                        <div style={styles.buttonGroup}>
+                            <button
+                                style={styles.secondaryBtn}
+                                onClick={() => checkCoursesGraphs(selectedCourses)}
+                                disabled={checkingGraphs || selectedCourses.length === 0}
+                            >
+                                {checkingGraphs ? '🔍 Verificando grafos...' : '🔍 Verificar Grafos de Cursos'}
+                            </button>
+
+                            {allCoursesHaveGraphs && (
+                                <button
+                                    style={styles.successBtn}
+                                    onClick={buildBootcampDiscrete}
+                                    disabled={buildingBootcamp}
+                                >
+                                    {buildingBootcamp ? '🏗️ Construyendo bootcamp...' : '🏗️ Construcción Discreta de Bootcamp'}
+                                </button>
                             )}
                         </div>
 
+                        {/* Mostrar mensaje si los grafos están verificados */}
+                        {allCoursesHaveGraphs && !bootcampBuilt && (
+                            <div style={styles.successMessage}>
+                                ✅ Todos los cursos tienen sus grafos. Puedes proceder con la construcción.
+                            </div>
+                        )}
+
+                        {/* Módulos generados después de construcción */}
                         {createdBootcamp && (
                             <div style={styles.recommendationSection}>
                                 <h3 style={styles.sectionSubtitle}>📋 Módulos generados</h3>
@@ -348,19 +431,12 @@ export default function BootcampCreator() {
                             </div>
                         )}
 
+                        {/* Botón de exportación */}
                         <div style={styles.buttonGroup}>
-                            <button
-                                style={styles.primaryBtn}
-                                onClick={handleCreateBootcamp}
-                                disabled={creating}
-                            >
-                                {creating ? '🎓 Creando bootcamp...' : '🎓 Crear Bootcamp'}
-                            </button>
-
                             <button
                                 style={styles.secondaryBtn}
                                 onClick={handleExportGEXF}
-                                disabled={!bootcampId}
+                                disabled={!bootcampBuilt}
                             >
                                 📊 Exportar a Gephi (GEXF)
                             </button>
@@ -373,9 +449,25 @@ export default function BootcampCreator() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-    page: { maxWidth: 1200, margin: '0 auto', padding: '40px 24px', fontFamily: 'system-ui, sans-serif', minHeight: '100vh', background: '#F1EFE8' },
+    page: {
+        maxWidth: 1200,
+        margin: '0 auto',
+        padding: '40px 24px',
+        fontFamily: 'system-ui, sans-serif',
+        minHeight: '100vh',
+        background: '#F1EFE8'
+    },
     header: { marginBottom: 32 },
-    back: { background: 'none', border: '1px solid #D3D1C7', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, marginBottom: 16, color: '#1E3A5F' },
+    back: {
+        background: 'none',
+        border: '1px solid #D3D1C7',
+        padding: '6px 12px',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 13,
+        marginBottom: 16,
+        color: '#1E3A5F'
+    },
     title: { fontSize: 32, fontWeight: 700, color: '#1E3A5F', margin: 0 },
     subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
     container: { display: 'flex', gap: 32, flexWrap: 'wrap' },
@@ -392,6 +484,39 @@ const styles: Record<string, React.CSSProperties> = {
     courseBadge: { fontSize: 10, padding: '2px 6px', borderRadius: 10, background: '#E8E6E1', color: '#1E3A5F', marginLeft: 6 },
     primaryBtn: { width: '100%', padding: '10px', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
     secondaryBtn: { width: '100%', padding: '10px', background: '#6B6E6A', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
+    warningBtn: {
+        width: '100%',
+        padding: '10px',
+        background: '#F5A623',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 14,
+        fontWeight: 600,
+        marginTop: 12,
+    },
+    successBtn: {
+        width: '100%',
+        padding: '10px',
+        background: '#1D9E75',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 14,
+        fontWeight: 600,
+        marginTop: 8,
+    },
+    successMessage: {
+        marginTop: 12,
+        padding: '10px',
+        background: '#E1F5EE',
+        color: '#1D9E75',
+        borderRadius: 8,
+        fontSize: 13,
+        textAlign: 'center',
+    },
     buttonGroup: { display: 'flex', gap: 12, marginTop: 16, flexDirection: 'column' },
     recommendationSection: { marginBottom: 20, padding: 12, background: '#F9F9F8', borderRadius: 8 },
     sectionSubtitle: { fontSize: 14, fontWeight: 600, color: '#1E3A5F', marginBottom: 10 },
