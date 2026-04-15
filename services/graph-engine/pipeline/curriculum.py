@@ -17,6 +17,7 @@ from loguru import logger
 from dotenv import load_dotenv
 import uuid
 from db.client import supabase
+
 load_dotenv()
 
 # Configurar DeepSeek
@@ -467,6 +468,14 @@ def generate_roadmap(
 
     logger.info(f"✅ Roadmap generado: {len(roadmap.get('phases', []))} fases, {total_subtopics} conceptos")
     logger.info(f"💡 El contenido detallado se generará bajo demanda al publicar en Classroom")
+
+    return roadmap
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GUARDAR GRAFO DEL CURSO
+# ═══════════════════════════════════════════════════════════════════════════════
+
 def save_course_graph(course_id: str, roadmap: dict) -> dict:
     """
     Guarda el grafo de un curso a partir del roadmap generado por IA.
@@ -557,4 +566,3 @@ def save_course_graph(course_id: str, roadmap: dict) -> dict:
         "edges_created": edges_created,
         "course_id": course_id
     }
-    return roadmap
