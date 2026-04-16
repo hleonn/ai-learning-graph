@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCourses, createCourseWithRoadmap, checkMultipleCoursesGraphs, saveBootcampAsProgram } from '../lib/api'
-import { calculateProgressiveWeights, suggestCourseOrder } from '../utils/bootcampWeights'
+import { calculateProgressiveWeights, suggestCourseOrder, suggestPedagogicalOrder } from '../utils/bootcampWeights'
 import { buildBootcampGlobalGraph } from '../utils/bootcampGraphBuilder'
 import type { BootcampGraph } from '../utils/bootcampGraphBuilder'
 
@@ -629,7 +629,30 @@ export default function BootcampCreator() {
             }))
 
             // 2. Sugerir orden óptimo de cursos
-            const suggestedOrder = suggestCourseOrder(courseInfos)
+            const courseGraphs = new Map<string, any[]>()
+            for (const courseId of selectedCourses) {
+                try {
+                    const response = await fetch(`https://mygateway.up.railway.app/graph/${courseId}`)
+                    if (response.ok) {
+                        const graphData = await response.json()
+                        const nodes = graphData.nodes || []
+                        // Extraer información de nodos con sus prerrequisitos
+                        const nodeInfo = nodes.map((node: any) => ({
+                            id: node.data?.id || node.id,
+                            label: node.data?.label || node.label,
+                            description: node.data?.description || '',
+                            difficulty: node.data?.difficulty || 3,
+                            prerequisites: node.data?.prerequisites || []
+                        }))
+                        courseGraphs.set(courseId, nodeInfo)
+                    }
+                } catch (error) {
+                    console.error(`Error fetching graph for course ${courseId}:`, error)
+                }
+            }
+
+// 3. Sugerir orden pedagógico basado en dependencias reales
+            const suggestedOrder = await suggestPedagogicalOrder(courseInfos, courseGraphs)
 
             // 3. Calcular pesos progresivos
             const weights = calculateProgressiveWeights(courseInfos, suggestedOrder)
