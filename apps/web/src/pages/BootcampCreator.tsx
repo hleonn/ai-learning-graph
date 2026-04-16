@@ -686,6 +686,7 @@ export default function BootcampCreator() {
 
             // 3. Sugerir orden pedagógico basado en dependencias reales
             const pedagogicalOrderMap: Record<string, number> = {
+                'PYTHON_DEBE_SER_PRIMERO': 1,
                 'Python': 1,
                 'SQL': 2,
                 'Pandas': 3,
