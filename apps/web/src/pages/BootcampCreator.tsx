@@ -591,6 +591,8 @@ export default function BootcampCreator() {
     }
 
     // Construcción virtual del bootcamp con pesos progresivos y grafo global
+    // Construcción virtual del bootcamp con pesos progresivos y grafo global
+    // Construcción virtual del bootcamp con pesos progresivos y grafo global
     const buildBootcampDiscrete = async () => {
         if (!allCoursesHaveGraphs) {
             alert('Verifica que todos los cursos tengan grafos primero')
@@ -628,7 +630,9 @@ export default function BootcampCreator() {
                 }
             }))
 
-            // 2. Sugerir orden óptimo de cursos
+            console.log('📚 Cursos seleccionados:', courseInfos.map(c => ({ title: c.title, difficulty: c.difficulty, nodeCount: c.nodeCount })))
+
+            // 2. Obtener grafos de cada curso para analizar dependencias
             const courseGraphs = new Map<string, any[]>()
             for (const courseId of selectedCourses) {
                 try {
@@ -636,38 +640,74 @@ export default function BootcampCreator() {
                     if (response.ok) {
                         const graphData = await response.json()
                         const nodes = graphData.nodes || []
+
                         // Extraer información de nodos con sus prerrequisitos
-                        const nodeInfo = nodes.map((node: any) => ({
-                            id: node.data?.id || node.id,
-                            label: node.data?.label || node.label,
-                            description: node.data?.description || '',
-                            difficulty: node.data?.difficulty || 3,
-                            prerequisites: node.data?.prerequisites || []
-                        }))
+                        const nodeInfo = nodes.map((node: any) => {
+                            const nodeData = node.data || node
+                            let prerequisites: string[] = []
+
+                            // Buscar prerequisites en diferentes campos
+                            if (nodeData.prerequisites && Array.isArray(nodeData.prerequisites)) {
+                                prerequisites = nodeData.prerequisites
+                            } else if (nodeData.prerequisite_labels && Array.isArray(nodeData.prerequisite_labels)) {
+                                prerequisites = nodeData.prerequisite_labels
+                            } else if (node.prerequisites && Array.isArray(node.prerequisites)) {
+                                prerequisites = node.prerequisites
+                            }
+
+                            return {
+                                id: nodeData.id || node.id,
+                                label: nodeData.label || node.label,
+                                description: nodeData.description || '',
+                                difficulty: nodeData.difficulty || 3,
+                                prerequisites: prerequisites
+                            }
+                        })
+
                         courseGraphs.set(courseId, nodeInfo)
+
+                        // Log para depuración
+                        const courseTitle = courseInfos.find(c => c.id === courseId)?.title || courseId
+                        const nodesWithPrereqs = nodeInfo.filter((n: { prerequisites: string[] }) => n.prerequisites.length > 0)
+                        console.log(`🔍 Curso "${courseTitle}": ${nodeInfo.length} nodos, ${nodesWithPrereqs.length} con prerrequisitos`)
+                        if (nodesWithPrereqs.length > 0) {
+                            console.log(`   Ejemplo: "${nodesWithPrereqs[0].label}" requiere:`, nodesWithPrereqs[0].prerequisites.slice(0, 3))
+                        }
+                    } else {
+                        console.warn(`⚠️ No se pudo obtener grafo para curso ${courseId}: ${response.status}`)
+                        courseGraphs.set(courseId, [])
                     }
                 } catch (error) {
                     console.error(`Error fetching graph for course ${courseId}:`, error)
+                    courseGraphs.set(courseId, [])
                 }
             }
 
-// 3. Sugerir orden pedagógico basado en dependencias reales
+            // 3. Sugerir orden pedagógico basado en dependencias reales
             const suggestedOrder = await suggestPedagogicalOrder(courseInfos, courseGraphs)
+            console.log('📋 Orden sugerido por dependencias:', suggestedOrder.map((id: string) => {
+                const course = courseInfos.find(c => c.id === id)
+                return course?.title
+            }).filter(Boolean))
 
-            // 3. Calcular pesos progresivos
+            // 4. Calcular pesos progresivos
             const weights = calculateProgressiveWeights(courseInfos, suggestedOrder)
             const weightMap = new Map<string, number>()
             weights.forEach(w => weightMap.set(w.courseId, w.weight))
 
-            // 4. Construir grafo global del bootcamp
+            console.log('📊 Pesos calculados:', weights.map(w => ({ title: w.courseTitle, percentage: w.percentage, order: suggestedOrder.indexOf(w.courseId) + 1 })))
+
+            // 5. Construir grafo global del bootcamp
             const bootcampGraph = await buildBootcampGlobalGraph(suggestedOrder, weightMap)
             setGlobalBootcampGraph(bootcampGraph)
-// Guardar grafo global en localStorage con clave específica
+
+            // Guardar grafo global en localStorage
             localStorage.setItem('bootcamp_global_graph', JSON.stringify(bootcampGraph))
             localStorage.setItem('bootcamp_global_graph_title', bootcampTitle)
             localStorage.setItem('bootcamp_global_graph_timestamp', Date.now().toString())
             console.log('💾 Grafo global guardado en localStorage')
-            // 5. Crear estructura virtual de módulos con pesos calculados
+
+            // 6. Crear estructura virtual de módulos con pesos calculados
             const virtualModules = weights.map((weight, idx) => {
                 const course = courses.find(c => c.id === weight.courseId)
                 return {
@@ -699,11 +739,12 @@ export default function BootcampCreator() {
             const courseDetails = weights.map(w => {
                 const barLength = Math.round(w.percentage / 2)
                 const bar = '█'.repeat(barLength) + '░'.repeat(50 - barLength)
-                return `  📚 ${w.courseTitle.padEnd(25)} ${w.percentage}% ${bar}`
+                const orderIndex = suggestedOrder.indexOf(w.courseId) + 1
+                return `  ${orderIndex}. 📚 ${w.courseTitle.padEnd(25)} ${w.percentage}% ${bar}`
             }).join('\n')
 
             alert(`✅ Bootcamp "${bootcampTitle}" preparado virtualmente con ${selectedCourses.length} cursos.\n\n` +
-                `Pesos progresivos calculados:\n${courseDetails}\n\n` +
+                `Orden de aprendizaje:\n${courseDetails}\n\n` +
                 `📊 Grafo global: ${bootcampGraph.summary.totalNodes} nodos, ${bootcampGraph.summary.totalEdges} edges\n\n` +
                 `Los cursos están listos para exportar a Gephi.`)
 

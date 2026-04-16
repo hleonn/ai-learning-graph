@@ -139,16 +139,20 @@ export async function suggestPedagogicalOrder(
     courses: CourseInfo[],
     courseGraphs: Map<string, GraphNode[]>
 ): Promise<string[]> {
+    console.log('📚 suggestPedagogicalOrder - Iniciando')
+    console.log(`   Cursos a ordenar: ${courses.map(c => c.title).join(', ')}`)
+
     if (courses.length <= 1) {
         return courses.map(c => c.id)
     }
 
     // Construir grafo de dependencias entre cursos
     const dependencies = new Map<string, Set<string>>()
-    const courseMap = new Map(courses.map(c => [c.id, c]))
+    const courseMap = new Map<string, CourseInfo>()
 
     for (const course of courses) {
         dependencies.set(course.id, new Set())
+        courseMap.set(course.id, course)
     }
 
     // Para cada curso, obtener sus nodos y sus prerrequisitos
@@ -161,19 +165,28 @@ export async function suggestPedagogicalOrder(
         const prereqs = new Set<string>()
 
         for (const node of nodes) {
-            labels.add(node.label.toLowerCase())
-            for (const prereq of node.prerequisites || []) {
-                prereqs.add(prereq.toLowerCase())
+            if (node.label) {
+                labels.add(node.label.toLowerCase())
+            }
+            if (node.prerequisites && Array.isArray(node.prerequisites)) {
+                for (const prereq of node.prerequisites) {
+                    if (prereq) {
+                        prereqs.add(prereq.toLowerCase())
+                    }
+                }
             }
         }
 
         courseNodeLabels.set(course.id, labels)
         coursePrereqs.set(course.id, prereqs)
+
+        console.log(`   Curso "${course.title}": ${labels.size} conceptos, ${prereqs.size} prerrequisitos únicos`)
     }
 
     // Detectar dependencias entre cursos
     for (const courseA of courses) {
         const labelsA = courseNodeLabels.get(courseA.id) || new Set()
+        const depsForA = dependencies.get(courseA.id) || new Set()
 
         for (const courseB of courses) {
             if (courseA.id === courseB.id) continue
@@ -183,11 +196,13 @@ export async function suggestPedagogicalOrder(
             // Si conceptos de A son prerrequisito de B, entonces A debe ir antes que B
             for (const prereq of prereqsB) {
                 if (labelsA.has(prereq)) {
-                    dependencies.get(courseA.id)?.add(courseB.id)
+                    depsForA.add(courseB.id)
+                    console.log(`   🔗 Dependencia: "${courseA.title}" → "${courseB.title}" (por: "${prereq}")`)
                     break
                 }
             }
         }
+        dependencies.set(courseA.id, depsForA)
     }
 
     // Orden topológico basado en dependencias
@@ -196,7 +211,10 @@ export async function suggestPedagogicalOrder(
     const visiting = new Set<string>()
 
     function dfs(courseId: string): boolean {
-        if (visiting.has(courseId)) return false
+        if (visiting.has(courseId)) {
+            console.warn(`   ⚠️ Ciclo detectado en: ${courseMap.get(courseId)?.title}`)
+            return false
+        }
         if (visited.has(courseId)) return true
 
         visiting.add(courseId)
@@ -218,8 +236,15 @@ export async function suggestPedagogicalOrder(
         }
     }
 
+    // Contar cuántas dependencias se detectaron
+    let totalDeps = 0
+    for (const deps of dependencies.values()) {
+        totalDeps += deps.size
+    }
+    console.log(`   📊 Dependencias detectadas: ${totalDeps}`)
+
     // Si hay dependencias detectadas, usar orden topológico
-    if (order.length === courses.length) {
+    if (order.length === courses.length && totalDeps > 0) {
         console.log('📚 Orden pedagógico detectado:', order.map(id => courseMap.get(id)?.title))
         return order
     }
