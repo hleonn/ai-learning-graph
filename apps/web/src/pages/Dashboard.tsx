@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCourses, getStudentMastery } from '../lib/api'
+import { getCourses, getStudentMastery, getPrograms, deleteProgram } from '../lib/api'
 import HeatmapView from '../components/HeatmapView'
 import { generateAndDownloadPDF } from '../utils/generateProgramPDF'
 
@@ -25,8 +25,10 @@ interface Program {
     description: string
     type: 'bootcamp' | 'diploma' | 'specialty' | 'workshop'
     duration_weeks: number
-    courses_count: number
-    image_url?: string
+    course_ids: string[]
+    courses_count?: number
+    modules?: any[]
+    created_at: string
 }
 
 export default function Dashboard() {
@@ -48,7 +50,7 @@ export default function Dashboard() {
     const [userRole, setUserRole] = useState<string>('teacher')
     const [enrolledCourses, setEnrolledCourses] = useState<Set<string>>(new Set())
 
-    // Estados para programas (inicialmente vacíos)
+    // Estados para programas (cargados desde API)
     const [programs, setPrograms] = useState<Program[]>([])
     const [loadingPrograms, setLoadingPrograms] = useState(false)
 
@@ -219,44 +221,41 @@ export default function Dashboard() {
         }
     }
 
-    // Función para cargar programas (futura implementación)
+    // Función para cargar programas desde la API
     const loadPrograms = async () => {
         setLoadingPrograms(true)
         try {
-            // TODO: Conectar con API real cuando exista
-            // Por ahora datos de ejemplo para mostrar la estructura
-            const mockPrograms: Program[] = [
-                {
-                    id: '1',
-                    title: 'Data Science Bootcamp',
-                    description: 'Conviértete en Científico de Datos en 12 semanas',
-                    type: 'bootcamp',
-                    duration_weeks: 12,
-                    courses_count: 4
-                },
-                {
-                    id: '2',
-                    title: 'Diplomado en Desarrollo Full Stack',
-                    description: 'Domina frontend y backend con proyectos reales',
-                    type: 'diploma',
-                    duration_weeks: 16,
-                    courses_count: 6
-                },
-                {
-                    id: '3',
-                    title: 'Especialidad en Machine Learning',
-                    description: 'Aprende los algoritmos más avanzados de ML',
-                    type: 'specialty',
-                    duration_weeks: 8,
-                    courses_count: 3
-                }
-            ]
-            setPrograms(mockPrograms)
+            const allPrograms = await getPrograms()
+            setPrograms(allPrograms)
         } catch (error) {
             console.error('Error loading programs:', error)
         } finally {
             setLoadingPrograms(false)
         }
+    }
+
+    // Función para eliminar un programa
+    const handleDeleteProgram = async (programId: string, programTitle: string) => {
+        if (!confirm(`¿Eliminar el programa "${programTitle}"?`)) return
+
+        try {
+            const success = await deleteProgram(programId)
+            if (success) {
+                alert(`✅ Programa "${programTitle}" eliminado correctamente`)
+                await loadPrograms() // Recargar la lista
+            } else {
+                alert('Error al eliminar el programa')
+            }
+        } catch (error) {
+            console.error('Error deleting program:', error)
+            alert('Error al eliminar el programa')
+        }
+    }
+
+    // Función para ver los detalles de un programa
+    const handleViewProgram = (program: Program) => {
+        // TODO: Navegar a página de detalles del programa
+        alert(`📋 ${program.title}\n\nDescripción: ${program.description}\nDuración: ${program.duration_weeks} semanas\nCursos: ${program.course_ids?.length || 0}\n\n(Próximamente: vista detallada del programa)`)
     }
 
     useEffect(() => {
@@ -283,7 +282,7 @@ export default function Dashboard() {
                     setCourses(coursesData.courses)
                 }
 
-                // Cargar programas (datos mock por ahora)
+                // Cargar programas desde la API
                 await loadPrograms()
 
             } catch (err) {
@@ -417,6 +416,12 @@ export default function Dashboard() {
 
     const isTeacher = userRole === 'teacher'
 
+    // Filtrar programas por tipo
+    const bootcamps = programs.filter(p => p.type === 'bootcamp')
+    const diplomas = programs.filter(p => p.type === 'diploma')
+    const specialties = programs.filter(p => p.type === 'specialty')
+    const workshops = programs.filter(p => p.type === 'workshop')
+
     // Renderizar contenido según la pestaña activa
     const renderContent = () => {
         switch (activeTab) {
@@ -503,8 +508,8 @@ export default function Dashboard() {
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.sectionTitle}>Programas de Formación</h2>
                             {isTeacher && (
-                                <button style={styles.generateBtn} onClick={() => alert('Próximamente: Crear nuevo programa')}>
-                                    + Crear programa
+                                <button style={styles.generateBtn} onClick={() => navigate('/bootcamp')}>
+                                    + Crear Bootcamp
                                 </button>
                             )}
                         </div>
@@ -517,22 +522,35 @@ export default function Dashboard() {
                         ) : (
                             <>
                                 {/* Bootcamps */}
-                                {programs.filter(p => p.type === 'bootcamp').length > 0 && (
+                                {bootcamps.length > 0 && (
                                     <div style={styles.subsection}>
                                         <h3 style={styles.subsectionTitle}>🚀 Bootcamps</h3>
                                         <div style={styles.grid4Cols}>
-                                            {programs.filter(p => p.type === 'bootcamp').map((program) => (
+                                            {bootcamps.map((program) => (
                                                 <div key={program.id} style={styles.programCard}>
                                                     <div style={styles.programBadge}>Bootcamp</div>
                                                     <h3 style={styles.cardTitle}>{program.title}</h3>
-                                                    <p style={styles.cardDesc}>{program.description}</p>
+                                                    <p style={styles.cardDesc}>{program.description.substring(0, 100)}...</p>
                                                     <div style={styles.programMeta}>
                                                         <span>📅 {program.duration_weeks} semanas</span>
-                                                        <span>📚 {program.courses_count} cursos</span>
+                                                        <span>📚 {program.course_ids?.length || 0} cursos</span>
                                                     </div>
-                                                    <button style={styles.programDetailBtn} onClick={() => alert(`Detalles de ${program.title}`)}>
-                                                        Ver programa →
-                                                    </button>
+                                                    <div style={styles.programButtonGroup}>
+                                                        <button
+                                                            style={styles.programDetailBtn}
+                                                            onClick={() => handleViewProgram(program)}
+                                                        >
+                                                            Ver programa →
+                                                        </button>
+                                                        {isTeacher && (
+                                                            <button
+                                                                style={styles.programDeleteBtn}
+                                                                onClick={() => handleDeleteProgram(program.id, program.title)}
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -540,22 +558,35 @@ export default function Dashboard() {
                                 )}
 
                                 {/* Diplomados */}
-                                {programs.filter(p => p.type === 'diploma').length > 0 && (
+                                {diplomas.length > 0 && (
                                     <div style={styles.subsection}>
                                         <h3 style={styles.subsectionTitle}>🎓 Diplomados</h3>
                                         <div style={styles.grid4Cols}>
-                                            {programs.filter(p => p.type === 'diploma').map((program) => (
+                                            {diplomas.map((program) => (
                                                 <div key={program.id} style={styles.programCard}>
                                                     <div style={styles.programBadge}>Diplomado</div>
                                                     <h3 style={styles.cardTitle}>{program.title}</h3>
-                                                    <p style={styles.cardDesc}>{program.description}</p>
+                                                    <p style={styles.cardDesc}>{program.description.substring(0, 100)}...</p>
                                                     <div style={styles.programMeta}>
                                                         <span>📅 {program.duration_weeks} semanas</span>
-                                                        <span>📚 {program.courses_count} cursos</span>
+                                                        <span>📚 {program.course_ids?.length || 0} cursos</span>
                                                     </div>
-                                                    <button style={styles.programDetailBtn} onClick={() => alert(`Detalles de ${program.title}`)}>
-                                                        Ver programa →
-                                                    </button>
+                                                    <div style={styles.programButtonGroup}>
+                                                        <button
+                                                            style={styles.programDetailBtn}
+                                                            onClick={() => handleViewProgram(program)}
+                                                        >
+                                                            Ver programa →
+                                                        </button>
+                                                        {isTeacher && (
+                                                            <button
+                                                                style={styles.programDeleteBtn}
+                                                                onClick={() => handleDeleteProgram(program.id, program.title)}
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -563,22 +594,35 @@ export default function Dashboard() {
                                 )}
 
                                 {/* Especialidades */}
-                                {programs.filter(p => p.type === 'specialty').length > 0 && (
+                                {specialties.length > 0 && (
                                     <div style={styles.subsection}>
                                         <h3 style={styles.subsectionTitle}>⚡ Especialidades</h3>
                                         <div style={styles.grid4Cols}>
-                                            {programs.filter(p => p.type === 'specialty').map((program) => (
+                                            {specialties.map((program) => (
                                                 <div key={program.id} style={styles.programCard}>
                                                     <div style={styles.programBadge}>Especialidad</div>
                                                     <h3 style={styles.cardTitle}>{program.title}</h3>
-                                                    <p style={styles.cardDesc}>{program.description}</p>
+                                                    <p style={styles.cardDesc}>{program.description.substring(0, 100)}...</p>
                                                     <div style={styles.programMeta}>
                                                         <span>📅 {program.duration_weeks} semanas</span>
-                                                        <span>📚 {program.courses_count} cursos</span>
+                                                        <span>📚 {program.course_ids?.length || 0} cursos</span>
                                                     </div>
-                                                    <button style={styles.programDetailBtn} onClick={() => alert(`Detalles de ${program.title}`)}>
-                                                        Ver programa →
-                                                    </button>
+                                                    <div style={styles.programButtonGroup}>
+                                                        <button
+                                                            style={styles.programDetailBtn}
+                                                            onClick={() => handleViewProgram(program)}
+                                                        >
+                                                            Ver programa →
+                                                        </button>
+                                                        {isTeacher && (
+                                                            <button
+                                                                style={styles.programDeleteBtn}
+                                                                onClick={() => handleDeleteProgram(program.id, program.title)}
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
@@ -586,9 +630,49 @@ export default function Dashboard() {
                                 )}
 
                                 {/* Talleres */}
-                                {programs.filter(p => p.type === 'workshop').length === 0 && (
+                                {workshops.length > 0 && (
+                                    <div style={styles.subsection}>
+                                        <h3 style={styles.subsectionTitle}>🔧 Talleres</h3>
+                                        <div style={styles.grid4Cols}>
+                                            {workshops.map((program) => (
+                                                <div key={program.id} style={styles.programCard}>
+                                                    <div style={styles.programBadge}>Taller</div>
+                                                    <h3 style={styles.cardTitle}>{program.title}</h3>
+                                                    <p style={styles.cardDesc}>{program.description.substring(0, 100)}...</p>
+                                                    <div style={styles.programMeta}>
+                                                        <span>📅 {program.duration_weeks} semanas</span>
+                                                        <span>📚 {program.course_ids?.length || 0} cursos</span>
+                                                    </div>
+                                                    <div style={styles.programButtonGroup}>
+                                                        <button
+                                                            style={styles.programDetailBtn}
+                                                            onClick={() => handleViewProgram(program)}
+                                                        >
+                                                            Ver programa →
+                                                        </button>
+                                                        {isTeacher && (
+                                                            <button
+                                                                style={styles.programDeleteBtn}
+                                                                onClick={() => handleDeleteProgram(program.id, program.title)}
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {programs.length === 0 && (
                                     <div style={styles.emptyState}>
-                                        <p>Próximamente: Talleres prácticos de corta duración.</p>
+                                        <p>No hay programas de formación creados.</p>
+                                        {isTeacher && (
+                                            <button style={styles.createFirstBtn} onClick={() => navigate('/bootcamp')}>
+                                                + Crear mi primer Bootcamp
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </>
@@ -712,7 +796,7 @@ export default function Dashboard() {
             {/* Contenido dinámico según pestaña */}
             {renderContent()}
 
-            {/* Modales (mantienen su funcionalidad original) */}
+            {/* Modales */}
             {showStudentsFor && selectedCourseStudents.length > 0 && (
                 <div style={styles.studentsModal}>
                     <div style={styles.studentsModalContent}>
@@ -778,7 +862,7 @@ const styles: Record<string, React.CSSProperties> = {
 
     grid4Cols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 },
 
-    // Tarjetas de cursos (existentes)
+    // Tarjetas de cursos
     card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column' },
     cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     cardDomain: { fontSize: 10, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em' },
@@ -804,7 +888,9 @@ const styles: Record<string, React.CSSProperties> = {
     programCard: { background: 'linear-gradient(135deg, #fff 0%, #F9F9F8 100%)', border: '1px solid #D3D1C7', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', transition: 'transform 0.2s ease' },
     programBadge: { display: 'inline-block', background: '#1E3A5F', color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 10px', borderRadius: 20, marginBottom: 10, width: 'fit-content' },
     programMeta: { display: 'flex', gap: 12, fontSize: 11, color: '#888780', margin: '8px 0', padding: '8px 0', borderTop: '1px solid #F1EFE8', borderBottom: '1px solid #F1EFE8' },
-    programDetailBtn: { background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, marginTop: 8, width: '100%' },
+    programButtonGroup: { display: 'flex', gap: 8, marginTop: 8 },
+    programDetailBtn: { flex: 1, background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
+    programDeleteBtn: { background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, minWidth: 40 },
 
     // Google Classroom
     googleCard: { background: '#fff', border: '1px solid #E8E6E1', borderRadius: 12, padding: 16, transition: 'all 0.2s ease' },
@@ -816,6 +902,7 @@ const styles: Record<string, React.CSSProperties> = {
     muted: { color: '#888780', fontSize: 16, textAlign: 'center' },
     error: { color: '#A32D2D', fontSize: 16 },
     generateBtn: { background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+    createFirstBtn: { background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 16 },
 
     // Usuario
     userBadge: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 8, padding: '4px 10px', border: '1px solid #D3D1C7' },

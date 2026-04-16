@@ -572,3 +572,128 @@ export const composeBootcamp = async (bootcampId: string, courseIds: string[]) =
 
     return response.json()
 }
+
+// =============================================================================
+// ── Programs (Bootcamps, Diplomados, Especialidades, Talleres) ───────────────
+// =============================================================================
+
+export interface Program {
+    id: string
+    title: string
+    description: string
+    type: 'bootcamp' | 'diploma' | 'specialty' | 'workshop'
+    duration_weeks: number
+    course_ids: string[]
+    modules?: any[]
+    created_at: string
+    updated_at: string
+}
+
+export const getPrograms = async (type?: string): Promise<Program[]> => {
+    try {
+        const url = type ? `/programs?type=${type}` : '/programs'
+        const response = await api.get(url)
+        return response.data.programs || response.data || []
+    } catch (error) {
+        console.error('Error getting programs:', error)
+        return []
+    }
+}
+
+export const getProgram = async (id: string): Promise<Program | null> => {
+    try {
+        const response = await api.get(`/programs/${id}`)
+        return response.data
+    } catch (error) {
+        console.error('Error getting program:', error)
+        return null
+    }
+}
+
+export const createProgram = async (programData: {
+    title: string
+    description: string
+    type: 'bootcamp' | 'diploma' | 'specialty' | 'workshop'
+    duration_weeks: number
+    course_ids: string[]
+    modules?: any[]
+}): Promise<Program | null> => {
+    try {
+        const token = localStorage.getItem('google_token')
+        const response = await fetch(`${API_URL}/programs`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(programData)
+        })
+
+        if (!response.ok) {
+            throw new Error(`Error: ${response.status}`)
+        }
+
+        return await response.json()
+    } catch (error) {
+        console.error('Error creating program:', error)
+        return null
+    }
+}
+
+export const updateProgram = async (id: string, programData: Partial<Program>): Promise<Program | null> => {
+    try {
+        const token = localStorage.getItem('google_token')
+        const response = await fetch(`${API_URL}/programs/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(programData)
+        })
+
+        if (!response.ok) {
+            throw new Error(`Error: ${response.status}`)
+        }
+
+        return await response.json()
+    } catch (error) {
+        console.error('Error updating program:', error)
+        return null
+    }
+}
+
+export const deleteProgram = async (id: string): Promise<boolean> => {
+    try {
+        const token = localStorage.getItem('google_token')
+        const response = await fetch(`${API_URL}/programs/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+
+        return response.ok
+    } catch (error) {
+        console.error('Error deleting program:', error)
+        return false
+    }
+}
+
+// Función corregida: eliminado bootcampId que no se usaba
+export const saveBootcampAsProgram = async (
+    bootcampTitle: string,
+    bootcampDescription: string,
+    durationWeeks: number,
+    courseIds: string[],
+    modules: any[]
+): Promise<Program | null> => {
+    return createProgram({
+        title: bootcampTitle,
+        description: bootcampDescription,
+        type: 'bootcamp',
+        duration_weeks: durationWeeks,
+        course_ids: courseIds,
+        modules: modules
+    })
+}

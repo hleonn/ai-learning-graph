@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCourses, createCourseWithRoadmap, checkMultipleCoursesGraphs } from '../lib/api'
+import { getCourses, createCourseWithRoadmap, checkMultipleCoursesGraphs, saveBootcampAsProgram } from '../lib/api'
 import { calculateProgressiveWeights, suggestCourseOrder } from '../utils/bootcampWeights'
 import { buildBootcampGlobalGraph } from '../utils/bootcampGraphBuilder'
 import type { BootcampGraph } from '../utils/bootcampGraphBuilder'
@@ -77,7 +77,7 @@ export default function BootcampCreator() {
     const [allCoursesHaveGraphs, setAllCoursesHaveGraphs] = useState(false)
     const [generatedCourseIds, setGeneratedCourseIds] = useState<string[]>([])
     const [bootcampBuilt, setBootcampBuilt] = useState(false)
-
+    const [savingProgram, setSavingProgram] = useState(false)
     // Cargar cursos disponibles
     useEffect(() => {
         const loadCourses = async () => {
@@ -491,6 +491,42 @@ export default function BootcampCreator() {
         }
     }
 
+    // Guardar bootcamp como programa de formación
+    const handleSaveToPrograms = async () => {
+        if (!createdBootcamp || !bootcampBuilt) {
+            alert('Primero debes construir el bootcamp')
+            return
+        }
+
+        if (selectedCourses.length === 0) {
+            alert('No hay cursos seleccionados para guardar')
+            return
+        }
+
+        setSavingProgram(true)
+        try {
+            const program = await saveBootcampAsProgram(
+                bootcampTitle,
+                bootcampDescription || `Bootcamp de ${bootcampTitle}`,
+                durationWeeks,
+                selectedCourses,
+                createdBootcamp.modules || []
+            )
+
+            if (program) {
+                alert(`✅ Bootcamp "${bootcampTitle}" guardado correctamente en Programas de Formación.\n\n` +
+                    `Podrás verlo en la sección de Bootcamps del Dashboard.`)
+            } else {
+                throw new Error('Error al guardar el programa')
+            }
+        } catch (error) {
+            console.error('Error saving program:', error)
+            alert('Error al guardar el bootcamp en Programas de Formación')
+        } finally {
+            setSavingProgram(false)
+        }
+    }
+
     // Obtener nombre del curso por ID
     const getCourseName = (courseId: string): string => {
         const course = courses.find(c => c.id === courseId)
@@ -803,6 +839,18 @@ export default function BootcampCreator() {
                                 {loading ? '📊 Exportando...' : '📊 Exportar a Gephi (GEXF)'}
                             </button>
                         </div>
+                        {/* Botón para guardar en Programas de Formación */}
+                        {bootcampBuilt && createdBootcamp && (
+                            <div style={styles.buttonGroup}>
+                                <button
+                                    style={styles.saveProgramBtn}
+                                    onClick={handleSaveToPrograms}
+                                    disabled={savingProgram}
+                                >
+                                    {savingProgram ? '💾 Guardando...' : '💾 Guardar en Programas de Formación'}
+                                </button>
+                            </div>
+                        )}
                         {/* Botón para ver grafo global */}
                         {bootcampBuilt && globalBootcampGraph && (
                             <div style={styles.buttonGroup}>
@@ -1027,6 +1075,18 @@ const styles: Record<string, React.CSSProperties> = {
         width: '100%',
         padding: '12px',
         background: '#1E3A5F',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 14,
+        fontWeight: 600,
+        marginTop: 8,
+    },
+    saveProgramBtn: {
+        width: '100%',
+        padding: '12px',
+        background: '#1D9E75',
         color: '#fff',
         border: 'none',
         borderRadius: 8,
