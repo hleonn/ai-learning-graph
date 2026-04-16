@@ -58,7 +58,7 @@ export const createCourseWithRoadmap = async (courseData: {
     }
 }
 
-// Construir grafo completo desde un roadmap
+// Construir grafo completo desde un roadmap (VERSIÓN CORREGIDA - GRAFOS INTERCONECTADOS)
 export const buildGraphFromRoadmap = async (courseId: string, roadmap: any): Promise<{ success: boolean; message: string; nodeCount: number; edgeCount: number }> => {
     try {
         // Validar roadmap
@@ -70,10 +70,13 @@ export const buildGraphFromRoadmap = async (courseId: string, roadmap: any): Pro
         const positions = calculatePositionsFromRoadmap(roadmap)
         const labelToId = new Map<string, string>()
 
+        // Almacenar todos los nodos con su metadata
+        const allNodes: { label: string; phase: number; topic: string; description: string; difficulty: number }[] = []
+
         let nodeCount = 0
         let edgeCount = 0
 
-        // 1. Crear todos los nodos
+        // PASO 1: Crear todos los nodos y recolectar metadata
         for (const phase of roadmap.phases) {
             if (!phase.topics) continue
 
@@ -85,6 +88,14 @@ export const buildGraphFromRoadmap = async (courseId: string, roadmap: any): Pro
                         x: 100 + Math.random() * 700,
                         y: 100 + (phase.phase_number - 1) * 150 + Math.random() * 100
                     }
+
+                    allNodes.push({
+                        label: subtopic.label,
+                        phase: phase.phase_number,
+                        topic: topic.topic_name,
+                        description: subtopic.description || '',
+                        difficulty: subtopic.difficulty || 3
+                    })
 
                     try {
                         const nodeResponse = await api.post(`/graph/${courseId}/nodes`, {
@@ -114,23 +125,26 @@ export const buildGraphFromRoadmap = async (courseId: string, roadmap: any): Pro
                         console.error(`Error creating node for ${subtopic.label}:`, nodeError)
                     }
 
-                    // Pequeña pausa para no saturar
                     await new Promise(resolve => setTimeout(resolve, 50))
                 }
             }
         }
 
-        // 2. Crear edges (prerrequisitos)
+        // PASO 2: Crear edges basados en prerequisites (si existen)
         for (const phase of roadmap.phases) {
             if (!phase.topics) continue
 
             for (const topic of phase.topics) {
                 if (!topic.subtopics) continue
 
-                for (const subtopic of topic.subtopics) {
+                const subtopicsInTopic = topic.subtopics
+
+                for (let i = 0; i < subtopicsInTopic.length; i++) {
+                    const subtopic = subtopicsInTopic[i]
                     const targetId = labelToId.get(subtopic.label)
                     if (!targetId) continue
 
+                    // 2.1 Usar prerequisites definidos en el roadmap
                     const prerequisites = subtopic.prerequisites || []
                     for (const prereqLabel of prerequisites) {
                         const sourceId = labelToId.get(prereqLabel)
@@ -148,13 +162,115 @@ export const buildGraphFromRoadmap = async (courseId: string, roadmap: any): Pro
                             await new Promise(resolve => setTimeout(resolve, 30))
                         }
                     }
+
+                    // 2.2 Si no hay prerequisites, crear conexiones inteligentes
+                    if (prerequisites.length === 0) {
+                        // Conectar con nodo anterior en el mismo tema (conexión secuencial)
+                        if (i > 0) {
+                            const prevSubtopic = subtopicsInTopic[i - 1]
+                            const sourceId = labelToId.get(prevSubtopic.label)
+                            if (sourceId && sourceId !== targetId) {
+                                try {
+                                    await api.post(`/graph/${courseId}/edges`, {
+                                        source_id: sourceId,
+                                        target_id: targetId,
+                                        prerequisite_strength: 0.7,
+                                    })
+                                    edgeCount++
+                                } catch (edgeError) {
+                                    console.error(`Error creating sequential edge:`, edgeError)
+                                }
+                                await new Promise(resolve => setTimeout(resolve, 30))
+                            }
+                        }
+
+                        // Conectar con nodos de temas relacionados (basado en descripción)
+                        const relatedNodes = allNodes.filter(n =>
+                            n.phase === phase.phase_number &&
+                            n.label !== subtopic.label &&
+                            (n.description.toLowerCase().includes('básico') ||
+                                n.description.toLowerCase().includes('fundamento') ||
+                                n.description.toLowerCase().includes('introducción'))
+                        )
+
+                        for (let r = 0; r < Math.min(2, relatedNodes.length); r++) {
+                            const relatedNode = relatedNodes[r]
+                            const sourceId = labelToId.get(relatedNode.label)
+                            if (sourceId && sourceId !== targetId) {
+                                try {
+                                    await api.post(`/graph/${courseId}/edges`, {
+                                        source_id: sourceId,
+                                        target_id: targetId,
+                                        prerequisite_strength: 0.5,
+                                    })
+                                    edgeCount++
+                                } catch (edgeError) {
+                                    // Ignorar errores de duplicados
+                                }
+                                await new Promise(resolve => setTimeout(resolve, 30))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // PASO 3: Crear conexiones entre fases (progresión de aprendizaje)
+        const phasesList = roadmap.phases
+        for (let p = 0; p < phasesList.length - 1; p++) {
+            const currentPhase = phasesList[p]
+            const nextPhase = phasesList[p + 1]
+
+            if (!currentPhase.topics || !nextPhase.topics) continue
+
+            // Obtener últimos 3 nodos de la fase actual
+            const currentPhaseNodes: string[] = []
+            for (const topic of currentPhase.topics) {
+                if (topic.subtopics) {
+                    for (const subtopic of topic.subtopics) {
+                        const nodeId = labelToId.get(subtopic.label)
+                        if (nodeId) currentPhaseNodes.push(nodeId)
+                    }
+                }
+            }
+
+            // Obtener primeros 3 nodos de la siguiente fase
+            const nextPhaseNodes: string[] = []
+            for (const topic of nextPhase.topics) {
+                if (topic.subtopics) {
+                    for (const subtopic of topic.subtopics) {
+                        const nodeId = labelToId.get(subtopic.label)
+                        if (nodeId) nextPhaseNodes.push(nodeId)
+                    }
+                }
+            }
+
+            // Conectar nodos de fase actual con nodos de siguiente fase
+            const sourcesToConnect = currentPhaseNodes.slice(-3)
+            const targetsToConnect = nextPhaseNodes.slice(0, 3)
+
+            for (const source of sourcesToConnect) {
+                for (const target of targetsToConnect) {
+                    if (source !== target) {
+                        try {
+                            await api.post(`/graph/${courseId}/edges`, {
+                                source_id: source,
+                                target_id: target,
+                                prerequisite_strength: 0.8,
+                            })
+                            edgeCount++
+                        } catch (edgeError) {
+                            // Ignorar duplicados
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 30))
+                    }
                 }
             }
         }
 
         return {
             success: nodeCount > 0,
-            message: `Grafo construido: ${nodeCount} nodos, ${edgeCount} edges`,
+            message: `Grafo construido: ${nodeCount} nodos, ${edgeCount} edges (interconectado)`,
             nodeCount,
             edgeCount
         }
@@ -589,14 +705,41 @@ export interface Program {
     updated_at: string
 }
 
+// Clave para localStorage
+const STORAGE_KEY_PROGRAMS = 'ai_learning_programs'
+
+// Función para generar ID único
+function generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+}
+
+// Obtener programas de localStorage (fallback)
+function getProgramsFromLocalStorage(): Program[] {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY_PROGRAMS)
+        return stored ? JSON.parse(stored) : []
+    } catch {
+        return []
+    }
+}
+
+// Guardar programas en localStorage
+function saveProgramsToLocalStorage(programs: Program[]): void {
+    localStorage.setItem(STORAGE_KEY_PROGRAMS, JSON.stringify(programs))
+}
+
 export const getPrograms = async (type?: string): Promise<Program[]> => {
     try {
         const url = type ? `/programs?type=${type}` : '/programs'
         const response = await api.get(url)
         return response.data.programs || response.data || []
     } catch (error) {
-        console.error('Error getting programs:', error)
-        return []
+        console.warn('API getPrograms falló, usando localStorage:', error)
+        let programs = getProgramsFromLocalStorage()
+        if (type) {
+            programs = programs.filter(p => p.type === type)
+        }
+        return programs
     }
 }
 
@@ -605,8 +748,9 @@ export const getProgram = async (id: string): Promise<Program | null> => {
         const response = await api.get(`/programs/${id}`)
         return response.data
     } catch (error) {
-        console.error('Error getting program:', error)
-        return null
+        console.warn('API getProgram falló, usando localStorage:', error)
+        const programs = getProgramsFromLocalStorage()
+        return programs.find(p => p.id === id) || null
     }
 }
 
@@ -635,8 +779,27 @@ export const createProgram = async (programData: {
 
         return await response.json()
     } catch (error) {
-        console.error('Error creating program:', error)
-        return null
+        console.warn('API createProgram falló, usando localStorage:', error)
+
+        const programs = getProgramsFromLocalStorage()
+        const newProgram: Program = {
+            id: generateId(),
+            title: programData.title,
+            description: programData.description,
+            type: programData.type,
+            duration_weeks: programData.duration_weeks,
+            course_ids: programData.course_ids,
+            modules: programData.modules || [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        }
+
+        programs.push(newProgram)
+        saveProgramsToLocalStorage(programs)
+
+        console.log(`✅ Programa guardado en localStorage: ${newProgram.title} (ID: ${newProgram.id})`)
+
+        return newProgram
     }
 }
 
@@ -658,7 +821,21 @@ export const updateProgram = async (id: string, programData: Partial<Program>): 
 
         return await response.json()
     } catch (error) {
-        console.error('Error updating program:', error)
+        console.warn('API updateProgram falló, usando localStorage:', error)
+
+        const programs = getProgramsFromLocalStorage()
+        const index = programs.findIndex(p => p.id === id)
+
+        if (index !== -1) {
+            programs[index] = {
+                ...programs[index],
+                ...programData,
+                updated_at: new Date().toISOString()
+            }
+            saveProgramsToLocalStorage(programs)
+            return programs[index]
+        }
+
         return null
     }
 }
@@ -675,7 +852,16 @@ export const deleteProgram = async (id: string): Promise<boolean> => {
 
         return response.ok
     } catch (error) {
-        console.error('Error deleting program:', error)
+        console.warn('API deleteProgram falló, usando localStorage:', error)
+
+        const programs = getProgramsFromLocalStorage()
+        const filtered = programs.filter(p => p.id !== id)
+
+        if (filtered.length !== programs.length) {
+            saveProgramsToLocalStorage(filtered)
+            return true
+        }
+
         return false
     }
 }

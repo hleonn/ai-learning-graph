@@ -21,7 +21,6 @@ export interface GraphEdge {
     target: string
     strength?: number
     prerequisite_strength?: number
-    // NOTA: Gephi no reconoce el atributo 'type', lo eliminamos
 }
 
 export interface GraphData {
@@ -45,16 +44,19 @@ function escapeXml(unsafe: string): string {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;')
+        .replace(/[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD]/g, '')
+}
+
+/**
+ * Limpia un ID para que sea válido en XML
+ */
+function cleanId(id: string): string {
+    if (!id) return `node_${Math.random().toString(36).substr(2, 8)}`
+    return id.replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
 /**
  * Genera un archivo GEXF válido para Gephi 0.10
- *
- * NOTAS IMPORTANTES PARA GEPHI:
- * - No usar atributo 'type' en edges (no es estándar)
- * - Usar versión 1.2 (deprecated pero funciona)
- * - Los colores se definen con viz:color
- * - Las posiciones con viz:position
  */
 export function generateGexfFromGraph(
     graphData: GraphData,
@@ -70,16 +72,42 @@ export function generateGexfFromGraph(
 
     // Colores para los diferentes módulos
     const MODULE_COLORS = [
-        '#4A90D9', '#50E3C2', '#F5A623', '#D0021B', '#9B59B6',
-        '#1D9E75', '#E8A317', '#E67E22', '#2ECC71', '#E74C3C'
+        { r: 74, g: 144, b: 217 },   // '#4A90D9' Azul
+        { r: 80, g: 227, b: 194 },    // '#50E3C2' Verde agua
+        { r: 245, g: 166, b: 35 },    // '#F5A623' Naranja
+        { r: 208, g: 2, b: 27 },      // '#D0021B' Rojo
+        { r: 155, g: 89, b: 182 },    // '#9B59B6' Púrpura
+        { r: 29, g: 158, b: 117 },    // '#1D9E75' Verde
+        { r: 232, g: 163, b: 23 },    // '#E8A317' Amarillo
+        { r: 230, g: 126, b: 34 },    // '#E67E22' Naranja oscuro
+        { r: 46, g: 204, b: 113 },    // '#2ECC71' Verde claro
+        { r: 231, g: 76, b: 60 }      // '#E74C3C' Rojo claro
     ]
 
-    function getModuleColor(moduleOrder: number): string {
-        if (!moduleOrder) return '#1E3A5F'
-        return MODULE_COLORS[(moduleOrder - 1) % MODULE_COLORS.length]
+    function getModuleColor(moduleOrder: number): { r: number; g: number; b: number } {
+        if (!moduleOrder || moduleOrder < 1) return { r: 30, g: 58, b: 95 }
+        const idx = (moduleOrder - 1) % MODULE_COLORS.length
+        return MODULE_COLORS[idx]
     }
 
-    // Construir XML GEXF (sin atributo 'type' en edges)
+    // Encontrar rangos de posición para normalizar
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const node of nodes) {
+        if (node.position_x !== undefined && node.position_x !== null) {
+            minX = Math.min(minX, node.position_x)
+            maxX = Math.max(maxX, node.position_x)
+        }
+        if (node.position_y !== undefined && node.position_y !== null) {
+            minY = Math.min(minY, node.position_y)
+            maxY = Math.max(maxY, node.position_y)
+        }
+    }
+
+    // Si no hay posiciones válidas, usar layout circular
+    const useRandomPositions = minX === Infinity || maxX === Infinity || minY === Infinity || maxY === Infinity
+    const centerX = 500, centerY = 400
+    const radius = Math.min(400, Math.max(200, totalNodes * 5))
+
     let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <gexf xmlns="http://www.gexf.net/1.2draft" 
       xmlns:viz="http://www.gexf.net/1.2draft/viz" 
@@ -90,7 +118,6 @@ export function generateGexfFromGraph(
     </meta>
     <graph mode="static" defaultedgetype="directed">
         
-        <!-- Atributos de nodos -->
         <attributes class="node">
             <attribute id="description" title="Descripción" type="string"/>
             <attribute id="difficulty" title="Dificultad" type="integer"/>
@@ -101,19 +128,17 @@ export function generateGexfFromGraph(
             <attribute id="moduleWeight" title="Peso del Módulo" type="double"/>
         </attributes>
         
-        <!-- Atributos de edges (solo weight, sin type) -->
         <attributes class="edge">
             <attribute id="strength" title="Fuerza" type="double"/>
         </attributes>
         
-        <!-- Nodos -->
         <nodes count="${totalNodes}">
 `
 
-    // Añadir cada nodo
-    for (const node of nodes) {
-        const nodeId = escapeXml(node.id)
-        const label = escapeXml(node.label)
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i]
+        const nodeId = cleanId(node.id)
+        const label = escapeXml(node.label || `Nodo_${i}`)
         const description = escapeXml(node.description || '')
         const difficulty = node.difficulty || 1
         const phase = node.phase || node.moduleOrder || 1
@@ -122,15 +147,21 @@ export function generateGexfFromGraph(
         const courseTitleAttr = escapeXml(node.courseTitle || '')
         const moduleWeight = node.moduleWeight || 0.2
 
-        // Posiciones
-        const posX = node.position_x ?? (Math.random() * 1000)
-        const posY = node.position_y ?? (Math.random() * 800)
+        let posX: number, posY: number
 
-        // Color basado en módulo
+        if (!useRandomPositions && node.position_x !== undefined && node.position_y !== undefined) {
+            const rangeX = maxX - minX
+            const rangeY = maxY - minY
+            posX = rangeX > 0 ? ((node.position_x - minX) / rangeX) * 900 + 50 : 500
+            posY = rangeY > 0 ? ((node.position_y - minY) / rangeY) * 700 + 50 : 400
+        } else {
+            const angle = (i / totalNodes) * 2 * Math.PI
+            posX = centerX + radius * Math.cos(angle)
+            posY = centerY + radius * Math.sin(angle)
+        }
+
         const moduleColor = getModuleColor(moduleOrder)
-
-        // Tamaño basado en dificultad
-        const size = 15 + (difficulty * 5)
+        const size = Math.min(30, Math.max(10, 12 + (difficulty * 3) + (moduleWeight * 10)))
 
         xml += `            <node id="${nodeId}" label="${label}">
                 <attvalues>
@@ -143,10 +174,8 @@ export function generateGexfFromGraph(
                     <attvalue for="moduleWeight" value="${moduleWeight}"/>
                 </attvalues>
                 <viz:size value="${size}"/>
-                <viz:position x="${posX}" y="${posY}" z="0.0"/>
-                <viz:color r="${parseInt(moduleColor.slice(1, 3), 16)}" 
-                           g="${parseInt(moduleColor.slice(3, 5), 16)}" 
-                           b="${parseInt(moduleColor.slice(5, 7), 16)}"/>
+                <viz:position x="${posX.toFixed(1)}" y="${posY.toFixed(1)}" z="0.0"/>
+                <viz:color r="${moduleColor.r}" g="${moduleColor.g}" b="${moduleColor.b}"/>
                 <viz:shape value="disc"/>
             </node>
 `
@@ -154,36 +183,30 @@ export function generateGexfFromGraph(
 
     xml += `        </nodes>
         
-        <!-- Edges (sin atributo 'type' para compatibilidad con Gephi) -->
         <edges count="${totalEdges}">
 `
 
-    // Añadir cada edge (sin atributo type)
     for (let i = 0; i < edges.length; i++) {
         const edge = edges[i]
         const edgeId = edge.id || `e${i}`
-        const source = escapeXml(edge.source)
-        const target = escapeXml(edge.target)
+        const source = cleanId(edge.source)
+        const target = cleanId(edge.target)
         const strength = edge.strength ?? edge.prerequisite_strength ?? 0.5
 
-        // Determinar color y grosor basado en si es intermodule (por el nombre del edge)
-        const isIntermodule = edge.id?.includes('intermodule') ||
-            source.includes('c1_') && target.includes('c2_') ||
-            source.includes('c2_') && target.includes('c3_') ||
-            source.includes('c3_') && target.includes('c4_') ||
-            source.includes('c4_') && target.includes('c5_')
+        if (!source || !target || source === target) continue
 
-        const edgeColor = isIntermodule ? '#E24B4A' : '#D3D1C7'
+        const isIntermodule = edgeId.includes('intermodule') ||
+            (source.startsWith('c') && target.startsWith('c') && source[1] !== target[1])
+
+        const edgeColor = isIntermodule ? { r: 226, g: 75, b: 74 } : { r: 211, g: 209, b: 199 }
         const thickness = isIntermodule ? 3 + strength * 2 : 1 + strength * 2
 
-        xml += `            <edge id="${edgeId}" source="${source}" target="${target}" weight="${strength}">
+        xml += `            <edge id="${edgeId}" source="${source}" target="${target}" weight="${strength.toFixed(2)}">
                 <attvalues>
-                    <attvalue for="strength" value="${strength}"/>
+                    <attvalue for="strength" value="${strength.toFixed(2)}"/>
                 </attvalues>
-                <viz:thickness value="${thickness}"/>
-                <viz:color r="${parseInt(edgeColor.slice(1, 3), 16)}" 
-                           g="${parseInt(edgeColor.slice(3, 5), 16)}" 
-                           b="${parseInt(edgeColor.slice(5, 7), 16)}"/>
+                <viz:thickness value="${thickness.toFixed(1)}"/>
+                <viz:color r="${edgeColor.r}" g="${edgeColor.g}" b="${edgeColor.b}"/>
                 <viz:shape value="solid"/>
             </edge>
 `
@@ -196,9 +219,6 @@ export function generateGexfFromGraph(
     return xml
 }
 
-/**
- * Descarga un archivo GEXF
- */
 export function downloadGexf(gexfContent: string, filename: string): void {
     const blob = new Blob([gexfContent], { type: 'application/xml' })
     const url = URL.createObjectURL(blob)
@@ -211,9 +231,6 @@ export function downloadGexf(gexfContent: string, filename: string): void {
     URL.revokeObjectURL(url)
 }
 
-/**
- * Exporta un bootcamp a GEXF desde el grafo global
- */
 export async function exportBootcampToGexfFromGraph(
     bootcampGraph: { nodes: GraphNode[]; edges: GraphEdge[] },
     bootcampTitle: string,
@@ -229,6 +246,98 @@ export async function exportBootcampToGexfFromGraph(
         return true
     } catch (error) {
         console.error('Error exporting bootcamp graph to GEXF:', error)
+        return false
+    }
+}
+
+// CORREGIDO: Eliminado bootcampId no usado
+export async function exportBootcampToGexfLocal(
+    bootcampTitle: string,
+    courseIds: string[]
+): Promise<boolean> {
+    try {
+        const allNodes: GraphNode[] = []
+        const allEdges: GraphEdge[] = []
+        let edgeCounter = 0
+        let courseCounter = 0
+
+        for (const courseId of courseIds) {
+            const response = await fetch(`https://mygateway.up.railway.app/graph/${courseId}`)
+            if (response.ok) {
+                const graphData = await response.json()
+                const nodes = graphData.nodes || []
+                const edges = graphData.edges || []
+                const prefix = `c${courseCounter++}_`
+
+                let courseTitle = courseId
+                const courseResponse = await fetch(`https://mygateway.up.railway.app/courses/${courseId}`)
+                if (courseResponse.ok) {
+                    const courseData = await courseResponse.json()
+                    courseTitle = courseData.title || courseId
+                }
+
+                for (const node of nodes) {
+                    const nodeData = node.data || node
+                    allNodes.push({
+                        id: `${prefix}${nodeData.id}`,
+                        label: nodeData.label,
+                        description: nodeData.description,
+                        difficulty: nodeData.difficulty,
+                        phase: nodeData.phase,
+                        topic: nodeData.topic,
+                        position_x: node.position?.x,
+                        position_y: node.position?.y,
+                        moduleOrder: courseCounter,
+                        courseTitle: courseTitle,
+                        moduleWeight: 1 / courseIds.length
+                    })
+                }
+
+                for (const edge of edges) {
+                    const edgeData = edge.data || edge
+                    allEdges.push({
+                        id: `e${edgeCounter++}`,
+                        source: `${prefix}${edgeData.source}`,
+                        target: `${prefix}${edgeData.target}`,
+                        strength: edgeData.strength || edgeData.prerequisite_strength || 0.5
+                    })
+                }
+            }
+        }
+
+        // Añadir conexiones entre módulos
+        for (let i = 0; i < courseIds.length - 1; i++) {
+            const prefixCurrent = `c${i}_`
+            const prefixNext = `c${i + 1}_`
+
+            const currentNodes = allNodes.filter(n => n.id.startsWith(prefixCurrent))
+            const nextNodes = allNodes.filter(n => n.id.startsWith(prefixNext))
+
+            if (currentNodes.length > 0 && nextNodes.length > 0) {
+                const sourceId = currentNodes[currentNodes.length - 1]?.id
+                const targetId = nextNodes[0]?.id
+
+                if (sourceId && targetId) {
+                    allEdges.push({
+                        id: `e${edgeCounter++}`,
+                        source: sourceId,
+                        target: targetId,
+                        strength: 0.8
+                    })
+                }
+            }
+        }
+
+        const gexfContent = generateGexfFromGraph(
+            { nodes: allNodes, edges: allEdges },
+            bootcampTitle,
+            `Bootcamp: ${bootcampTitle}`
+        )
+        downloadGexf(gexfContent, `bootcamp_${bootcampTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.gexf`)
+        return true
+
+    } catch (error) {
+        console.error('Error exporting bootcamp to GEXF:', error)
         return false
     }
 }

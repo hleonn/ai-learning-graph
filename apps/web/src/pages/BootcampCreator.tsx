@@ -78,6 +78,7 @@ export default function BootcampCreator() {
     const [generatedCourseIds, setGeneratedCourseIds] = useState<string[]>([])
     const [bootcampBuilt, setBootcampBuilt] = useState(false)
     const [savingProgram, setSavingProgram] = useState(false)
+
     // Cargar cursos disponibles
     useEffect(() => {
         const loadCourses = async () => {
@@ -91,6 +92,30 @@ export default function BootcampCreator() {
         loadCourses()
     }, [])
 
+    // Sincronizar estado de grafos antes de recomendar
+    const syncGraphsBeforeRecommend = async () => {
+        if (selectedCourses.length === 0) return
+
+        console.log('🔄 Sincronizando estado de grafos antes de recomendar...')
+        const results = await checkMultipleCoursesGraphs(selectedCourses)
+        setGraphCheckResults(results)
+
+        const allHaveGraphs = Array.from(results.values()).every(r => r.hasGraph)
+        setAllCoursesHaveGraphs(allHaveGraphs)
+
+        console.log('📊 Estado de grafos sincronizado:', {
+            total: results.size,
+            withGraphs: Array.from(results.values()).filter(r => r.hasGraph).length,
+            details: Array.from(results.entries()).map(([id, r]) => ({
+                id: id.substring(0, 8),
+                hasGraph: r.hasGraph,
+                nodeCount: r.nodeCount
+            }))
+        })
+
+        return results
+    }
+
     const handleRecommend = async () => {
         if (!bootcampTitle.trim()) {
             alert('Ingresa un título para el bootcamp')
@@ -99,7 +124,29 @@ export default function BootcampCreator() {
 
         setLoading(true)
         try {
+            // Primero sincronizar estado de grafos
+            await syncGraphsBeforeRecommend()
+
             const token = localStorage.getItem('google_token')
+
+            // Depuración: mostrar qué cursos estamos enviando
+            console.log('📤 Enviando recomendación con:', {
+                title: bootcampTitle,
+                description: bootcampDescription,
+                target_duration_weeks: durationWeeks,
+                required_course_ids: selectedCourses,
+                selectedCoursesDetails: selectedCourses.map(id => {
+                    const course = courses.find(c => c.id === id)
+                    const graphInfo = graphCheckResults.get(id)
+                    return {
+                        id: id.substring(0, 8),
+                        title: course?.title,
+                        hasGraph: graphInfo?.hasGraph,
+                        nodeCount: graphInfo?.nodeCount
+                    }
+                })
+            })
+
             const response = await fetch('https://mygateway.up.railway.app/bootcamp/recommend', {
                 method: 'POST',
                 headers: {
@@ -114,12 +161,49 @@ export default function BootcampCreator() {
                 })
             })
 
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+
             const data = await response.json()
+
+            // Depuración: ver qué devuelve el backend
+            console.log('📥 Respuesta de recomendación:', {
+                existing_courses: data.existing_courses?.length,
+                missing_courses: data.missing_courses?.length,
+                existing_details: data.existing_courses?.map((c: any) => ({
+                    id: c.id?.substring(0, 8),
+                    title: c.title
+                })),
+                missing_details: data.missing_courses?.map((c: any) => ({
+                    title: c.title,
+                    domain: c.domain
+                }))
+            })
+
             setRecommendation(data)
             setBootcampId(data.suggested_bootcamp?.id || null)
+
+            // Verificar si el backend reconoció correctamente los cursos
+            const recognizedIds = new Set(data.existing_courses?.map((c: any) => c.id) || [])
+            const unrecognizedCourses = selectedCourses.filter(id => !recognizedIds.has(id))
+
+            if (unrecognizedCourses.length > 0 && selectedCourses.length > 0) {
+                const unrecognizedNames = unrecognizedCourses.map(id => {
+                    const course = courses.find(c => c.id === id)
+                    const graphInfo = graphCheckResults.get(id)
+                    return `${course?.title || id} (grafo: ${graphInfo?.hasGraph ? '✅' : '❌'})`
+                })
+                console.warn('⚠️ Cursos no reconocidos por el backend:', unrecognizedNames)
+                alert(`⚠️ El backend no reconoció ${unrecognizedCourses.length} curso(s):\n${unrecognizedNames.join('\n')}\n\n` +
+                    `Estos cursos serán tratados como "faltantes" y se generarán nuevamente.\n\n` +
+                    `Si los cursos ya existen, verifica que tengan grafos generados.`)
+            }
+
         } catch (error) {
-            console.error('Error:', error)
-            alert('Error al recomendar bootcamp')
+            console.error('Error en recomendación:', error)
+            alert(`Error al recomendar bootcamp: ${error}\n\n` +
+                `Verifica que el backend esté funcionando correctamente.`)
         } finally {
             setLoading(false)
         }
@@ -880,25 +964,10 @@ export default function BootcampCreator() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-    page: {
-        maxWidth: 1400,
-        margin: '0 auto',
-        padding: '40px 24px',
-        fontFamily: 'system-ui, sans-serif',
-        minHeight: '100vh',
-        background: '#F1EFE8'
-    },
+    // ... (mantener los estilos existentes sin cambios)
+    page: { maxWidth: 1400, margin: '0 auto', padding: '40px 24px', fontFamily: 'system-ui, sans-serif', minHeight: '100vh', background: '#F1EFE8' },
     header: { marginBottom: 32 },
-    back: {
-        background: 'none',
-        border: '1px solid #D3D1C7',
-        padding: '6px 12px',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 13,
-        marginBottom: 16,
-        color: '#1E3A5F'
-    },
+    back: { background: 'none', border: '1px solid #D3D1C7', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, marginBottom: 16, color: '#1E3A5F' },
     title: { fontSize: 32, fontWeight: 700, color: '#1E3A5F', margin: 0 },
     subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
     container: { display: 'flex', gap: 32, flexWrap: 'wrap' },
@@ -917,60 +986,11 @@ const styles: Record<string, React.CSSProperties> = {
     courseDomainBadge: { fontSize: 10, padding: '2px 6px', borderRadius: 10, background: '#E1F5EE', color: '#1D9E75', marginLeft: 8 },
     primaryBtn: { width: '100%', padding: '12px', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
     secondaryBtn: { width: '100%', padding: '10px', background: '#6B6E6A', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
-    warningBtn: {
-        width: '100%',
-        padding: '12px',
-        background: '#F5A623',
-        color: '#fff',
-        border: 'none',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 14,
-        fontWeight: 600,
-        marginTop: 12,
-    },
-    successBtn: {
-        width: '100%',
-        padding: '12px',
-        background: '#1D9E75',
-        color: '#fff',
-        border: 'none',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 14,
-        fontWeight: 600,
-        marginTop: 8,
-    },
-    exportBtn: {
-        width: '100%',
-        padding: '10px',
-        background: '#9B59B6',
-        color: '#fff',
-        border: 'none',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 14,
-        fontWeight: 600,
-        marginTop: 8,
-    },
-    successMessage: {
-        marginTop: 12,
-        padding: '12px',
-        background: '#E1F5EE',
-        color: '#1D9E75',
-        borderRadius: 8,
-        fontSize: 13,
-        textAlign: 'center',
-    },
-    warningMessage: {
-        marginTop: 12,
-        padding: '12px',
-        background: '#FCEBEB',
-        color: '#E24B4A',
-        borderRadius: 8,
-        fontSize: 13,
-        textAlign: 'center',
-    },
+    warningBtn: { width: '100%', padding: '12px', background: '#F5A623', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 12 },
+    successBtn: { width: '100%', padding: '12px', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
+    exportBtn: { width: '100%', padding: '10px', background: '#9B59B6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
+    successMessage: { marginTop: 12, padding: '12px', background: '#E1F5EE', color: '#1D9E75', borderRadius: 8, fontSize: 13, textAlign: 'center' },
+    warningMessage: { marginTop: 12, padding: '12px', background: '#FCEBEB', color: '#E24B4A', borderRadius: 8, fontSize: 13, textAlign: 'center' },
     buttonGroup: { display: 'flex', gap: 12, marginTop: 16, flexDirection: 'column' },
     recommendationSection: { marginBottom: 20, padding: 12, background: '#F9F9F8', borderRadius: 8 },
     sectionSubtitle: { fontSize: 14, fontWeight: 600, color: '#1E3A5F', marginBottom: 10 },
@@ -984,117 +1004,22 @@ const styles: Record<string, React.CSSProperties> = {
     moduleName: { fontSize: 14, fontWeight: 600, color: '#1E3A5F', marginBottom: 4 },
     moduleDesc: { fontSize: 12, color: '#6B6E6A', marginBottom: 8, lineHeight: 1.4 },
     moduleMeta: { display: 'flex', gap: 12, fontSize: 10, color: '#888780', paddingTop: 6, borderTop: '1px solid #F1EFE8', flexWrap: 'wrap' },
-    progressContainer: {
-        marginBottom: 16,
-        padding: '16px',
-        background: '#F9F9F8',
-        borderRadius: 8,
-        border: '1px solid #D3D1C7'
-    },
-    progressHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        marginBottom: 10,
-        fontSize: 13,
-        flexWrap: 'wrap',
-        gap: 8
-    },
-    progressCourseName: {
-        color: '#1E3A5F',
-        fontWeight: 500
-    },
-    progressBarTrack: {
-        height: 8,
-        background: '#E8E6E1',
-        borderRadius: 4,
-        overflow: 'hidden',
-        marginBottom: 10
-    },
-    progressBarFill: {
-        height: '100%',
-        background: '#1D9E75',
-        borderRadius: 4,
-        transition: 'width 0.3s ease'
-    },
-    progressStatus: {
-        fontSize: 12,
-        color: '#6B6E6A'
-    },
-    checkingContainer: {
-        marginBottom: 16,
-        padding: '12px',
-        background: '#E8F0FE',
-        borderRadius: 8,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12
-    },
-    spinner: {
-        width: 20,
-        height: 20,
-        border: '2px solid #D3D1C7',
-        borderTop: '2px solid #1E3A5F',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite'
-    },
-    graphSummary: {
-        marginBottom: 16,
-        padding: '8px 12px',
-        background: '#F1EFE8',
-        borderRadius: 8
-    },
-    graphSummaryTitle: {
-        fontSize: 13,
-        fontWeight: 500,
-        cursor: 'pointer',
-        color: '#1E3A5F'
-    },
-    graphSummaryList: {
-        marginTop: 8,
-        fontSize: 12,
-        maxHeight: 200,
-        overflowY: 'auto'
-    },
-    graphSummaryItem: {
-        display: 'flex',
-        gap: 8,
-        padding: '6px 0',
-        borderBottom: '1px solid #E8E6E1',
-        alignItems: 'center'
-    },
-    graphNodeCount: {
-        fontSize: 10,
-        color: '#888780'
-    },
-    generatedBadge: {
-        fontSize: 10,
-        color: '#1D9E75',
-        marginLeft: 8
-    },
-    viewGraphBtn: {
-        width: '100%',
-        padding: '12px',
-        background: '#1E3A5F',
-        color: '#fff',
-        border: 'none',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 14,
-        fontWeight: 600,
-        marginTop: 8,
-    },
-    saveProgramBtn: {
-        width: '100%',
-        padding: '12px',
-        background: '#1D9E75',
-        color: '#fff',
-        border: 'none',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 14,
-        fontWeight: 600,
-        marginTop: 8,
-    },
+    progressContainer: { marginBottom: 16, padding: '16px', background: '#F9F9F8', borderRadius: 8, border: '1px solid #D3D1C7' },
+    progressHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: 10, fontSize: 13, flexWrap: 'wrap', gap: 8 },
+    progressCourseName: { color: '#1E3A5F', fontWeight: 500 },
+    progressBarTrack: { height: 8, background: '#E8E6E1', borderRadius: 4, overflow: 'hidden', marginBottom: 10 },
+    progressBarFill: { height: '100%', background: '#1D9E75', borderRadius: 4, transition: 'width 0.3s ease' },
+    progressStatus: { fontSize: 12, color: '#6B6E6A' },
+    checkingContainer: { marginBottom: 16, padding: '12px', background: '#E8F0FE', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 },
+    spinner: { width: 20, height: 20, border: '2px solid #D3D1C7', borderTop: '2px solid #1E3A5F', borderRadius: '50%', animation: 'spin 1s linear infinite' },
+    graphSummary: { marginBottom: 16, padding: '8px 12px', background: '#F1EFE8', borderRadius: 8 },
+    graphSummaryTitle: { fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#1E3A5F' },
+    graphSummaryList: { marginTop: 8, fontSize: 12, maxHeight: 200, overflowY: 'auto' },
+    graphSummaryItem: { display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #E8E6E1', alignItems: 'center' },
+    graphNodeCount: { fontSize: 10, color: '#888780' },
+    generatedBadge: { fontSize: 10, color: '#1D9E75', marginLeft: 8 },
+    viewGraphBtn: { width: '100%', padding: '12px', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
+    saveProgramBtn: { width: '100%', padding: '12px', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
 }
 
 // Añadir animación al documento

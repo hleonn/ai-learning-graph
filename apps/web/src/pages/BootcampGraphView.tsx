@@ -34,7 +34,7 @@ function getModuleColor(moduleOrder: number): string {
 
 function getNodeSize(moduleWeight: number, difficulty: number, isMilestone: boolean): number {
     let baseSize = 25 + (moduleWeight * 30) + (difficulty * 5)
-    if (isMilestone) baseSize += 10
+    if (isMilestone) baseSize += 5
     return Math.min(Math.max(baseSize, 20), 70)
 }
 
@@ -276,7 +276,7 @@ export default function BootcampGraphView() {
                                 return '#fff'
                             },
                             'border-opacity': 0.9,
-                            'shape': (ele: any) => ele.data('isMilestone') ? 'star' : 'ellipse'
+
                         }
                     },
                     {
@@ -407,7 +407,7 @@ export default function BootcampGraphView() {
         return (
             <div style={styles.errorContainer}>
                 <p style={styles.errorMessage}>❌ {error}</p>
-                <button onClick={() => navigate('/dashboard')} style={styles.backBtn}>← Volver al Dashboard</button>
+                <button onClick={() => navigate(-1)} style={styles.backBtn}>← Volver al Creador de Bootcamps</button>
             </div>
         )
     }
@@ -415,7 +415,7 @@ export default function BootcampGraphView() {
     return (
         <div style={styles.page}>
             <div style={styles.header}>
-                <button onClick={() => navigate('/dashboard')} style={styles.backBtn}>← Volver al Dashboard</button>
+                <button onClick={() => navigate(-1)} style={styles.backBtn}>← Volver</button>
                 <div>
                     <h1 style={styles.title}>📊 Grafo Global del Bootcamp</h1>
                     <p style={styles.subtitle}>{bootcampTitle}</p>
@@ -556,7 +556,7 @@ export default function BootcampGraphView() {
                     <span>⭐ Inicio</span>
                 </div>
                 <div style={styles.legendItem}>
-                    <div style={{...styles.legendColor, backgroundColor: '#9B59B6', borderRadius: '4px'}} />
+                    <div style={{...styles.legendColor, backgroundColor: '#9B59B6', }} />
                     <span>🏆 Hito</span>
                 </div>
                 <div style={styles.legendItem}>
@@ -603,7 +603,7 @@ export default function BootcampGraphView() {
             <div style={styles.footer}>
                 <p>💡 Los edges rojos representan dependencias entre módulos (prerrequisitos entre cursos)</p>
                 <p>⭐ Nodos dorados con borde: puntos de inicio (sin dependencias previas)</p>
-                <p>🏆 Nodos morados (estrella): hitos importantes en el aprendizaje</p>
+                <p>🏆 Nodos morados con borde: hitos importantes en el aprendizaje</p>
                 <p>📖 El panel lateral muestra el orden recomendado para aprender</p>
                 <p>📏 El tamaño del nodo indica la importancia relativa en su módulo</p>
             </div>
