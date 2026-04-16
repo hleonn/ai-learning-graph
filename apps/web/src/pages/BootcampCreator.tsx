@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getCourses, createCourseWithRoadmap, checkMultipleCoursesGraphs, exportBootcampToGEXF } from '../lib/api'
-import { exportBootcampToGexfLocal } from '../utils/exportToGexf'
+import { getCourses, createCourseWithRoadmap, checkMultipleCoursesGraphs } from '../lib/api'
+import { calculateProgressiveWeights, suggestCourseOrder } from '../utils/bootcampWeights'
+import { buildBootcampGlobalGraph } from '../utils/bootcampGraphBuilder'
+import type { BootcampGraph } from '../utils/bootcampGraphBuilder'
 
 interface Course {
     id: string
@@ -64,6 +66,7 @@ export default function BootcampCreator() {
     } | null>(null)
     const [bootcampId, setBootcampId] = useState<string | null>(null)
     const [createdBootcamp, setCreatedBootcamp] = useState<Bootcamp | null>(null)
+    const [globalBootcampGraph, setGlobalBootcampGraph] = useState<BootcampGraph | null>(null)
 
     // Estados del nuevo flujo con feedback mejorado
     const [generatingCourses, setGeneratingCourses] = useState(false)
@@ -122,6 +125,38 @@ export default function BootcampCreator() {
         }
     }
 
+    // Función auxiliar para exportar con grafo global
+    async function exportBootcampToGexfLocalWithGraph(
+        bootcampGraph: BootcampGraph,
+        title: string,
+        description: string
+    ): Promise<boolean> {
+        try {
+            const { generateGexfFromGraph } = await import('../utils/exportToGexf')
+
+            const gexfContent = generateGexfFromGraph(
+                { nodes: bootcampGraph.nodes, edges: bootcampGraph.edges },
+                title,
+                description
+            )
+
+            const blob = new Blob([gexfContent], { type: 'application/xml' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `bootcamp_${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.gexf`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            URL.revokeObjectURL(url)
+
+            return true
+        } catch (error) {
+            console.error('Error exporting bootcamp graph:', error)
+            return false
+        }
+    }
+
     // Exportar a GEXF - Versión corregida
     const handleExportGEXF = async () => {
         if (selectedCourses.length === 0) {
@@ -131,28 +166,53 @@ export default function BootcampCreator() {
 
         setLoading(true)
         try {
-            // Si el bootcamp está construido virtualmente, usar exportación local
-            if (bootcampBuilt || selectedCourses.length > 0) {
-                const success = await exportBootcampToGexfLocal(
-                    bootcampId || `bootcamp-${Date.now()}`,
+            // Si tenemos el grafo global construido, exportarlo
+            if (globalBootcampGraph && globalBootcampGraph.nodes.length > 0) {
+                const success = await exportBootcampToGexfLocalWithGraph(
+                    globalBootcampGraph,
                     bootcampTitle || 'Mi Bootcamp',
-                    selectedCourses
+                    bootcampDescription || ''
                 )
 
                 if (success) {
                     alert(`✅ Archivo GEXF exportado correctamente.\n\n` +
-                        `Incluye ${selectedCourses.length} cursos con sus grafos.\n` +
-                        `Puedes abrirlo con Gephi para visualizar la estructura completa.`)
+                        `Incluye ${globalBootcampGraph.nodes.length} nodos y ${globalBootcampGraph.edges.length} edges.\n` +
+                        `Representa el grafo completo del bootcamp con todos los conceptos y sus relaciones.\n\n` +
+                        `Puedes abrirlo con Gephi 0.10 para análisis avanzado.`)
                 } else {
                     throw new Error('Error en exportación local')
                 }
             } else {
-                // Intentar con el método de API si existe
-                if (bootcampId) {
-                    await exportBootcampToGEXF(bootcampId, bootcampTitle)
-                    alert('✅ Archivo GEXF exportado correctamente. Puedes abrirlo con Gephi.')
+                // Fallback: reconstruir el grafo
+                alert('Reconstruyendo grafo global para exportación...')
+                const courseInfos = await Promise.all(selectedCourses.map(async (courseId) => {
+                    const course = courses.find(c => c.id === courseId)
+                    const graphInfo = graphCheckResults.get(courseId)
+                    return {
+                        id: courseId,
+                        title: course?.title || courseId,
+                        nodeCount: graphInfo?.nodeCount || 0,
+                        edgeCount: graphInfo?.edgeCount || 0,
+                        difficulty: 'intermediate' as const
+                    }
+                }))
+
+                const suggestedOrder = suggestCourseOrder(courseInfos)
+                const weights = calculateProgressiveWeights(courseInfos, suggestedOrder)
+                const weightMap = new Map<string, number>()
+                weights.forEach(w => weightMap.set(w.courseId, w.weight))
+
+                const bootcampGraph = await buildBootcampGlobalGraph(suggestedOrder, weightMap)
+                const success = await exportBootcampToGexfLocalWithGraph(
+                    bootcampGraph,
+                    bootcampTitle || 'Mi Bootcamp',
+                    bootcampDescription || ''
+                )
+
+                if (success) {
+                    alert(`✅ Archivo GEXF exportado correctamente con ${bootcampGraph.nodes.length} nodos.`)
                 } else {
-                    throw new Error('No hay bootcamp para exportar')
+                    throw new Error('Error en exportación')
                 }
             }
         } catch (error) {
@@ -333,7 +393,7 @@ export default function BootcampCreator() {
         }
     }
 
-    // Construcción virtual del bootcamp (sin backend - CORREGIDA)
+    // Construcción virtual del bootcamp con pesos progresivos y grafo global
     const buildBootcampDiscrete = async () => {
         if (!allCoursesHaveGraphs) {
             alert('Verifica que todos los cursos tengan grafos primero')
@@ -348,21 +408,54 @@ export default function BootcampCreator() {
         setBuildingBootcamp(true)
 
         try {
-            // Crear una estructura virtual de bootcamp con los cursos seleccionados
-            const virtualModules: Module[] = selectedCourses.map((courseId, index) => {
+            // 1. Obtener información de los cursos seleccionados
+            const courseInfos = await Promise.all(selectedCourses.map(async (courseId) => {
                 const course = courses.find(c => c.id === courseId)
-                // const graphInfo = graphCheckResults.get(courseId)
+                const graphInfo = graphCheckResults.get(courseId)
+
+                // Determinar dificultad basada en número de nodos
+                let difficulty: 'beginner' | 'intermediate' | 'advanced' | 'expert' = 'intermediate'
+                const nodeCount = graphInfo?.nodeCount || 0
+                if (nodeCount < 15) difficulty = 'beginner'
+                else if (nodeCount < 25) difficulty = 'intermediate'
+                else if (nodeCount < 35) difficulty = 'advanced'
+                else difficulty = 'expert'
 
                 return {
-                    id: `module-${index}`,
-                    name: course?.title || `Módulo ${index + 1}`,
-                    order: index + 1,
+                    id: courseId,
+                    title: course?.title || courseId,
+                    nodeCount: graphInfo?.nodeCount || 0,
+                    edgeCount: graphInfo?.edgeCount || 0,
+                    difficulty: difficulty,
+                    complexityScore: nodeCount / 50
+                }
+            }))
+
+            // 2. Sugerir orden óptimo de cursos
+            const suggestedOrder = suggestCourseOrder(courseInfos)
+
+            // 3. Calcular pesos progresivos
+            const weights = calculateProgressiveWeights(courseInfos, suggestedOrder)
+            const weightMap = new Map<string, number>()
+            weights.forEach(w => weightMap.set(w.courseId, w.weight))
+
+            // 4. Construir grafo global del bootcamp
+            const bootcampGraph = await buildBootcampGlobalGraph(suggestedOrder, weightMap)
+            setGlobalBootcampGraph(bootcampGraph)
+
+            // 5. Crear estructura virtual de módulos con pesos calculados
+            const virtualModules = weights.map((weight, idx) => {
+                const course = courses.find(c => c.id === weight.courseId)
+                return {
+                    id: `module-${idx}`,
+                    name: course?.title || `Módulo ${idx + 1}`,
+                    order: idx + 1,
                     description: course?.description || `Curso: ${course?.title || ''}`,
                     node_ids: [],
-                    weight: 1 / selectedCourses.length,
-                    complexity: 0.5,
-                    prerequisites_modules: index > 0 ? [index - 1] : [],
-                    estimated_hours: 40
+                    weight: weight.weight,
+                    complexity: weight.complexity,
+                    prerequisites_modules: idx > 0 ? [idx - 1] : [],
+                    estimated_hours: Math.round(40 * (weight.weight * 2))
                 }
             })
 
@@ -378,15 +471,16 @@ export default function BootcampCreator() {
             setCreatedBootcamp(virtualBootcamp)
             setBootcampBuilt(true)
 
-            // Mostrar resumen de cursos incluidos
-            const courseDetails = selectedCourses.map(courseId => {
-                const course = courses.find(c => c.id === courseId)
-                const graphInfo = graphCheckResults.get(courseId)
-                return `  📚 ${course?.title} (${graphInfo?.nodeCount || 0} nodos, ${graphInfo?.edgeCount || 0} edges)`
+            // Mostrar resumen con pesos progresivos
+            const courseDetails = weights.map(w => {
+                const barLength = Math.round(w.percentage / 2)
+                const bar = '█'.repeat(barLength) + '░'.repeat(50 - barLength)
+                return `  📚 ${w.courseTitle.padEnd(25)} ${w.percentage}% ${bar}`
             }).join('\n')
 
             alert(`✅ Bootcamp "${bootcampTitle}" preparado virtualmente con ${selectedCourses.length} cursos.\n\n` +
-                `Cursos incluidos:\n${courseDetails}\n\n` +
+                `Pesos progresivos calculados:\n${courseDetails}\n\n` +
+                `📊 Grafo global: ${bootcampGraph.summary.totalNodes} nodos, ${bootcampGraph.summary.totalEdges} edges\n\n` +
                 `Los cursos están listos para exportar a Gephi.`)
 
         } catch (error) {
@@ -709,6 +803,27 @@ export default function BootcampCreator() {
                                 {loading ? '📊 Exportando...' : '📊 Exportar a Gephi (GEXF)'}
                             </button>
                         </div>
+                        {/* Botón para ver grafo global */}
+                        {bootcampBuilt && globalBootcampGraph && (
+                            <div style={styles.buttonGroup}>
+                                <button
+                                    style={styles.viewGraphBtn}
+                                    onClick={() => {
+                                        // Guardar en localStorage para que GraphView pueda acceder
+                                        localStorage.setItem('bootcamp_graph', JSON.stringify(globalBootcampGraph))
+                                        localStorage.setItem('bootcamp_title', bootcampTitle)
+                                        navigate('/bootcamp-graph', {
+                                            state: {
+                                                bootcampGraph: globalBootcampGraph,
+                                                title: bootcampTitle
+                                            }
+                                        })
+                                    }}
+                                >
+                                    🌐 Ver Grafo Global del Bootcamp
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -907,7 +1022,19 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: 10,
         color: '#1D9E75',
         marginLeft: 8
-    }
+    },
+    viewGraphBtn: {
+        width: '100%',
+        padding: '12px',
+        background: '#1E3A5F',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 14,
+        fontWeight: 600,
+        marginTop: 8,
+    },
 }
 
 // Añadir animación al documento
