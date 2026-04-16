@@ -227,6 +227,7 @@ export default function Dashboard() {
         try {
             const allPrograms = await getPrograms()
             setPrograms(allPrograms)
+            console.log(`📚 Programas cargados: ${allPrograms.length}`)
         } catch (error) {
             console.error('Error loading programs:', error)
         } finally {
@@ -236,26 +237,26 @@ export default function Dashboard() {
 
     // Función para eliminar un programa
     const handleDeleteProgram = async (programId: string, programTitle: string) => {
-        if (!confirm(`¿Eliminar el programa "${programTitle}"?`)) return
+        if (!confirm(`¿Eliminar el programa "${programTitle}"?\n\nEsta acción no se puede deshacer.`)) return
 
         try {
             const success = await deleteProgram(programId)
             if (success) {
                 alert(`✅ Programa "${programTitle}" eliminado correctamente`)
-                await loadPrograms() // Recargar la lista
+                // Recargar la lista de programas
+                await loadPrograms()
             } else {
-                alert('Error al eliminar el programa')
+                alert(`❌ Error al eliminar el programa "${programTitle}"\n\nIntenta nuevamente.`)
             }
         } catch (error) {
             console.error('Error deleting program:', error)
-            alert('Error al eliminar el programa')
+            alert(`❌ Error al eliminar el programa: ${error}`)
         }
     }
 
     // Función para ver los detalles de un programa
     const handleViewProgram = (program: Program) => {
-        // TODO: Navegar a página de detalles del programa
-        alert(`📋 ${program.title}\n\nDescripción: ${program.description}\nDuración: ${program.duration_weeks} semanas\nCursos: ${program.course_ids?.length || 0}\n\n(Próximamente: vista detallada del programa)`)
+        navigate(`/program/${program.id}`, { state: { program } })
     }
 
     useEffect(() => {

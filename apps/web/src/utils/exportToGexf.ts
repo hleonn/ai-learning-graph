@@ -48,11 +48,123 @@ function escapeXml(unsafe: string): string {
 }
 
 /**
- * Limpia un ID para que sea válido en XML
+ * Limpia un ID para que sea válido en XML y Gephi
  */
 function cleanId(id: string): string {
     if (!id) return `node_${Math.random().toString(36).substr(2, 8)}`
-    return id.replace(/[^a-zA-Z0-9_-]/g, '_')
+    // Reemplazar caracteres no válidos y asegurar que comience con letra
+    let cleaned = id.replace(/[^a-zA-Z0-9_-]/g, '_')
+    if (cleaned.match(/^\d/)) {
+        cleaned = `n${cleaned}`
+    }
+    return cleaned
+}
+
+/**
+ * Genera posiciones en layout circular para Gephi
+ */
+function generateCircularLayout(nodeCount: number, index: number): { x: number; y: number } {
+    const radius = Math.min(800, Math.max(300, nodeCount * 4))
+    const centerX = 500
+    const centerY = 400
+    const angle = (index / nodeCount) * 2 * Math.PI
+    return {
+        x: centerX + radius * Math.cos(angle),
+        y: centerY + radius * Math.sin(angle)
+    }
+}
+
+/**
+ * Genera posiciones en layout jerárquico (mejor para dependencias)
+ */
+function generateHierarchicalLayout(
+    nodes: GraphNode[],
+    edges: GraphEdge[]
+): Map<string, { x: number; y: number }> {
+    const positions = new Map<string, { x: number; y: number }>()
+
+    // Calcular profundidad de cada nodo
+    const depth = new Map<string, number>()
+    const adjacency = new Map<string, string[]>()
+
+    // Construir grafo de dependencias
+    for (const edge of edges) {
+        const source = cleanId(edge.source)
+        const target = cleanId(edge.target)
+        if (!adjacency.has(source)) {
+            adjacency.set(source, [])
+        }
+        adjacency.get(source)!.push(target)
+    }
+
+    // Encontrar nodos raíz (sin dependencias entrantes)
+    const allTargets = new Set(edges.map(e => cleanId(e.target)))
+    const roots = nodes.filter(n => !allTargets.has(cleanId(n.id))).map(n => cleanId(n.id))
+
+    // BFS para asignar profundidad (CORREGIDO)
+    const queue: { id: string; depth: number }[] = roots.map(id => ({ id, depth: 0 }))
+    const visited = new Set<string>()
+
+    for (const root of roots) {
+        depth.set(root, 0)
+        visited.add(root)
+    }
+
+    while (queue.length > 0) {
+        const item = queue.shift()!
+        const { id, depth: currentDepth } = item
+        const children = adjacency.get(id) || []
+
+        for (const child of children) {
+            const existingDepth = depth.get(child)
+            const newDepth = currentDepth + 1
+            if (existingDepth === undefined || newDepth < existingDepth) {
+                depth.set(child, newDepth)
+                if (!visited.has(child)) {
+                    visited.add(child)
+                    queue.push({ id: child, depth: newDepth })
+                }
+            }
+        }
+    }
+
+    // Asignar profundidad 0 a nodos no alcanzados
+    for (const node of nodes) {
+        const nodeId = cleanId(node.id)
+        if (!depth.has(nodeId)) {
+            depth.set(nodeId, 0)
+        }
+    }
+
+    // Agrupar por profundidad
+    const nodesByDepth = new Map<number, string[]>()
+    for (const [nodeId, nodeDepth] of depth) {
+        if (!nodesByDepth.has(nodeDepth)) {
+            nodesByDepth.set(nodeDepth, [])
+        }
+        nodesByDepth.get(nodeDepth)!.push(nodeId)
+    }
+
+    // Calcular posiciones
+    const maxDepth = Math.max(...Array.from(depth.values()), 1)
+    const startY = 100
+    const endY = 700
+    const spacingX = 120
+
+    for (const [nodeDepth, nodeIds] of nodesByDepth) {
+        const y = startY + (nodeDepth / maxDepth) * (endY - startY)
+        const total = nodeIds.length
+        const startX = 500 - ((total - 1) * spacingX) / 2
+
+        nodeIds.forEach((nodeId, idx) => {
+            positions.set(nodeId, {
+                x: startX + idx * spacingX,
+                y: y
+            })
+        })
+    }
+
+    return positions
 }
 
 /**
@@ -90,23 +202,8 @@ export function generateGexfFromGraph(
         return MODULE_COLORS[idx]
     }
 
-    // Encontrar rangos de posición para normalizar
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-    for (const node of nodes) {
-        if (node.position_x !== undefined && node.position_x !== null) {
-            minX = Math.min(minX, node.position_x)
-            maxX = Math.max(maxX, node.position_x)
-        }
-        if (node.position_y !== undefined && node.position_y !== null) {
-            minY = Math.min(minY, node.position_y)
-            maxY = Math.max(maxY, node.position_y)
-        }
-    }
-
-    // Si no hay posiciones válidas, usar layout circular
-    const useRandomPositions = minX === Infinity || maxX === Infinity || minY === Infinity || maxY === Infinity
-    const centerX = 500, centerY = 400
-    const radius = Math.min(400, Math.max(200, totalNodes * 5))
+    // Generar posiciones jerárquicas
+    const positions = generateHierarchicalLayout(nodes, edges)
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <gexf xmlns="http://www.gexf.net/1.2draft" 
@@ -135,6 +232,7 @@ export function generateGexfFromGraph(
         <nodes count="${totalNodes}">
 `
 
+    // Añadir cada nodo
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i]
         const nodeId = cleanId(node.id)
@@ -147,17 +245,17 @@ export function generateGexfFromGraph(
         const courseTitleAttr = escapeXml(node.courseTitle || '')
         const moduleWeight = node.moduleWeight || 0.2
 
+        // Obtener posición (jerárquica o circular)
         let posX: number, posY: number
+        const position = positions.get(nodeId)
 
-        if (!useRandomPositions && node.position_x !== undefined && node.position_y !== undefined) {
-            const rangeX = maxX - minX
-            const rangeY = maxY - minY
-            posX = rangeX > 0 ? ((node.position_x - minX) / rangeX) * 900 + 50 : 500
-            posY = rangeY > 0 ? ((node.position_y - minY) / rangeY) * 700 + 50 : 400
+        if (position) {
+            posX = position.x
+            posY = position.y
         } else {
-            const angle = (i / totalNodes) * 2 * Math.PI
-            posX = centerX + radius * Math.cos(angle)
-            posY = centerY + radius * Math.sin(angle)
+            const circularPos = generateCircularLayout(totalNodes, i)
+            posX = circularPos.x
+            posY = circularPos.y
         }
 
         const moduleColor = getModuleColor(moduleOrder)
@@ -171,7 +269,7 @@ export function generateGexfFromGraph(
                     <attvalue for="topic" value="${topic}"/>
                     <attvalue for="moduleOrder" value="${moduleOrder}"/>
                     <attvalue for="courseTitle" value="${courseTitleAttr}"/>
-                    <attvalue for="moduleWeight" value="${moduleWeight}"/>
+                    <attvalue for="moduleWeight" value="${moduleWeight.toFixed(4)}"/>
                 </attvalues>
                 <viz:size value="${size}"/>
                 <viz:position x="${posX.toFixed(1)}" y="${posY.toFixed(1)}" z="0.0"/>
@@ -186,6 +284,7 @@ export function generateGexfFromGraph(
         <edges count="${totalEdges}">
 `
 
+    // Añadir cada edge
     for (let i = 0; i < edges.length; i++) {
         const edge = edges[i]
         const edgeId = edge.id || `e${i}`
@@ -193,17 +292,19 @@ export function generateGexfFromGraph(
         const target = cleanId(edge.target)
         const strength = edge.strength ?? edge.prerequisite_strength ?? 0.5
 
+        // Validar que source y target existan y sean diferentes
         if (!source || !target || source === target) continue
 
+        // Determinar color y grosor
         const isIntermodule = edgeId.includes('intermodule') ||
             (source.startsWith('c') && target.startsWith('c') && source[1] !== target[1])
 
         const edgeColor = isIntermodule ? { r: 226, g: 75, b: 74 } : { r: 211, g: 209, b: 199 }
         const thickness = isIntermodule ? 3 + strength * 2 : 1 + strength * 2
 
-        xml += `            <edge id="${edgeId}" source="${source}" target="${target}" weight="${strength.toFixed(2)}">
+        xml += `            <edge id="${edgeId}" source="${source}" target="${target}" weight="${strength.toFixed(4)}">
                 <attvalues>
-                    <attvalue for="strength" value="${strength.toFixed(2)}"/>
+                    <attvalue for="strength" value="${strength.toFixed(4)}"/>
                 </attvalues>
                 <viz:thickness value="${thickness.toFixed(1)}"/>
                 <viz:color r="${edgeColor.r}" g="${edgeColor.g}" b="${edgeColor.b}"/>
@@ -219,6 +320,9 @@ export function generateGexfFromGraph(
     return xml
 }
 
+/**
+ * Descarga un archivo GEXF
+ */
 export function downloadGexf(gexfContent: string, filename: string): void {
     const blob = new Blob([gexfContent], { type: 'application/xml' })
     const url = URL.createObjectURL(blob)
@@ -231,6 +335,9 @@ export function downloadGexf(gexfContent: string, filename: string): void {
     URL.revokeObjectURL(url)
 }
 
+/**
+ * Exporta un bootcamp a GEXF desde el grafo global
+ */
 export async function exportBootcampToGexfFromGraph(
     bootcampGraph: { nodes: GraphNode[]; edges: GraphEdge[] },
     bootcampTitle: string,
@@ -250,7 +357,9 @@ export async function exportBootcampToGexfFromGraph(
     }
 }
 
-// CORREGIDO: Eliminado bootcampId no usado
+/**
+ * Exporta un bootcamp a GEXF desde cursos individuales
+ */
 export async function exportBootcampToGexfLocal(
     bootcampTitle: string,
     courseIds: string[]
@@ -314,6 +423,7 @@ export async function exportBootcampToGexfLocal(
             const nextNodes = allNodes.filter(n => n.id.startsWith(prefixNext))
 
             if (currentNodes.length > 0 && nextNodes.length > 0) {
+                // Conectar el último nodo del módulo actual con el primero del siguiente
                 const sourceId = currentNodes[currentNodes.length - 1]?.id
                 const targetId = nextNodes[0]?.id
 

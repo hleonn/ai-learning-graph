@@ -732,7 +732,12 @@ export const getPrograms = async (type?: string): Promise<Program[]> => {
     try {
         const url = type ? `/programs?type=${type}` : '/programs'
         const response = await api.get(url)
-        return response.data.programs || response.data || []
+        const apiPrograms = response.data.programs || response.data || []
+        // Sincronizar localStorage con API
+        if (apiPrograms.length > 0) {
+            saveProgramsToLocalStorage(apiPrograms)
+        }
+        return apiPrograms
     } catch (error) {
         console.warn('API getPrograms falló, usando localStorage:', error)
         let programs = getProgramsFromLocalStorage()
@@ -850,10 +855,29 @@ export const deleteProgram = async (id: string): Promise<boolean> => {
             }
         })
 
-        return response.ok
-    } catch (error) {
-        console.warn('API deleteProgram falló, usando localStorage:', error)
+        // Si la API responde OK, también eliminar de localStorage
+        if (response.ok) {
+            // Eliminar también de localStorage para mantener consistencia
+            const programs = getProgramsFromLocalStorage()
+            const filtered = programs.filter(p => p.id !== id)
+            saveProgramsToLocalStorage(filtered)
+            return true
+        } else {
+            // Si la API falla (404, etc.), intentar eliminar solo de localStorage
+            console.warn(`API deleteProgram falló con status ${response.status}, usando solo localStorage`)
+            const programs = getProgramsFromLocalStorage()
+            const filtered = programs.filter(p => p.id !== id)
 
+            if (filtered.length !== programs.length) {
+                saveProgramsToLocalStorage(filtered)
+                return true
+            }
+            return false
+        }
+    } catch (error) {
+        console.warn('API deleteProgram error, usando localStorage:', error)
+
+        // Fallback: eliminar de localStorage
         const programs = getProgramsFromLocalStorage()
         const filtered = programs.filter(p => p.id !== id)
 

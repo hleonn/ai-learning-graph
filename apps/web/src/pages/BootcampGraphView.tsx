@@ -16,16 +16,8 @@ interface ModuleInfo {
 
 // Colores para los diferentes módulos
 const MODULE_COLORS = [
-    '#4A90D9', // Azul
-    '#50E3C2', // Verde agua
-    '#F5A623', // Naranja
-    '#D0021B', // Rojo
-    '#9B59B6', // Púrpura
-    '#1D9E75', // Verde
-    '#E8A317', // Amarillo
-    '#E67E22', // Naranja oscuro
-    '#2ECC71', // Verde claro
-    '#E74C3C'  // Rojo claro
+    '#4A90D9', '#50E3C2', '#F5A623', '#D0021B', '#9B59B6',
+    '#1D9E75', '#E8A317', '#E67E22', '#2ECC71', '#E74C3C'
 ]
 
 function getModuleColor(moduleOrder: number): string {
@@ -64,7 +56,6 @@ export default function BootcampGraphView() {
     // Calcular información de aprendizaje cuando se carga el grafo
     useEffect(() => {
         if (!bootcampGraph) return
-
         try {
             const path = generateLearningPath(bootcampGraph.nodes, bootcampGraph.edges)
             setLearningPath(path)
@@ -73,7 +64,7 @@ export default function BootcampGraphView() {
         }
     }, [bootcampGraph])
 
-    // Cargar datos del bootcamp desde la ubicación (state) o desde localStorage
+    // Cargar datos del bootcamp
     useEffect(() => {
         const loadBootcampGraph = async () => {
             setLoading(true)
@@ -85,7 +76,6 @@ export default function BootcampGraphView() {
                     setBootcampGraph(state.bootcampGraph)
                     setBootcampTitle(state.title || 'Bootcamp')
 
-                    // Extraer información de módulos
                     const moduleMap = new Map<number, ModuleInfo>()
                     for (const node of state.bootcampGraph.nodes) {
                         if (!moduleMap.has(node.moduleOrder)) {
@@ -103,11 +93,9 @@ export default function BootcampGraphView() {
                         mod.nodeCount++
                     }
 
-                    // Contar edges por módulo
                     for (const edge of state.bootcampGraph.edges) {
                         const sourceModule = state.bootcampGraph.nodes.find(n => n.id === edge.source)?.moduleOrder
                         const targetModule = state.bootcampGraph.nodes.find(n => n.id === edge.target)?.moduleOrder
-
                         if (sourceModule && targetModule && sourceModule === targetModule) {
                             const mod = moduleMap.get(sourceModule)
                             if (mod) mod.edgeCount++
@@ -115,13 +103,55 @@ export default function BootcampGraphView() {
                     }
 
                     setModules(Array.from(moduleMap.values()).sort((a, b) => a.order - b.order))
-
                 } else {
-                    const savedGraph = localStorage.getItem('bootcamp_graph')
-                    if (savedGraph) {
-                        const parsed = JSON.parse(savedGraph)
-                        setBootcampGraph(parsed)
-                        setBootcampTitle(localStorage.getItem('bootcamp_title') || 'Bootcamp')
+                    // Buscar en localStorage con clave específica
+                    const savedGraph = localStorage.getItem('bootcamp_global_graph')
+                    const savedTitle = localStorage.getItem('bootcamp_global_graph_title')
+                    const savedTimestamp = localStorage.getItem('bootcamp_global_graph_timestamp')
+
+                    if (savedGraph && savedTitle) {
+                        const timestamp = parseInt(savedTimestamp || '0')
+                        if (Date.now() - timestamp < 3600000) {
+                            const parsed = JSON.parse(savedGraph)
+                            setBootcampGraph(parsed)
+                            setBootcampTitle(savedTitle)
+
+                            const moduleMap = new Map<number, ModuleInfo>()
+                            for (const node of parsed.nodes) {
+                                if (!moduleMap.has(node.moduleOrder)) {
+                                    moduleMap.set(node.moduleOrder, {
+                                        id: `module-${node.moduleOrder}`,
+                                        title: node.courseTitle,
+                                        order: node.moduleOrder,
+                                        nodeCount: 0,
+                                        edgeCount: 0,
+                                        weight: node.moduleWeight,
+                                        color: getModuleColor(node.moduleOrder)
+                                    })
+                                }
+                                const mod = moduleMap.get(node.moduleOrder)!
+                                mod.nodeCount++
+                            }
+
+                            for (const edge of parsed.edges) {
+                                const sourceModule = parsed.nodes.find((n: any) => n.id === edge.source)?.moduleOrder
+                                const targetModule = parsed.nodes.find((n: any) => n.id === edge.target)?.moduleOrder
+                                if (sourceModule && targetModule && sourceModule === targetModule) {
+                                    const mod = moduleMap.get(sourceModule)
+                                    if (mod) mod.edgeCount++
+                                }
+                            }
+
+                            setModules(Array.from(moduleMap.values()).sort((a, b) => a.order - b.order))
+                        } else {
+                            console.log('⏰ Grafo expirado')
+                            localStorage.removeItem('bootcamp_global_graph')
+                            localStorage.removeItem('bootcamp_global_graph_title')
+                            localStorage.removeItem('bootcamp_global_graph_timestamp')
+                            alert('No hay datos de bootcamp para visualizar. Construye un bootcamp primero.')
+                            navigate('/dashboard')
+                            return
+                        }
                     } else {
                         alert('No hay datos de bootcamp para visualizar. Construye un bootcamp primero.')
                         navigate('/dashboard')
@@ -139,11 +169,22 @@ export default function BootcampGraphView() {
         loadBootcampGraph()
     }, [location, navigate])
 
-    // Inicializar Cytoscape cuando los datos están listos
+    // Guardar grafo al salir
+    useEffect(() => {
+        return () => {
+            if (bootcampGraph && bootcampTitle) {
+                localStorage.setItem('bootcamp_global_graph', JSON.stringify(bootcampGraph))
+                localStorage.setItem('bootcamp_global_graph_title', bootcampTitle)
+                localStorage.setItem('bootcamp_global_graph_timestamp', Date.now().toString())
+                console.log('💾 Grafo guardado al salir de la vista')
+            }
+        }
+    }, [bootcampGraph, bootcampTitle])
+
+    // Inicializar Cytoscape (mantener el código existente)
     useEffect(() => {
         if (!bootcampGraph || !containerRef.current || loading) return
 
-        // Destruir instancia anterior si existe
         if (cyRef.current) {
             try {
                 cyRef.current.destroy()
@@ -156,7 +197,6 @@ export default function BootcampGraphView() {
         try {
             const elements: any[] = []
 
-            // Determinar qué nodos incluir
             let filteredNodeIds: Set<string>
             let filteredNodes: GlobalNode[]
 
@@ -168,28 +208,20 @@ export default function BootcampGraphView() {
                 filteredNodeIds = new Set(filteredNodes.map(n => n.id))
             }
 
-            // Filtrar edges: SOLO aquellos donde source y target existen en los nodos filtrados
             let filteredEdges = bootcampGraph.edges.filter(edge => {
-                const sourceExists = filteredNodeIds.has(edge.source)
-                const targetExists = filteredNodeIds.has(edge.target)
-                return sourceExists && targetExists
+                return filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target)
             })
 
-            // Aplicar filtro adicional de "solo intermodule"
             if (showOnlyIntermodule) {
                 filteredEdges = filteredEdges.filter(e => e.type === 'intermodule')
             }
 
-            // Crear conjuntos para referencia rápida
             const rootSet = new Set(learningPath?.startNodes || [])
             const milestoneSet = new Set(learningPath?.milestones || [])
-            const depthMap = learningPath?.levels || new Map<string, number>()
 
-            // Añadir nodos
             for (const node of filteredNodes) {
                 const isRoot = rootSet.has(node.id)
                 const isMilestone = milestoneSet.has(node.id)
-                const depth = depthMap.get(node.id) || 0
 
                 elements.push({
                     data: {
@@ -202,15 +234,13 @@ export default function BootcampGraphView() {
                         moduleWeight: node.moduleWeight,
                         originalId: node.originalId,
                         isRoot: isRoot,
-                        isMilestone: isMilestone,
-                        depth: depth
+                        isMilestone: isMilestone
                     },
                     position: { x: node.position_x, y: node.position_y },
                     classes: `module-${node.moduleOrder} ${isRoot ? 'root-node' : ''} ${isMilestone ? 'milestone-node' : ''}`
                 })
             }
 
-            // Añadir edges
             for (const edge of filteredEdges) {
                 const isIntermodule = edge.type === 'intermodule'
                 const edgeColor = isIntermodule ? '#E24B4A' : '#D3D1C7'
@@ -235,7 +265,6 @@ export default function BootcampGraphView() {
                 })
             }
 
-            // Configurar Cytoscape
             const cy = Cytoscape({
                 container: containerRef.current,
                 elements: elements,
@@ -244,10 +273,7 @@ export default function BootcampGraphView() {
                         selector: 'node',
                         style: {
                             'label': 'data(label)',
-                            'background-color': (ele: any) => {
-                                const moduleOrder = ele.data('moduleOrder')
-                                return getModuleColor(moduleOrder)
-                            },
+                            'background-color': (ele: any) => getModuleColor(ele.data('moduleOrder')),
                             'color': '#1E3A5F',
                             'font-size': '11px',
                             'font-weight': 'bold',
@@ -275,8 +301,7 @@ export default function BootcampGraphView() {
                                 if (ele.data('isMilestone')) return '#9B59B6'
                                 return '#fff'
                             },
-                            'border-opacity': 0.9,
-
+                            'border-opacity': 0.9
                         }
                     },
                     {
@@ -311,7 +336,6 @@ export default function BootcampGraphView() {
                 maxZoom: 3
             })
 
-            // Eventos
             cy.on('tap', 'node', (evt: any) => {
                 const node = evt.target
                 const data = node.data()
@@ -329,21 +353,12 @@ export default function BootcampGraphView() {
 
             cyRef.current = cy
 
-            // Centrar en el primer nodo raíz después de cargar
             setTimeout(() => {
                 if (learningPath?.startNodes.length && cyRef.current) {
                     const firstRoot = cyRef.current.$id(learningPath.startNodes[0])
                     if (firstRoot && firstRoot.length > 0) {
                         cyRef.current.center(firstRoot)
                         cyRef.current.zoom(1.2)
-                        // Resaltar el nodo raíz temporalmente
-                        firstRoot.style('border-width', 6)
-                        firstRoot.style('border-color', '#FFD700')
-                        setTimeout(() => {
-                            if (firstRoot && firstRoot.length > 0) {
-                                firstRoot.style('border-width', 5)
-                            }
-                        }, 3000)
                     } else {
                         cyRef.current.fit(undefined, 50)
                     }
@@ -355,7 +370,7 @@ export default function BootcampGraphView() {
 
         } catch (err) {
             console.error('Error creating cytoscape graph:', err)
-            setError('Error al renderizar el grafo. Los datos pueden estar corruptos.')
+            setError('Error al renderizar el grafo')
         }
 
     }, [bootcampGraph, loading, filterModule, showOnlyIntermodule, learningPath])
@@ -407,7 +422,7 @@ export default function BootcampGraphView() {
         return (
             <div style={styles.errorContainer}>
                 <p style={styles.errorMessage}>❌ {error}</p>
-                <button onClick={() => navigate(-1)} style={styles.backBtn}>← Volver al Creador de Bootcamps</button>
+                <button onClick={() => navigate(-1)} style={styles.backBtn}>← Volver</button>
             </div>
         )
     }
@@ -465,7 +480,6 @@ export default function BootcampGraphView() {
                 </div>
             </div>
 
-            {/* Panel de ruta de aprendizaje */}
             {showLearningPanel && learningPath && (
                 <div style={styles.learningPanel}>
                     <div style={styles.learningPanelHeader}>
@@ -479,18 +493,11 @@ export default function BootcampGraphView() {
                                 {learningPath.startNodes.slice(0, 5).map(nodeId => {
                                     const node = bootcampGraph?.nodes.find(n => n.id === nodeId)
                                     return node ? (
-                                        <button
-                                            key={nodeId}
-                                            style={styles.startNodeBtn}
-                                            onClick={() => handleCenterOnNode(nodeId)}
-                                        >
+                                        <button key={nodeId} style={styles.startNodeBtn} onClick={() => handleCenterOnNode(nodeId)}>
                                             {node.courseTitle}: {node.label.substring(0, 25)}
                                         </button>
                                     ) : null
                                 })}
-                                {learningPath.startNodes.length > 5 && (
-                                    <span style={styles.moreText}>+{learningPath.startNodes.length - 5} más</span>
-                                )}
                             </div>
                         </div>
 
@@ -500,41 +507,28 @@ export default function BootcampGraphView() {
                                 {learningPath.milestones.slice(0, 5).map(nodeId => {
                                     const node = bootcampGraph?.nodes.find(n => n.id === nodeId)
                                     return node ? (
-                                        <button
-                                            key={nodeId}
-                                            style={styles.milestoneBtn}
-                                            onClick={() => handleCenterOnNode(nodeId)}
-                                        >
+                                        <button key={nodeId} style={styles.milestoneBtn} onClick={() => handleCenterOnNode(nodeId)}>
                                             {node.label.substring(0, 30)}
                                         </button>
                                     ) : null
                                 })}
-                                {learningPath.milestones.length > 5 && (
-                                    <span style={styles.moreText}>+{learningPath.milestones.length - 5} más</span>
-                                )}
                             </div>
                         </div>
 
                         <div style={styles.orderSection}>
                             <strong>📋 Orden sugerido (primeros 10 conceptos):</strong>
                             <ol style={styles.orderList}>
-                                {learningPath.order.slice(0, 10).map((nodeId, ) => {
+                                {learningPath.order.slice(0, 10).map((nodeId) => {
                                     const node = bootcampGraph?.nodes.find(n => n.id === nodeId)
                                     return node ? (
                                         <li key={nodeId} style={styles.orderItem}>
-                                            <button
-                                                style={styles.orderNodeBtn}
-                                                onClick={() => handleCenterOnNode(nodeId)}
-                                            >
+                                            <button style={styles.orderNodeBtn} onClick={() => handleCenterOnNode(nodeId)}>
                                                 {node.label}
                                             </button>
                                             <span style={styles.orderModule}>[{node.courseTitle.substring(0, 15)}]</span>
                                         </li>
                                     ) : null
                                 })}
-                                {learningPath.order.length > 10 && (
-                                    <li style={styles.orderMore}>... y {learningPath.order.length - 10} conceptos más</li>
-                                )}
                             </ol>
                         </div>
                     </div>
@@ -549,14 +543,13 @@ export default function BootcampGraphView() {
                         <span>M{m.order}</span>
                     </div>
                 ))}
-                {modules.length > 6 && <span>+{modules.length - 6} más</span>}
                 <div style={styles.legendDivider} />
                 <div style={styles.legendItem}>
                     <div style={{...styles.legendColor, backgroundColor: '#FFD700', border: '2px solid #1E3A5F'}} />
                     <span>⭐ Inicio</span>
                 </div>
                 <div style={styles.legendItem}>
-                    <div style={{...styles.legendColor, backgroundColor: '#9B59B6', }} />
+                    <div style={{...styles.legendColor, backgroundColor: '#9B59B6'}} />
                     <span>🏆 Hito</span>
                 </div>
                 <div style={styles.legendItem}>
@@ -567,7 +560,6 @@ export default function BootcampGraphView() {
 
             <div style={styles.mainContainer}>
                 <div ref={containerRef} style={styles.graphContainer} />
-
                 {selectedNode && (
                     <div style={styles.sidePanel}>
                         <h3 style={styles.panelTitle}>📌 {selectedNode.label}</h3>
@@ -601,363 +593,66 @@ export default function BootcampGraphView() {
             </div>
 
             <div style={styles.footer}>
-                <p>💡 Los edges rojos representan dependencias entre módulos (prerrequisitos entre cursos)</p>
-                <p>⭐ Nodos dorados con borde: puntos de inicio (sin dependencias previas)</p>
-                <p>🏆 Nodos morados con borde: hitos importantes en el aprendizaje</p>
+                <p>💡 Los edges rojos representan dependencias entre módulos</p>
+                <p>⭐ Nodos dorados con borde: puntos de inicio</p>
+                <p>🏆 Nodos morados con borde: hitos importantes</p>
                 <p>📖 El panel lateral muestra el orden recomendado para aprender</p>
-                <p>📏 El tamaño del nodo indica la importancia relativa en su módulo</p>
             </div>
         </div>
     )
 }
 
 const styles: Record<string, React.CSSProperties> = {
-    page: {
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        fontFamily: 'system-ui, sans-serif',
-        background: '#F1EFE8',
-        overflow: 'hidden'
-    },
-    header: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '12px 24px',
-        background: '#1E3A5F',
-        flexWrap: 'wrap',
-        gap: 12
-    },
-    backBtn: {
-        background: 'none',
-        border: '1px solid rgba(255,255,255,0.3)',
-        color: '#fff',
-        padding: '6px 12px',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 13
-    },
-    title: {
-        fontSize: 20,
-        fontWeight: 700,
-        color: '#fff',
-        margin: 0
-    },
-    subtitle: {
-        fontSize: 12,
-        color: 'rgba(255,255,255,0.6)',
-        margin: '2px 0 0'
-    },
-    stats: {
-        display: 'flex',
-        gap: 12,
-        flexWrap: 'wrap'
-    },
-    statBadge: {
-        background: 'rgba(255,255,255,0.2)',
-        padding: '4px 12px',
-        borderRadius: 20,
-        fontSize: 12,
-        color: '#fff'
-    },
-    toolbar: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 20,
-        padding: '12px 24px',
-        background: '#fff',
-        borderBottom: '1px solid #D3D1C7',
-        flexWrap: 'wrap'
-    },
-    filterGroup: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8
-    },
-    filterLabel: {
-        fontSize: 13,
-        fontWeight: 500,
-        color: '#2C2C2A'
-    },
-    filterSelect: {
-        padding: '6px 12px',
-        borderRadius: 6,
-        border: '1px solid #D3D1C7',
-        fontSize: 13,
-        background: '#fff',
-        minWidth: 200
-    },
-    checkboxLabel: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        fontSize: 13,
-        cursor: 'pointer'
-    },
-    buttonGroup: {
-        display: 'flex',
-        gap: 8,
-        marginLeft: 'auto'
-    },
-    actionBtn: {
-        padding: '6px 12px',
-        background: '#E8E6E1',
-        border: 'none',
-        borderRadius: 6,
-        cursor: 'pointer',
-        fontSize: 12
-    },
-    learningPanel: {
-        background: '#fff',
-        borderBottom: '2px solid #1E3A5F',
-        maxHeight: 250,
-        overflowY: 'auto'
-    },
-    learningPanelHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '10px 16px',
-        background: '#1E3A5F',
-        color: '#fff',
-        fontSize: 13,
-        fontWeight: 600
-    },
-    learningPanelDuration: {
-        fontSize: 11,
-        fontWeight: 'normal',
-        opacity: 0.8
-    },
-    learningPanelContent: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: 16,
-        padding: 16,
-        fontSize: 12
-    },
-    startNodesSection: {
-        borderRight: '1px solid #E8E6E1',
-        paddingRight: 16
-    },
-    startNodesList: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-        marginTop: 8
-    },
-    startNodeBtn: {
-        textAlign: 'left',
-        padding: '4px 8px',
-        background: '#FFF8E1',
-        border: 'none',
-        borderRadius: 4,
-        cursor: 'pointer',
-        fontSize: 11,
-        color: '#F5A623'
-    },
-    milestonesSection: {
-        borderRight: '1px solid #E8E6E1',
-        paddingRight: 16
-    },
-    milestonesList: {
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-        marginTop: 8
-    },
-    milestoneBtn: {
-        textAlign: 'left',
-        padding: '4px 8px',
-        background: '#F3E5F5',
-        border: 'none',
-        borderRadius: 4,
-        cursor: 'pointer',
-        fontSize: 11,
-        color: '#9B59B6'
-    },
-    orderSection: {
-        paddingRight: 16
-    },
-    orderList: {
-        margin: '8px 0 0 20px',
-        padding: 0
-    },
-    orderItem: {
-        marginBottom: 4,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        flexWrap: 'wrap'
-    },
-    orderNodeBtn: {
-        background: 'none',
-        border: 'none',
-        color: '#1E3A5F',
-        cursor: 'pointer',
-        fontSize: 11,
-        textDecoration: 'underline'
-    },
-    orderModule: {
-        fontSize: 10,
-        color: '#888780'
-    },
-    orderMore: {
-        color: '#888780',
-        fontStyle: 'italic',
-        marginTop: 4
-    },
-    moreText: {
-        fontSize: 10,
-        color: '#888780',
-        marginTop: 4
-    },
-    legend: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        padding: '8px 24px',
-        background: '#F9F9F8',
-        borderBottom: '1px solid #E8E6E1',
-        flexWrap: 'wrap',
-        fontSize: 12
-    },
-    legendTitle: {
-        fontWeight: 600,
-        color: '#1E3A5F'
-    },
-    legendItem: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6
-    },
-    legendColor: {
-        width: 14,
-        height: 14,
-        borderRadius: '50%'
-    },
-    legendDivider: {
-        width: 1,
-        height: 20,
-        background: '#D3D1C7'
-    },
-    mainContainer: {
-        display: 'flex',
-        flex: 1,
-        overflow: 'hidden',
-        minHeight: 0
-    },
-    graphContainer: {
-        flex: 1,
-        background: '#fff',
-        position: 'relative',
-        height: '100%'
-    },
-    sidePanel: {
-        width: 320,
-        background: '#fff',
-        borderLeft: '1px solid #D3D1C7',
-        padding: 16,
-        display: 'flex',
-        flexDirection: 'column',
-        overflowY: 'auto'
-    },
-    panelTitle: {
-        fontSize: 16,
-        fontWeight: 700,
-        color: '#1E3A5F',
-        margin: '0 0 12px'
-    },
-    panelContent: {
-        flex: 1,
-        fontSize: 13,
-        color: '#2C2C2A',
-        lineHeight: 1.5
-    },
-    rootBadge: {
-        marginTop: 8,
-        padding: '6px 12px',
-        background: '#FFF8E1',
-        borderRadius: 8,
-        color: '#F5A623',
-        fontSize: 12,
-        textAlign: 'center'
-    },
-    milestoneBadge: {
-        marginTop: 8,
-        padding: '6px 12px',
-        background: '#F3E5F5',
-        borderRadius: 8,
-        color: '#9B59B6',
-        fontSize: 12,
-        textAlign: 'center'
-    },
-    weightBar: {
-        marginTop: 12,
-        padding: '8px 0'
-    },
-    barTrack: {
-        height: 6,
-        background: '#E8E6E1',
-        borderRadius: 3,
-        overflow: 'hidden',
-        margin: '4px 0'
-    },
-    barFill: {
-        height: '100%',
-        background: '#1D9E75',
-        borderRadius: 3
-    },
-    closePanelBtn: {
-        marginTop: 16,
-        padding: '8px',
-        background: '#E8E6E1',
-        border: 'none',
-        borderRadius: 6,
-        cursor: 'pointer',
-        fontSize: 12
-    },
-    footer: {
-        padding: '8px 24px',
-        background: '#F1EFE8',
-        borderTop: '1px solid #D3D1C7',
-        fontSize: 11,
-        color: '#888780',
-        display: 'flex',
-        gap: 24,
-        flexWrap: 'wrap'
-    },
-    loadingContainer: {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        gap: 16
-    },
-    errorContainer: {
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        gap: 16
-    },
-    errorMessage: {
-        color: '#E24B4A',
-        fontSize: 14,
-        background: '#FCEBEB',
-        padding: '16px 24px',
-        borderRadius: 8
-    },
-    spinner: {
-        width: 40,
-        height: 40,
-        border: '3px solid #E8E6E1',
-        borderTop: '3px solid #1E3A5F',
-        borderRadius: '50%',
-        animation: 'spin 1s linear infinite'
-    }
+    page: { display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#F1EFE8', overflow: 'hidden' },
+    header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 24px', background: '#1E3A5F', flexWrap: 'wrap', gap: 12 },
+    backBtn: { background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: '#fff', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13 },
+    title: { fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 },
+    subtitle: { fontSize: 12, color: 'rgba(255,255,255,0.6)', margin: '2px 0 0' },
+    stats: { display: 'flex', gap: 12, flexWrap: 'wrap' },
+    statBadge: { background: 'rgba(255,255,255,0.2)', padding: '4px 12px', borderRadius: 20, fontSize: 12, color: '#fff' },
+    toolbar: { display: 'flex', alignItems: 'center', gap: 20, padding: '12px 24px', background: '#fff', borderBottom: '1px solid #D3D1C7', flexWrap: 'wrap' },
+    filterGroup: { display: 'flex', alignItems: 'center', gap: 8 },
+    filterLabel: { fontSize: 13, fontWeight: 500, color: '#2C2C2A' },
+    filterSelect: { padding: '6px 12px', borderRadius: 6, border: '1px solid #D3D1C7', fontSize: 13, background: '#fff', minWidth: 200 },
+    checkboxLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' },
+    buttonGroup: { display: 'flex', gap: 8, marginLeft: 'auto' },
+    actionBtn: { padding: '6px 12px', background: '#E8E6E1', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
+    learningPanel: { background: '#fff', borderBottom: '2px solid #1E3A5F', maxHeight: 250, overflowY: 'auto' },
+    learningPanelHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: '#1E3A5F', color: '#fff', fontSize: 13, fontWeight: 600 },
+    learningPanelDuration: { fontSize: 11, fontWeight: 'normal', opacity: 0.8 },
+    learningPanelContent: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, padding: 16, fontSize: 12 },
+    startNodesSection: { borderRight: '1px solid #E8E6E1', paddingRight: 16 },
+    startNodesList: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 },
+    startNodeBtn: { textAlign: 'left', padding: '4px 8px', background: '#FFF8E1', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11, color: '#F5A623' },
+    milestonesSection: { borderRight: '1px solid #E8E6E1', paddingRight: 16 },
+    milestonesList: { display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 },
+    milestoneBtn: { textAlign: 'left', padding: '4px 8px', background: '#F3E5F5', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 11, color: '#9B59B6' },
+    orderSection: { paddingRight: 16 },
+    orderList: { margin: '8px 0 0 20px', padding: 0 },
+    orderItem: { marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+    orderNodeBtn: { background: 'none', border: 'none', color: '#1E3A5F', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' },
+    orderModule: { fontSize: 10, color: '#888780' },
+    legend: { display: 'flex', alignItems: 'center', gap: 16, padding: '8px 24px', background: '#F9F9F8', borderBottom: '1px solid #E8E6E1', flexWrap: 'wrap', fontSize: 12 },
+    legendTitle: { fontWeight: 600, color: '#1E3A5F' },
+    legendItem: { display: 'flex', alignItems: 'center', gap: 6 },
+    legendColor: { width: 14, height: 14, borderRadius: '50%' },
+    legendDivider: { width: 1, height: 20, background: '#D3D1C7' },
+    mainContainer: { display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 },
+    graphContainer: { flex: 1, background: '#fff', position: 'relative', height: '100%' },
+    sidePanel: { width: 320, background: '#fff', borderLeft: '1px solid #D3D1C7', padding: 16, display: 'flex', flexDirection: 'column', overflowY: 'auto' },
+    panelTitle: { fontSize: 16, fontWeight: 700, color: '#1E3A5F', margin: '0 0 12px' },
+    panelContent: { flex: 1, fontSize: 13, color: '#2C2C2A', lineHeight: 1.5 },
+    rootBadge: { marginTop: 8, padding: '6px 12px', background: '#FFF8E1', borderRadius: 8, color: '#F5A623', fontSize: 12, textAlign: 'center' },
+    milestoneBadge: { marginTop: 8, padding: '6px 12px', background: '#F3E5F5', borderRadius: 8, color: '#9B59B6', fontSize: 12, textAlign: 'center' },
+    weightBar: { marginTop: 12, padding: '8px 0' },
+    barTrack: { height: 6, background: '#E8E6E1', borderRadius: 3, overflow: 'hidden', margin: '4px 0' },
+    barFill: { height: '100%', background: '#1D9E75', borderRadius: 3 },
+    closePanelBtn: { marginTop: 16, padding: '8px', background: '#E8E6E1', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
+    footer: { padding: '8px 24px', background: '#F1EFE8', borderTop: '1px solid #D3D1C7', fontSize: 11, color: '#888780', display: 'flex', gap: 24, flexWrap: 'wrap' },
+    loadingContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16 },
+    errorContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16 },
+    errorMessage: { color: '#E24B4A', fontSize: 14, background: '#FCEBEB', padding: '16px 24px', borderRadius: 8 },
+    spinner: { width: 40, height: 40, border: '3px solid #E8E6E1', borderTop: '3px solid #1E3A5F', borderRadius: '50%', animation: 'spin 1s linear infinite' }
 }
 
 // Añadir animación al documento

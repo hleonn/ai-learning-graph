@@ -50,6 +50,67 @@ interface GenerationProgress {
     edgeCount?: number
 }
 
+// Clave para localStorage
+const STORAGE_KEY_BOOTCAMP_STATE = 'bootcamp_creator_state'
+
+// Interfaz para guardar el estado completo
+interface BootcampCreatorState {
+    bootcampTitle: string
+    bootcampDescription: string
+    durationWeeks: number
+    selectedCourses: string[]
+    recommendation: any
+    bootcampId: string | null
+    createdBootcamp: Bootcamp | null
+    globalBootcampGraph: BootcampGraph | null
+    bootcampBuilt: boolean
+    generatedCourseIds: string[]
+    graphCheckResultsData: Array<[string, { hasGraph: boolean; nodeCount: number; edgeCount: number }]>
+    allCoursesHaveGraphs: boolean
+    timestamp: number
+}
+
+// Función para guardar estado en localStorage
+const saveStateToLocalStorage = (state: Partial<BootcampCreatorState>) => {
+    try {
+        const existing = localStorage.getItem(STORAGE_KEY_BOOTCAMP_STATE)
+        const currentState = existing ? JSON.parse(existing) : {}
+        const newState = { ...currentState, ...state, timestamp: Date.now() }
+        localStorage.setItem(STORAGE_KEY_BOOTCAMP_STATE, JSON.stringify(newState))
+        console.log('💾 Estado del bootcamp guardado en localStorage')
+    } catch (error) {
+        console.error('Error saving bootcamp state:', error)
+    }
+}
+
+// Función para cargar estado desde localStorage
+const loadStateFromLocalStorage = (): BootcampCreatorState | null => {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY_BOOTCAMP_STATE)
+        if (!saved) return null
+
+        const state = JSON.parse(saved)
+        // Verificar si el estado tiene menos de 1 hora (3600000 ms)
+        if (Date.now() - (state.timestamp || 0) > 3600000) {
+            console.log('⏰ Estado expirado, limpiando...')
+            localStorage.removeItem(STORAGE_KEY_BOOTCAMP_STATE)
+            return null
+        }
+
+        console.log('📀 Estado del bootcamp cargado desde localStorage')
+        return state
+    } catch (error) {
+        console.error('Error loading bootcamp state:', error)
+        return null
+    }
+}
+
+// Función para limpiar estado
+const clearBootcampState = () => {
+    localStorage.removeItem(STORAGE_KEY_BOOTCAMP_STATE)
+    console.log('🗑️ Estado del bootcamp limpiado')
+}
+
 export default function BootcampCreator() {
     const navigate = useNavigate()
     const [courses, setCourses] = useState<Course[]>([])
@@ -79,12 +140,38 @@ export default function BootcampCreator() {
     const [bootcampBuilt, setBootcampBuilt] = useState(false)
     const [savingProgram, setSavingProgram] = useState(false)
 
-    // Cargar cursos disponibles
+    // Cargar cursos disponibles y restaurar estado guardado
     useEffect(() => {
         const loadCourses = async () => {
             try {
                 const data = await getCourses()
                 setCourses(data.courses || [])
+
+                // Restaurar estado guardado después de cargar cursos
+                const savedState = loadStateFromLocalStorage()
+                if (savedState) {
+                    console.log('🔄 Restaurando estado guardado del bootcamp...')
+                    setBootcampTitle(savedState.bootcampTitle)
+                    setBootcampDescription(savedState.bootcampDescription)
+                    setDurationWeeks(savedState.durationWeeks)
+                    setSelectedCourses(savedState.selectedCourses)
+                    setRecommendation(savedState.recommendation)
+                    setBootcampId(savedState.bootcampId)
+                    setCreatedBootcamp(savedState.createdBootcamp)
+                    setGlobalBootcampGraph(savedState.globalBootcampGraph)
+                    setBootcampBuilt(savedState.bootcampBuilt)
+                    setGeneratedCourseIds(savedState.generatedCourseIds)
+                    setAllCoursesHaveGraphs(savedState.allCoursesHaveGraphs)
+
+                    // Restaurar graphCheckResults
+                    if (savedState.graphCheckResultsData) {
+                        const restoredMap = new Map(savedState.graphCheckResultsData)
+                        setGraphCheckResults(restoredMap)
+                    }
+
+                    alert(`🔄 Se ha restaurado el bootcamp "${savedState.bootcampTitle}"\n\n` +
+                        `Puedes continuar desde donde lo dejaste.`)
+                }
             } catch (error) {
                 console.error('Error loading courses:', error)
             }
@@ -183,6 +270,18 @@ export default function BootcampCreator() {
 
             setRecommendation(data)
             setBootcampId(data.suggested_bootcamp?.id || null)
+
+            // Guardar estado después de recomendación
+            saveStateToLocalStorage({
+                bootcampTitle,
+                bootcampDescription,
+                durationWeeks,
+                selectedCourses,
+                recommendation: data,
+                bootcampId: data.suggested_bootcamp?.id || null,
+                graphCheckResultsData: Array.from(graphCheckResults.entries()),
+                allCoursesHaveGraphs
+            })
 
             // Verificar si el backend reconoció correctamente los cursos
             const recognizedIds = new Set(data.existing_courses?.map((c: any) => c.id) || [])
@@ -332,6 +431,12 @@ export default function BootcampCreator() {
             alert(`✅ Todos los ${courseIds.length} cursos tienen sus grafos correctamente.\n📊 Total: ${totalNodes} nodos, ${totalEdges} edges`)
         }
 
+        // Guardar estado después de verificar grafos
+        saveStateToLocalStorage({
+            graphCheckResultsData: Array.from(graphCheckResults.entries()),
+            allCoursesHaveGraphs
+        })
+
         return allHaveGraphs
     }
 
@@ -475,6 +580,14 @@ export default function BootcampCreator() {
         if (existingSelected.length > 0) {
             await checkCoursesGraphs(existingSelected)
         }
+
+        // Guardar estado después de generar cursos
+        saveStateToLocalStorage({
+            selectedCourses: existingSelected,
+            generatedCourseIds: newGeneratedIds,
+            graphCheckResultsData: Array.from(graphCheckResults.entries()),
+            allCoursesHaveGraphs
+        })
     }
 
     // Construcción virtual del bootcamp con pesos progresivos y grafo global
@@ -526,7 +639,11 @@ export default function BootcampCreator() {
             // 4. Construir grafo global del bootcamp
             const bootcampGraph = await buildBootcampGlobalGraph(suggestedOrder, weightMap)
             setGlobalBootcampGraph(bootcampGraph)
-
+// Guardar grafo global en localStorage con clave específica
+            localStorage.setItem('bootcamp_global_graph', JSON.stringify(bootcampGraph))
+            localStorage.setItem('bootcamp_global_graph_title', bootcampTitle)
+            localStorage.setItem('bootcamp_global_graph_timestamp', Date.now().toString())
+            console.log('💾 Grafo global guardado en localStorage')
             // 5. Crear estructura virtual de módulos con pesos calculados
             const virtualModules = weights.map((weight, idx) => {
                 const course = courses.find(c => c.id === weight.courseId)
@@ -567,6 +684,22 @@ export default function BootcampCreator() {
                 `📊 Grafo global: ${bootcampGraph.summary.totalNodes} nodos, ${bootcampGraph.summary.totalEdges} edges\n\n` +
                 `Los cursos están listos para exportar a Gephi.`)
 
+            // Guardar estado en localStorage después de construir
+            saveStateToLocalStorage({
+                bootcampTitle,
+                bootcampDescription,
+                durationWeeks,
+                selectedCourses,
+                recommendation,
+                bootcampId,
+                createdBootcamp: virtualBootcamp,
+                globalBootcampGraph: bootcampGraph,
+                bootcampBuilt: true,
+                generatedCourseIds,
+                graphCheckResultsData: Array.from(graphCheckResults.entries()),
+                allCoursesHaveGraphs
+            })
+
         } catch (error) {
             console.error('Error building virtual bootcamp:', error)
             alert('Error al preparar el bootcamp virtual')
@@ -600,6 +733,9 @@ export default function BootcampCreator() {
             if (program) {
                 alert(`✅ Bootcamp "${bootcampTitle}" guardado correctamente en Programas de Formación.\n\n` +
                     `Podrás verlo en la sección de Bootcamps del Dashboard.`)
+
+                // Limpiar estado después de guardar exitosamente
+                clearBootcampState()
             } else {
                 throw new Error('Error al guardar el programa')
             }
@@ -608,6 +744,27 @@ export default function BootcampCreator() {
             alert('Error al guardar el bootcamp en Programas de Formación')
         } finally {
             setSavingProgram(false)
+        }
+    }
+
+    // Limpiar todo el progreso
+    const handleClearProgress = () => {
+        if (confirm('¿Limpiar todo el progreso del bootcamp actual?\n\nEsta acción no se puede deshacer.')) {
+            clearBootcampState()
+            // Resetear estados
+            setBootcampTitle('')
+            setBootcampDescription('')
+            setDurationWeeks(16)
+            setSelectedCourses([])
+            setRecommendation(null)
+            setBootcampId(null)
+            setCreatedBootcamp(null)
+            setGlobalBootcampGraph(null)
+            setBootcampBuilt(false)
+            setGeneratedCourseIds([])
+            setGraphCheckResults(new Map())
+            setAllCoursesHaveGraphs(false)
+            alert('🧹 Progreso limpiado. Puedes comenzar un nuevo bootcamp.')
         }
     }
 
@@ -639,7 +796,10 @@ export default function BootcampCreator() {
     return (
         <div style={styles.page}>
             <div style={styles.header}>
-                <button onClick={() => navigate('/dashboard')} style={styles.back}>← Volver al Dashboard</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button onClick={() => navigate('/dashboard')} style={styles.back}>← Volver al Dashboard</button>
+                    <button onClick={handleClearProgress} style={styles.clearBtn}>🗑️ Limpiar progreso</button>
+                </div>
                 <h1 style={styles.title}>🎓 Creador de Bootcamps</h1>
                 <p style={styles.subtitle}>Crea programas de formación combinando cursos existentes</p>
             </div>
@@ -964,10 +1124,10 @@ export default function BootcampCreator() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-    // ... (mantener los estilos existentes sin cambios)
     page: { maxWidth: 1400, margin: '0 auto', padding: '40px 24px', fontFamily: 'system-ui, sans-serif', minHeight: '100vh', background: '#F1EFE8' },
     header: { marginBottom: 32 },
     back: { background: 'none', border: '1px solid #D3D1C7', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, marginBottom: 16, color: '#1E3A5F' },
+    clearBtn: { background: 'none', border: '1px solid #E24B4A', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 13, marginBottom: 16, marginLeft: 8, color: '#E24B4A' },
     title: { fontSize: 32, fontWeight: 700, color: '#1E3A5F', margin: 0 },
     subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
     container: { display: 'flex', gap: 32, flexWrap: 'wrap' },
