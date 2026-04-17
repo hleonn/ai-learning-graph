@@ -726,6 +726,7 @@ export default function BootcampCreator() {
             localStorage.setItem('bootcamp_global_graph_timestamp', Date.now().toString())
             console.log('💾 Grafo global guardado en localStorage')
 
+            const totalBootcampHours = durationWeeks * 40
             // 6. Crear estructura virtual de módulos con pesos calculados
             const virtualModules = suggestedOrder.map((courseId, idx) => {
                 const weight = weights.find(w => w.courseId === courseId)
