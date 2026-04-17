@@ -422,7 +422,7 @@ export default function BootcampGraphView() {
         return (
             <div style={styles.errorContainer}>
                 <p style={styles.errorMessage}>❌ {error}</p>
-                <button onClick={() => navigate(-1)} style={styles.backBtn}>← Volver</button>
+                <button onClick={() => navigate('/bootcamp')} style={styles.backBtn}>← Volver</button>
             </div>
         )
     }
@@ -430,7 +430,7 @@ export default function BootcampGraphView() {
     return (
         <div style={styles.page}>
             <div style={styles.header}>
-                <button onClick={() => navigate(-1)} style={styles.backBtn}>← Volver</button>
+                <button onClick={() => navigate('/bootcamp')} style={styles.backBtn}>← Volver</button>
                 <div>
                     <h1 style={styles.title}>📊 Grafo Global del Bootcamp</h1>
                     <p style={styles.subtitle}>{bootcampTitle}</p>

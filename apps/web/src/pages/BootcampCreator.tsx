@@ -823,7 +823,7 @@ export default function BootcampCreator() {
                     `Podrás verlo en la sección de Bootcamps del Dashboard.`)
 
                 // Limpiar estado después de guardar exitosamente
-                clearBootcampState()
+                //clearBootcampState()
             } else {
                 throw new Error('Error al guardar el programa')
             }
