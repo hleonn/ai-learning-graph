@@ -24,13 +24,22 @@ export interface LearningPath {
 
 /**
  * Encuentra todos los nodos raíz (sin dependencias entrantes)
+ * Opcionalmente, filtrar por módulo
  */
 export function findRootNodes(
     nodes: any[],
-    edges: any[]
+    edges: any[],
+    maxModuleOrder?: number
 ): string[] {
     const targets = new Set(edges.map(e => e.target))
-    return nodes.filter(n => !targets.has(n.id)).map(n => n.id)
+    let filteredNodes = nodes
+
+    if (maxModuleOrder !== undefined) {
+        // Solo considerar nodos de módulos hasta maxModuleOrder
+        filteredNodes = nodes.filter(n => (n.moduleOrder || 1) <= maxModuleOrder)
+    }
+
+    return filteredNodes.filter(n => !targets.has(n.id)).map(n => n.id)
 }
 
 /**
@@ -43,7 +52,6 @@ export function calculateNodeDepths(
     const depths = new Map<string, number>()
     const adjacency = new Map<string, string[]>()
 
-    // Construir grafo de dependencias (source -> targets)
     for (const edge of edges) {
         if (!adjacency.has(edge.source)) {
             adjacency.set(edge.source, [])
@@ -51,10 +59,7 @@ export function calculateNodeDepths(
         adjacency.get(edge.source)!.push(edge.target)
     }
 
-    // Encontrar nodos raíz
     const roots = findRootNodes(nodes, edges)
-
-    // BFS desde raíces
     const queue: { id: string; depth: number }[] = roots.map(id => ({ id, depth: 0 }))
     const visited = new Set<string>()
 
@@ -80,7 +85,6 @@ export function calculateNodeDepths(
         }
     }
 
-    // Asignar profundidad 0 a nodos no alcanzados
     for (const node of nodes) {
         if (!depths.has(node.id)) {
             depths.set(node.id, 0)
@@ -91,7 +95,7 @@ export function calculateNodeDepths(
 }
 
 /**
- * Identifica nodos hito (milestones) - nodos con muchas dependencias o alta dificultad
+ * Identifica nodos hito (milestones)
  */
 export function findMilestones(
     nodes: any[],
@@ -100,13 +104,11 @@ export function findMilestones(
 ): string[] {
     const dependentsCount = new Map<string, number>()
 
-    // Contar cuántos nodos dependen de cada nodo
     for (const edge of edges) {
         const count = dependentsCount.get(edge.source) || 0
         dependentsCount.set(edge.source, count + 1)
     }
 
-    // Encontrar el máximo de dependientes para normalizar
     let maxDependents = 0
     for (const count of dependentsCount.values()) {
         maxDependents = Math.max(maxDependents, count)
@@ -119,10 +121,6 @@ export function findMilestones(
         const depth = depths.get(node.id) || 0
         const difficulty = node.difficulty || 3
 
-        // Un nodo es hito si:
-        // 1. Tiene muchas dependencias (top 20%)
-        // 2. O tiene dificultad alta (>= 4)
-        // 3. O está en una profundidad significativa y tiene al menos una dependencia
         const isHighDependents = maxDependents > 0 && dependents / maxDependents > 0.7
         const isHighDifficulty = difficulty >= 4
         const isDeepAndHasDependents = depth >= 3 && dependents > 0
@@ -137,41 +135,46 @@ export function findMilestones(
 
 /**
  * Genera el orden óptimo de aprendizaje (topológico)
+ * Opcionalmente, limitar a primeros N módulos
  */
 export function generateLearningOrder(
     nodes: any[],
-    edges: any[]
+    edges: any[],
+    maxModuleOrder?: number
 ): string[] {
     const order: string[] = []
     const visited = new Set<string>()
     const processing = new Set<string>()
-
-    // Construir grafo de dependencias
     const adjacency = new Map<string, string[]>()
 
-    for (const edge of edges) {
+    // Filtrar nodos y edges por módulo si es necesario
+    let filteredNodes = nodes
+    let filteredEdges = edges
+
+    if (maxModuleOrder !== undefined) {
+        const validNodeIds = new Set(
+            nodes.filter(n => (n.moduleOrder || 1) <= maxModuleOrder).map(n => n.id)
+        )
+        filteredNodes = nodes.filter(n => validNodeIds.has(n.id))
+        filteredEdges = edges.filter(e => validNodeIds.has(e.source) && validNodeIds.has(e.target))
+    }
+
+    for (const edge of filteredEdges) {
         if (!adjacency.has(edge.source)) {
             adjacency.set(edge.source, [])
         }
         adjacency.get(edge.source)!.push(edge.target)
     }
 
-    // DFS para orden topológico
     function dfs(nodeId: string): boolean {
-        if (processing.has(nodeId)) {
-            return false // Ciclo detectado
-        }
-        if (visited.has(nodeId)) {
-            return true
-        }
+        if (processing.has(nodeId)) return false
+        if (visited.has(nodeId)) return true
 
         processing.add(nodeId)
         const children = adjacency.get(nodeId) || []
 
         for (const child of children) {
-            if (!dfs(child)) {
-                return false
-            }
+            if (!dfs(child)) return false
         }
 
         processing.delete(nodeId)
@@ -180,18 +183,17 @@ export function generateLearningOrder(
         return true
     }
 
-    // Procesar todos los nodos
-    for (const node of nodes) {
+    for (const node of filteredNodes) {
         if (!visited.has(node.id)) {
             dfs(node.id)
         }
     }
 
-    return order.reverse() // Invertir para tener orden correcto
+    return order.reverse()
 }
 
 /**
- * Estima la duración total del bootcamp basada en nodos y dificultad
+ * Estima la duración total del bootcamp
  */
 export function estimateDuration(
     nodes: any[],
@@ -203,14 +205,10 @@ export function estimateDuration(
         const difficulty = node.difficulty || 3
         const depth = depths.get(node.id) || 0
 
-        // Fórmula: horas base = 2, multiplicador por dificultad, bonificación por profundidad
         let hours = 2 + (difficulty - 1) * 1.5
-
-        // Nodos más profundos toman más tiempo
         if (depth > 2) {
             hours += (depth - 2) * 0.5
         }
-
         totalHours += hours
     }
 
@@ -219,24 +217,28 @@ export function estimateDuration(
 
 /**
  * Genera el árbol de aprendizaje completo
+ * @param nodes - Todos los nodos del bootcamp
+ * @param edges - Todos los edges del bootcamp
+ * @param maxStartModule - Módulo máximo para considerar puntos de inicio (ej: 2)
+ * @param maxOrderModule - Módulo máximo para considerar orden sugerido (ej: 2)
  */
 export function generateLearningPath(
     nodes: any[],
-    edges: any[]
+    edges: any[],
+    maxStartModule: number = 2,
+    maxOrderModule: number = 2
 ): LearningPath {
-    // Calcular profundidades
     const depths = calculateNodeDepths(nodes, edges)
 
-    // Encontrar nodos raíz
-    const startNodes = findRootNodes(nodes, edges)
+    // Puntos de inicio: solo de los primeros N módulos (ej: Python y SQL)
+    const startNodes = findRootNodes(nodes, edges, maxStartModule)
 
-    // Encontrar hitos
+    // Hitos: de todos los nodos
     const milestones = findMilestones(nodes, edges, depths)
 
-    // Generar orden de aprendizaje
-    const order = generateLearningOrder(nodes, edges)
+    // Orden sugerido: solo de los primeros N módulos (ej: Python y SQL)
+    const order = generateLearningOrder(nodes, edges, maxOrderModule)
 
-    // Estimar duración
     const estimatedDuration = estimateDuration(nodes, depths)
 
     return {
