@@ -57,7 +57,41 @@ function calculatePositionFactor(position: number, total: number): number {
     const maxFactor = 0.9
     return minFactor + ((position - 1) / (total - 1)) * (maxFactor - minFactor)
 }
+/**
+ * Calcula la complejidad real de un módulo
+ * Factores: dificultad base (40%), número de nodos (30%), posición (30%)
+ * Retorna un valor entre 0.2 y 1.0
+ */
+export function calculateRealComplexity(
+    difficulty: string,
+    nodeCount: number,
+    maxNodes: number,
+    position: number,
+    totalModules: number
+): number {
+    // 1. Factor de dificultad (0.2 a 1.0)
+    const difficultyMap: Record<string, number> = {
+        'beginner': 0.2,
+        'intermediate': 0.5,
+        'advanced': 0.8,
+        'expert': 1.0
+    }
+    const difficultyFactor = difficultyMap[difficulty] || 0.5
 
+    // 2. Factor de nodos (normalizado)
+    const nodeFactor = maxNodes > 0 ? nodeCount / maxNodes : 0.5
+
+    // 3. Factor de posición (los módulos posteriores son más complejos)
+    const positionFactor = totalModules > 1
+        ? 0.3 + ((position - 1) / (totalModules - 1)) * 0.6
+        : 0.5
+
+    // Combinar factores (40% dificultad, 30% nodos, 30% posición)
+    const rawComplexity = (difficultyFactor * 0.4) + (nodeFactor * 0.3) + (positionFactor * 0.3)
+
+    // Redondear a 2 decimales y asegurar rango 0.2-1.0
+    return Math.min(1.0, Math.max(0.2, Math.round(rawComplexity * 100) / 100))
+}
 /**
  * Calcula pesos progresivos para los módulos del bootcamp
  */
@@ -68,6 +102,7 @@ export function calculateProgressiveWeights(
     if (courses.length === 0) return []
 
     const maxNodes = Math.max(...courses.map(c => c.nodeCount))
+    const totalModules = courses.length
 
     const factors = courses.map((course) => {
         const position = order.indexOf(course.id) + 1
@@ -79,6 +114,15 @@ export function calculateProgressiveWeights(
 
         const rawWeight = (baseComplexity * 0.4) + (nodeFactor * 0.3) + (positionFactor * 0.3)
 
+        // Calcular complejidad real
+        const realComplexity = calculateRealComplexity(
+            course.difficulty,
+            course.nodeCount,
+            maxNodes,
+            position,
+            totalModules
+        )
+
         return {
             ...course,
             position,
@@ -86,7 +130,8 @@ export function calculateProgressiveWeights(
             baseComplexity,
             nodeFactor,
             positionFactor,
-            rawWeight
+            rawWeight,
+            realComplexity
         }
     })
 
@@ -97,7 +142,7 @@ export function calculateProgressiveWeights(
         courseTitle: f.title,
         weight: f.rawWeight / totalRawWeight,
         percentage: Math.round((f.rawWeight / totalRawWeight) * 100),
-        complexity: f.baseComplexity,
+        complexity: f.realComplexity,  // Usar complejidad real
         nodeFactor: f.nodeFactor,
         positionFactor: f.positionFactor
     }))

@@ -31,6 +31,7 @@ interface Module {
     complexity: number
     prerequisites_modules: number[]
     estimated_hours: number
+    weekly_hours?: number
 }
 
 interface Bootcamp {
@@ -729,6 +730,8 @@ export default function BootcampCreator() {
             const virtualModules = suggestedOrder.map((courseId, idx) => {
                 const weight = weights.find(w => w.courseId === courseId)
                 const course = courses.find(c => c.id === courseId)
+                const moduleHours = Math.round(totalBootcampHours * (weight?.weight || 0.2))
+                const weeklyHours = Math.round(moduleHours / durationWeeks)
                 return {
                     id: `module-${idx}`,
                     name: course?.title || `Módulo ${idx + 1}`,
@@ -738,7 +741,8 @@ export default function BootcampCreator() {
                     weight: weight?.weight || 0.2,
                     complexity: weight?.complexity || 0.5,
                     prerequisites_modules: idx > 0 ? [idx - 1] : [],
-                    estimated_hours: Math.round(40 * ((weight?.weight || 0.2) * 2))
+                    estimated_hours: moduleHours,
+                    weekly_hours: weeklyHours
                 }
             })
 
@@ -1133,25 +1137,38 @@ export default function BootcampCreator() {
                         {/* Módulos generados después de construcción virtual */}
                         {createdBootcamp && (
                             <div style={styles.recommendationSection}>
-                                <h3 style={styles.sectionSubtitle}>📋 Bootcamp Virtual - Módulos ({createdBootcamp.modules?.length || 0})</h3>
+                                <h3 style={styles.sectionSubtitle}>📋 Bootcamp Virtual - Módulos
+                                    ({createdBootcamp.modules?.length || 0})</h3>
                                 <div style={styles.modulesList}>
                                     {createdBootcamp.modules?.map((module: Module) => (
                                         <div key={module.id} style={styles.modulePreview}>
                                             <div style={styles.moduleHeader}>
                                                 <span style={styles.moduleOrder}>Módulo {module.order}</span>
-                                                <span style={styles.moduleWeight}>Peso: {Math.round(module.weight * 100)}%</span>
+                                                <span
+                                                    style={styles.moduleWeight}>Peso: {Math.round(module.weight * 100)}%</span>
                                             </div>
                                             <div style={styles.moduleName}>{module.name}</div>
                                             <div style={styles.moduleDesc}>{module.description}</div>
                                             <div style={styles.moduleMeta}>
                                                 <span>📊 Complejidad: {Math.round(module.complexity * 100)}%</span>
-                                                <span>⏱️ {module.estimated_hours}h estimadas</span>
+                                                <span>⏱️ {module.estimated_hours}h totales</span>
+                                                {module.weekly_hours && <span>📅 {module.weekly_hours}h/semana</span>}
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                                <p style={{ fontSize: 12, color: '#888780', marginTop: 8, textAlign: 'center' }}>
-                                    ℹ️ Bootcamp virtual generado localmente. Los cursos mantienen sus grafos individuales.
+                                {/* Footer con explicación de horas */}
+                                <div style={styles.hoursFooter}>
+                                    <p style={styles.hoursExplanation}>
+                                        ⏱️ <strong>Cálculo de horas:</strong> {durationWeeks} semanas × 40 horas/semana = <strong>{durationWeeks * 40} horas totales</strong>
+                                    </p>
+                                    <p style={styles.hoursExplanation}>
+                                        📊 La distribución por módulo se basa en el peso pedagógico de cada curso dentro del bootcamp.
+                                    </p>
+                                </div>
+                                <p style={{fontSize: 12, color: '#888780', marginTop: 8, textAlign: 'center'}}>
+                                    ℹ️ Bootcamp virtual generado localmente. Los cursos mantienen sus grafos
+                                    individuales.
                                 </p>
                             </div>
                         )}
@@ -1263,6 +1280,19 @@ const styles: Record<string, React.CSSProperties> = {
     generatedBadge: { fontSize: 10, color: '#1D9E75', marginLeft: 8 },
     viewGraphBtn: { width: '100%', padding: '12px', background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
     saveProgramBtn: { width: '100%', padding: '12px', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 8 },
+    hoursFooter: {
+        marginTop: 16,
+        padding: '12px 16px',
+        background: '#F1EFE8',
+        borderRadius: 8,
+        borderLeft: '3px solid #1D9E75'
+    },
+    hoursExplanation: {
+        fontSize: 12,
+        color: '#2C2C2A',
+        margin: '4px 0',
+        lineHeight: 1.4
+    },
 }
 
 // Añadir animación al documento

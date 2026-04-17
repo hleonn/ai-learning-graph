@@ -57,7 +57,7 @@ export default function BootcampGraphView() {
     useEffect(() => {
         if (!bootcampGraph) return
         try {
-            const path = generateLearningPath(bootcampGraph.nodes, bootcampGraph.edges,3,3)
+            const path = generateLearningPath(bootcampGraph.nodes, bootcampGraph.edges,2,2)
             setLearningPath(path)
         } catch (err) {
             console.error('Error calculating learning path:', err)

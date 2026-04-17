@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { getProgram, getCourses, type Program } from '../lib/api'
+import { generateAndDownloadBootcampPDF } from '../utils/generateBootcampPDF'
+import CalendarDialog from '../components/CalendarDialog'
 
 interface Course {
     id: string
@@ -21,6 +23,41 @@ export default function ProgramView() {
     const [courses, setCourses] = useState<Course[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [generatedDescription, setGeneratedDescription] = useState<string>('')
+    const [showCalendar, setShowCalendar] = useState(false)
+
+    // Generar descripción automática basada en los módulos
+    const generateDescriptionFromModules = (modules: any[]): string => {
+        if (!modules || modules.length === 0) return ''
+
+        const totalHours = modules.reduce((sum, m) => sum + (m.estimated_hours || 0), 0)
+        const totalWeeks = program?.duration_weeks || 16
+        const hoursPerWeek = Math.round(totalHours / totalWeeks)
+
+        let description = `🎓 **Bootcamp de formación intensiva**\n\n`
+        description += `Este programa está diseñado para formar profesionales en ${program?.title || 'tecnologías de vanguardia'}.\n\n`
+        description += `📊 **Estructura del programa:**\n`
+        description += `• ${modules.length} módulos distribuidos en ${totalWeeks} semanas\n`
+        description += `• ${totalHours} horas totales de formación (${hoursPerWeek} horas/semana)\n\n`
+        description += `📚 **Metodología:**\n`
+        description += `• Aprendizaje basado en proyectos reales\n`
+        description += `• Taxonomía de Bloom para progresión cognitiva\n`
+        description += `• Evaluación continua con feedback personalizado\n\n`
+        description += `🎯 **Perfil de egreso:**\n`
+        description += `Al completar este bootcamp, los participantes serán capaces de:\n`
+
+        // Extraer habilidades principales de los módulos
+        const mainSkills = modules.slice(0, 3).map(m => {
+            const skill = m.name?.split(' ').slice(0, 2).join(' ') || m.name
+            return `• Dominar ${skill} y sus aplicaciones prácticas`
+        })
+        description += mainSkills.join('\n')
+        description += `\n• Integrar conocimientos para resolver problemas complejos\n`
+        description += `• Desarrollar proyectos end-to-end con estándares profesionales\n\n`
+        description += `✅ **Certificación:** Al finalizar, recibirás un certificado de competencias laborales.`
+
+        return description
+    }
 
     useEffect(() => {
         const loadData = async () => {
@@ -28,15 +65,12 @@ export default function ProgramView() {
             setError(null)
 
             try {
-                // Cargar cursos disponibles
                 const coursesData = await getCourses()
                 setCourses(coursesData.courses || [])
 
-                // Cargar programa por ID
                 let programData: Program | null = null
-
-                // Intentar obtener del state de navegación
                 const state = location.state as { program?: Program }
+
                 if (state?.program) {
                     programData = state.program
                 } else if (id) {
@@ -45,6 +79,14 @@ export default function ProgramView() {
 
                 if (programData) {
                     setProgram(programData)
+                    // Generar descripción automática si hay módulos
+                    if (programData.modules && programData.modules.length > 0) {
+                        const autoDescription = generateDescriptionFromModules(programData.modules)
+                        setGeneratedDescription(autoDescription)
+                    } else {
+                        // Fallback: usar la descripción original o generar una básica
+                        setGeneratedDescription(programData.description || `Programa de formación en ${programData.title}`)
+                    }
                 } else {
                     setError('No se encontró el programa')
                 }
@@ -66,6 +108,28 @@ export default function ProgramView() {
 
     const handleViewCourse = (courseId: string) => {
         navigate(`/graph/${courseId}`)
+    }
+
+    // Función para generar PDF del bootcamp completo
+    const handleExportBootcampPDF = async () => {
+        if (!program) return
+
+        const bootcampData = {
+            id: program.id,
+            title: program.title,
+            description: generatedDescription || program.description,
+            duration_weeks: program.duration_weeks,
+            modules: program.modules || [],
+            total_weight: 1,
+            created_at: program.created_at
+        }
+
+        await generateAndDownloadBootcampPDF(bootcampData)
+    }
+
+    // Función para generar PDF de un módulo específico
+    const handleExportModulePDF = (module: any, moduleIndex: number) => {
+        alert(`📄 Generando PDF del módulo ${moduleIndex + 1}: "${module.name}"...\n\nPróximamente: Exportación detallada del módulo con sus subtemas y ejercicios.`)
     }
 
     if (loading) {
@@ -106,6 +170,10 @@ export default function ProgramView() {
         }
     }
 
+    const totalHours = program.modules?.reduce((sum, m) => sum + (m.estimated_hours || 0), 0) || 0
+    const totalWeeks = program.duration_weeks || 16
+    const hoursPerWeek = Math.round(totalHours / totalWeeks)
+
     return (
         <div style={styles.page}>
             <div style={styles.header}>
@@ -129,17 +197,52 @@ export default function ProgramView() {
                             <span style={styles.infoValue}>{program.course_ids?.length || 0} cursos</span>
                         </div>
                         <div style={styles.infoItem}>
+                            <span style={styles.infoLabel}>⏱️ Carga horaria</span>
+                            <span style={styles.infoValue}>{totalHours} horas totales</span>
+                        </div>
+                        <div style={styles.infoItem}>
                             <span style={styles.infoLabel}>📅 Creado</span>
                             <span style={styles.infoValue}>{new Date(program.created_at).toLocaleDateString()}</span>
                         </div>
+                        <div style={styles.infoItem}>
+                            <span style={styles.infoLabel}>⚡ Intensidad</span>
+                            <span style={styles.infoValue}>{hoursPerWeek} horas/semana</span>
+                        </div>
+                        <div style={styles.infoItem}>
+                            <span style={styles.infoLabel}>📊 Módulos</span>
+                            <span style={styles.infoValue}>{program.modules?.length || 0} módulos</span>
+                        </div>
+
                     </div>
-                    <p style={styles.description}>{program.description}</p>
+                    <div style={{marginTop: 16, display: 'flex', justifyContent: 'flex-end'}}>
+                        <button style={styles.calendarBtn} onClick={() => setShowCalendar(true)}>
+                            📅 Ver Calendario
+                        </button>
+                    </div>
+
+                    {/* Descripción generada automáticamente */}
+                    <div style={styles.descriptionSection}>
+                        <h3 style={styles.descriptionTitle}>📖 Sobre este programa</h3>
+                        <div style={styles.description}>
+                            {generatedDescription.split('\n').map((line, idx) => (
+                                <p key={idx} style={styles.descriptionParagraph}>{line}</p>
+                            ))}
+                        </div>
+                    </div>
                 </div>
 
                 {/* Módulos del programa */}
                 {program.modules && program.modules.length > 0 && (
                     <div style={styles.section}>
+                        <div style={styles.sectionHeader}>
                         <h2 style={styles.sectionTitle}>📋 Módulos del Programa</h2>
+                            <button
+                                style={styles.exportAllBtn}
+                                onClick={handleExportBootcampPDF}
+                            >
+                                📄 Exportar programa completo
+                            </button>
+                        </div>
                         <div style={styles.modulesGrid}>
                             {program.modules.map((module: any, idx: number) => (
                                 <div key={idx} style={styles.moduleCard}>
@@ -153,6 +256,12 @@ export default function ProgramView() {
                                         <span>📊 Complejidad: {Math.round((module.complexity || 0.5) * 100)}%</span>
                                         <span>⏱️ {module.estimated_hours || 40}h estimadas</span>
                                     </div>
+                                    <button
+                                        style={styles.moduleExportBtn}
+                                        onClick={() => handleExportModulePDF(module, idx)}
+                                    >
+                                        📄 Exportar módulo a PDF
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -182,14 +291,20 @@ export default function ProgramView() {
             <div style={styles.footer}>
                 <button
                     style={styles.exportBtn}
-                    onClick={() => {
-                        // TODO: Exportar programa a PDF
-                        alert('Próximamente: Exportar programa a PDF')
-                    }}
+                    onClick={handleExportBootcampPDF}
                 >
-                    📄 Exportar programa a PDF
+                    📄 Exportar programa completo a PDF
                 </button>
             </div>
+            {/* Modal del calendario */}
+            <CalendarDialog
+                isOpen={showCalendar}
+                onClose={() => setShowCalendar(false)}
+                bootcampTitle={program.title}
+                durationWeeks={program.duration_weeks}
+                totalHours={totalHours}
+                modules={program.modules || []}
+            />
         </div>
     )
 }
@@ -240,7 +355,7 @@ const styles: Record<string, React.CSSProperties> = {
     },
     infoGrid: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
         gap: 16,
         marginBottom: 20,
         paddingBottom: 16,
@@ -256,24 +371,53 @@ const styles: Record<string, React.CSSProperties> = {
         color: '#888780'
     },
     infoValue: {
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: 600,
         color: '#1E3A5F'
+    },
+    descriptionSection: {
+        marginTop: 8
+    },
+    descriptionTitle: {
+        fontSize: 16,
+        fontWeight: 600,
+        color: '#1E3A5F',
+        marginBottom: 12
     },
     description: {
         fontSize: 14,
         color: '#2C2C2A',
-        lineHeight: 1.5,
-        margin: 0
+        lineHeight: 1.6
+    },
+    descriptionParagraph: {
+        margin: '0 0 8px 0'
     },
     section: {
         marginBottom: 8
+    },
+    sectionHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+        flexWrap: 'wrap',
+        gap: 12
     },
     sectionTitle: {
         fontSize: 20,
         fontWeight: 600,
         color: '#2C2C2A',
-        marginBottom: 16
+        margin: 0
+    },
+    exportAllBtn: {
+        padding: '6px 12px',
+        background: '#1E3A5F',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 6,
+        cursor: 'pointer',
+        fontSize: 12,
+        fontWeight: 500
     },
     modulesGrid: {
         display: 'grid',
@@ -284,7 +428,9 @@ const styles: Record<string, React.CSSProperties> = {
         background: '#fff',
         borderRadius: 12,
         border: '1px solid #D3D1C7',
-        padding: 16
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column'
     },
     moduleHeader: {
         display: 'flex',
@@ -313,7 +459,8 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: 12,
         color: '#6B6E6A',
         lineHeight: 1.4,
-        margin: '0 0 12px'
+        margin: '0 0 12px',
+        flex: 1
     },
     moduleMeta: {
         display: 'flex',
@@ -321,7 +468,19 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: 10,
         color: '#888780',
         paddingTop: 8,
-        borderTop: '1px solid #F1EFE8'
+        borderTop: '1px solid #F1EFE8',
+        marginBottom: 12
+    },
+    moduleExportBtn: {
+        padding: '6px 12px',
+        background: '#E8E6E1',
+        border: 'none',
+        borderRadius: 6,
+        cursor: 'pointer',
+        fontSize: 11,
+        fontWeight: 500,
+        color: '#1E3A5F',
+        width: '100%'
     },
     coursesGrid: {
         display: 'grid',
@@ -402,7 +561,18 @@ const styles: Record<string, React.CSSProperties> = {
         background: '#FCEBEB',
         padding: '12px 24px',
         borderRadius: 8
-    }
+    },
+    calendarBtn: {
+        padding: '8px 16px',
+        background: '#9B59B6',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 6,
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        marginTop: 8
+    },
 }
 
 // Añadir animación al documento
