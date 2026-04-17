@@ -32,6 +32,7 @@ interface Module {
     prerequisites_modules: number[]
     estimated_hours: number
     weekly_hours?: number
+    weeks_duration?: number
 }
 
 interface Bootcamp {
@@ -727,12 +728,39 @@ export default function BootcampCreator() {
             console.log('💾 Grafo global guardado en localStorage')
 
             const totalBootcampHours = durationWeeks * 40
-            // 6. Crear estructura virtual de módulos con pesos calculados
+            // Calcular distribución uniforme de semanas por módulo
+// Primero, calcular semanas por módulo basado en peso
+            let totalWeight = 0
+            for (const w of weights) {
+                totalWeight += w.weight
+            }
+
+// Calcular semanas por módulo (redondeado, asegurando suma = durationWeeks)
+            let remainingWeeks = durationWeeks
+            const moduleWeeks: number[] = []
+            for (let i = 0; i < weights.length; i++) {
+                const weight = weights[i]
+                let weeks = Math.round((weight.weight / totalWeight) * durationWeeks)
+                if (i === weights.length - 1) {
+                    weeks = remainingWeeks // El último módulo toma las semanas restantes
+                }
+                moduleWeeks.push(Math.max(1, weeks))
+                remainingWeeks -= weeks
+            }
+
+// Ajustar para que la suma sea exactamente durationWeeks
+            const totalAssignedWeeks = moduleWeeks.reduce((a, b) => a + b, 0)
+            if (totalAssignedWeeks !== durationWeeks) {
+                const diff = durationWeeks - totalAssignedWeeks
+                moduleWeeks[moduleWeeks.length - 1] += diff
+            }
+            // Crear módulos con horas distribuidas uniformemente (40h/semana)
             const virtualModules = suggestedOrder.map((courseId, idx) => {
                 const weight = weights.find(w => w.courseId === courseId)
                 const course = courses.find(c => c.id === courseId)
-                const moduleHours = Math.round(totalBootcampHours * (weight?.weight || 0.2))
-                const weeklyHours = Math.round(moduleHours / durationWeeks)
+                const weeksForModule = moduleWeeks[idx]
+                const moduleHours = weeksForModule * 40  // 40 horas por semana × número de semanas
+                const weeklyHours = 40
                 return {
                     id: `module-${idx}`,
                     name: course?.title || `Módulo ${idx + 1}`,
@@ -743,7 +771,8 @@ export default function BootcampCreator() {
                     complexity: weight?.complexity || 0.5,
                     prerequisites_modules: idx > 0 ? [idx - 1] : [],
                     estimated_hours: moduleHours,
-                    weekly_hours: weeklyHours
+                    weekly_hours: weeklyHours,
+                    weeks_duration: weeksForModule,
                 }
             })
 
@@ -1153,7 +1182,8 @@ export default function BootcampCreator() {
                                             <div style={styles.moduleMeta}>
                                                 <span>📊 Complejidad: {Math.round(module.complexity * 100)}%</span>
                                                 <span>⏱️ {module.estimated_hours}h totales</span>
-                                                {module.weekly_hours && <span>📅 {module.weekly_hours}h/semana</span>}
+                                                <span>📅 {module.weekly_hours}h/semana</span>
+                                                {module.weeks_duration && <span>🗓️ {module.weeks_duration} semanas</span>}
                                             </div>
                                         </div>
                                     ))}
