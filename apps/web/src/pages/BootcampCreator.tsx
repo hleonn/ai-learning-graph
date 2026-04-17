@@ -726,18 +726,19 @@ export default function BootcampCreator() {
             console.log('💾 Grafo global guardado en localStorage')
 
             // 6. Crear estructura virtual de módulos con pesos calculados
-            const virtualModules = weights.map((weight, idx) => {
-                const course = courses.find(c => c.id === weight.courseId)
+            const virtualModules = suggestedOrder.map((courseId, idx) => {
+                const weight = weights.find(w => w.courseId === courseId)
+                const course = courses.find(c => c.id === courseId)
                 return {
                     id: `module-${idx}`,
                     name: course?.title || `Módulo ${idx + 1}`,
                     order: idx + 1,
                     description: course?.description || `Curso: ${course?.title || ''}`,
                     node_ids: [],
-                    weight: weight.weight,
-                    complexity: weight.complexity,
+                    weight: weight?.weight || 0.2,
+                    complexity: weight?.complexity || 0.5,
                     prerequisites_modules: idx > 0 ? [idx - 1] : [],
-                    estimated_hours: Math.round(40 * (weight.weight * 2))
+                    estimated_hours: Math.round(40 * ((weight?.weight || 0.2) * 2))
                 }
             })
 
