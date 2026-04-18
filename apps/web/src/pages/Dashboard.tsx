@@ -67,6 +67,21 @@ export default function Dashboard() {
     // Heatmap state
     const [heatmapCourse, setHeatmapCourse] = useState<{ id: string; title: string } | null>(null)
 
+    // Función para generar descripción automática del bootcamp basada en sus módulos
+    const generateDescriptionFromModules = (modules: any[], programTitle: string, durationWeeks: number): string => {
+        if (!modules || modules.length === 0) return ''
+
+        const totalHours = modules.reduce((sum, m) => sum + (m.estimated_hours || 0), 0)
+
+        // Extraer habilidades principales de los módulos
+        const mainSkills = modules.slice(0, 3).map(m => {
+            const skill = m.name?.split(' ').slice(0, 2).join(' ') || m.name
+            return `${skill}`
+        }).join(', ')
+
+        return `Bootcamp de formación intensiva en ${programTitle}. ${modules.length} módulos, ${totalHours} horas totales, ${durationWeeks} semanas. Contenido: ${mainSkills}. Metodología basada en proyectos reales y Taxonomía de Bloom.`
+    }
+
     const getCurrentUser = async (): Promise<{ id: string; role: string } | null> => {
         const token = localStorage.getItem('google_token')
         if (!token) return null
@@ -243,7 +258,6 @@ export default function Dashboard() {
             const success = await deleteProgram(programId)
             if (success) {
                 alert(`✅ Programa "${programTitle}" eliminado correctamente`)
-                // Recargar la lista de programas
                 await loadPrograms()
             } else {
                 alert(`❌ Error al eliminar el programa "${programTitle}"\n\nIntenta nuevamente.`)
@@ -283,7 +297,6 @@ export default function Dashboard() {
                     setCourses(coursesData.courses)
                 }
 
-                // Cargar programas desde la API
                 await loadPrograms()
 
             } catch (err) {
@@ -527,33 +540,40 @@ export default function Dashboard() {
                                     <div style={styles.subsection}>
                                         <h3 style={styles.subsectionTitle}>🚀 Bootcamps</h3>
                                         <div style={styles.grid4Cols}>
-                                            {bootcamps.map((program) => (
-                                                <div key={program.id} style={styles.programCard}>
-                                                    <div style={styles.programBadge}>Bootcamp</div>
-                                                    <h3 style={styles.cardTitle}>{program.title}</h3>
-                                                    <p style={styles.cardDesc}>{program.description.substring(0, 100)}...</p>
-                                                    <div style={styles.programMeta}>
-                                                        <span>📅 {program.duration_weeks} semanas</span>
-                                                        <span>📚 {program.course_ids?.length || 0} cursos</span>
-                                                    </div>
-                                                    <div style={styles.programButtonGroup}>
-                                                        <button
-                                                            style={styles.programDetailBtn}
-                                                            onClick={() => handleViewProgram(program)}
-                                                        >
-                                                            Ver programa →
-                                                        </button>
-                                                        {isTeacher && (
+                                            {bootcamps.map((program) => {
+                                                // Generar descripción automática si hay módulos
+                                                const displayDescription = program.modules && program.modules.length > 0
+                                                    ? generateDescriptionFromModules(program.modules, program.title, program.duration_weeks)
+                                                    : program.description
+
+                                                return (
+                                                    <div key={program.id} style={styles.programCard}>
+                                                        <div style={styles.programBadge}>Bootcamp</div>
+                                                        <h3 style={styles.cardTitle}>{program.title}</h3>
+                                                        <p style={styles.cardDesc}>{displayDescription.substring(0, 100)}...</p>
+                                                        <div style={styles.programMeta}>
+                                                            <span>📅 {program.duration_weeks} semanas</span>
+                                                            <span>📚 {program.course_ids?.length || 0} cursos</span>
+                                                        </div>
+                                                        <div style={styles.programButtonGroup}>
                                                             <button
-                                                                style={styles.programDeleteBtn}
-                                                                onClick={() => handleDeleteProgram(program.id, program.title)}
+                                                                style={styles.programDetailBtn}
+                                                                onClick={() => handleViewProgram(program)}
                                                             >
-                                                                🗑️
+                                                                Ver programa →
                                                             </button>
-                                                        )}
+                                                            {isTeacher && (
+                                                                <button
+                                                                    style={styles.programDeleteBtn}
+                                                                    onClick={() => handleDeleteProgram(program.id, program.title)}
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                )
+                                            })}
                                         </div>
                                     </div>
                                 )}
@@ -829,7 +849,6 @@ const styles: Record<string, React.CSSProperties> = {
     title: { fontSize: 32, fontWeight: 700, color: '#1E3A5F', margin: 0 },
     subtitle: { fontSize: 16, color: '#888780', marginTop: 8 },
 
-    // Navegación por pestañas
     tabsContainer: {
         display: 'flex',
         gap: 8,
@@ -863,7 +882,6 @@ const styles: Record<string, React.CSSProperties> = {
 
     grid4Cols: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 },
 
-    // Tarjetas de cursos
     card: { background: '#fff', border: '1px solid #D3D1C7', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column' },
     cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     cardDomain: { fontSize: 10, fontWeight: 600, color: '#1D9E75', textTransform: 'uppercase', letterSpacing: '0.05em' },
@@ -885,7 +903,6 @@ const styles: Record<string, React.CSSProperties> = {
     programBtn: { background: '#6B6E6A', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, minWidth: 40 },
     deleteBtn: { background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 500, width: '100%' },
 
-    // Tarjetas de programas
     programCard: { background: 'linear-gradient(135deg, #fff 0%, #F9F9F8 100%)', border: '1px solid #D3D1C7', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', transition: 'transform 0.2s ease' },
     programBadge: { display: 'inline-block', background: '#1E3A5F', color: '#fff', fontSize: 10, fontWeight: 600, padding: '2px 10px', borderRadius: 20, marginBottom: 10, width: 'fit-content' },
     programMeta: { display: 'flex', gap: 12, fontSize: 11, color: '#888780', margin: '8px 0', padding: '8px 0', borderTop: '1px solid #F1EFE8', borderBottom: '1px solid #F1EFE8' },
@@ -893,11 +910,9 @@ const styles: Record<string, React.CSSProperties> = {
     programDetailBtn: { flex: 1, background: '#E8E6E1', color: '#1E3A5F', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500 },
     programDeleteBtn: { background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, minWidth: 40 },
 
-    // Google Classroom
     googleCard: { background: '#fff', border: '1px solid #E8E6E1', borderRadius: 12, padding: 16, transition: 'all 0.2s ease' },
     syncBtn: { background: '#E1F5EE', color: '#1D9E75', border: 'none', borderRadius: 6, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 500, width: '100%', marginTop: 10 },
 
-    // Estados vacíos y comunes
     emptyState: { background: '#fff', borderRadius: 12, padding: '60px 20px', textAlign: 'center', border: '1px solid #D3D1C7', color: '#6B6E6A' },
     center: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' },
     muted: { color: '#888780', fontSize: 16, textAlign: 'center' },
@@ -905,14 +920,12 @@ const styles: Record<string, React.CSSProperties> = {
     generateBtn: { background: '#1E3A5F', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
     createFirstBtn: { background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer', fontSize: 14, fontWeight: 600, marginTop: 16 },
 
-    // Usuario
     userBadge: { display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 8, padding: '4px 10px', border: '1px solid #D3D1C7' },
     userPhoto: { width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' as const },
     userName: { fontSize: 12, fontWeight: 500, color: '#1E3A5F' },
     connected: { fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 10, background: '#E1F5EE', color: '#1D9E75' },
     googleBtn: { background: '#fff', color: '#1E3A5F', border: '1px solid #D3D1C7', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
 
-    // Modales
     studentsModal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
     studentsModalContent: { background: '#fff', borderRadius: 12, padding: 24, minWidth: 300, maxWidth: 500 },
     bootcampBtn: {
