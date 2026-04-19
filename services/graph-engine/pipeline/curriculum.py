@@ -63,7 +63,7 @@ def _generate_fallback_content(subtopic_label: str, difficulty: int, course_titl
 
 
 def _generate_fallback_structure(title: str, difficulty_level: str, duration_months: int, bloom_levels: list) -> dict:
-    """Estructura de fallback"""
+    """Estructura de fallback con prerequisites poblados"""
     num_phases = 3 if difficulty_level in ["advanced", "expert"] else (2 if difficulty_level == "intermediate" else 1)
 
     phases = []
@@ -117,7 +117,7 @@ def _generate_fallback_structure(title: str, difficulty_level: str, duration_mon
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PROMPT 1: ESTRUCTURA (Taxonomía de Bloom + Diseño Instruccional)
+# PROMPT 1: ESTRUCTURA (VERSIÓN OPTIMIZADA)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def generate_roadmap_structure(
@@ -127,14 +127,11 @@ def generate_roadmap_structure(
     difficulty_level: str = "intermediate",
 ) -> dict:
     """
-    PROMPT 1: Genera la estructura del roadmap
-    Enfoque: Taxonomía de Bloom revisada + Diseño Instruccional
+    PROMPT 1: Genera la estructura del roadmap (VERSIÓN OPTIMIZADA)
     """
-
     duration_map = {"beginner": 2, "intermediate": 4, "advanced": 6, "expert": 6}
     duration_months = duration_map.get(difficulty_level, 4)
 
-    # Niveles de Bloom por nivel de dificultad
     bloom_by_level = {
         "beginner": ["Recordar", "Comprender", "Aplicar"],
         "intermediate": ["Comprender", "Aplicar", "Analizar"],
@@ -143,27 +140,19 @@ def generate_roadmap_structure(
     }
     bloom_levels = bloom_by_level.get(difficulty_level, ["Recordar", "Comprender", "Aplicar"])
 
-    prompt = f"""Eres un experto en Diseño Instruccional. Genera un roadmap educativo de alta calidad.
+    # PROMPT OPTIMIZADO - Más corto y directo
+    prompt = f"""Genera un roadmap educativo para el curso: "{title}"
 
-Curso: {title}
-Descripción: {description}
-Dominio: {domain}
 Nivel: {difficulty_level}
 Duración: {duration_months} meses
+Niveles Bloom: {bloom_levels}
 
-REQUERIMIENTOS PEDAGÓGICOS:
-1. **Taxonomía de Bloom**: Cada fase debe usar estos niveles: {bloom_levels}
-2. **Diseño Instruccional**: Cada fase debe tener:
-   - Un problema REAL que motiva el aprendizaje
-   - Objetivos específicos y medibles
-   - Resultados esperados tangibles
-3. **Estructura**: 2-3 temas por fase, 2-4 subtemas por tema
-4. **Prerrequisitos**: IMPORTANTE - Cada subtema debe tener un array "prerequisites" con los NOMBRES EXACTOS de los subtemas que deben aprenderse antes.
-   - Los prerequisites DEBEN ser nombres de subtemas que existen en el roadmap
-   - Si no tiene prerequisites, usar array vacío []
-   - Ejemplo: "prerequisites": ["Concepto A", "Concepto B"]
+REGLAS IMPORTANTES:
+1. Cada subtema DEBE tener "prerequisites" como array de strings con nombres EXACTOS de otros subtemas
+2. Si no tiene prerequisitos, usar [] (array vacío)
+3. Los prerequisitos deben ser lógicos (ej: "Variables" antes que "Funciones")
 
-FORMATO JSON ESTRICTO (sin contenido educativo detallado, solo estructura):
+Devuelve SOLO JSON (sin explicaciones):
 
 {{
   "title": "{title}",
@@ -175,39 +164,30 @@ FORMATO JSON ESTRICTO (sin contenido educativo detallado, solo estructura):
       "months": "1-2",
       "bloom_levels": {bloom_levels},
       "objective": "Objetivo de aprendizaje medible",
-      "expected_outcomes": ["Resultado 1", "Resultado 2", "Resultado 3"],
-      "skills": ["Habilidad 1", "Habilidad 2", "Habilidad 3"],
-      "tech_stack": ["Herramienta 1", "Herramienta 2"],
+      "expected_outcomes": ["Resultado 1", "Resultado 2"],
+      "skills": ["Habilidad 1", "Habilidad 2"],
+      "tech_stack": ["Herramienta 1"],
       "topics": [
         {{
           "topic_name": "Nombre del tema",
           "subtopics": [
-            {{
-              "label": "Nombre del subtema",
-              "description": "Breve descripción (máx 15 palabras)",
-              "difficulty": 1,
-              "prerequisites": ["Nombre del subtema prerequisito"]
-            }}
+            {{"label": "Concepto 1", "description": "Descripción breve", "difficulty": 1, "prerequisites": []}},
+            {{"label": "Concepto 2", "description": "Descripción breve", "difficulty": 2, "prerequisites": ["Concepto 1"]}},
+            {{"label": "Concepto 3", "description": "Descripción breve", "difficulty": 3, "prerequisites": ["Concepto 2"]}}
           ]
         }}
       ]
     }}
   ]
-}}
-
-Reglas difficulty: 1=Recordar, 2=Comprender, 3=Aplicar, 4=Analizar, 5=Crear
-
-⚠️ IMPORTANTE: Asegúrate de que el campo "prerequisites" sea un array de strings con los nombres EXACTOS de otros subtemas.
-Si un subtema no tiene prerequisitos, usa [] (array vacío).
-
-Genera solo JSON válido:"""
+}}"""
 
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=4000
+            max_tokens=3000,
+            timeout=45
         )
 
         raw = response.choices[0].message.content.strip()
@@ -230,8 +210,12 @@ Genera solo JSON válido:"""
                         if prereq in all_labels:
                             valid_prereqs.append(prereq)
                         else:
-                            logger.warning(f"Prerequisito inválido '{prereq}' para '{subtopic['label']}' - no existe en el roadmap")
+                            logger.warning(f"Prerequisito inválido '{prereq}' para '{subtopic['label']}'")
                     subtopic["prerequisites"] = valid_prereqs
+
+                    # Log para depuración
+                    if len(valid_prereqs) > 0:
+                        logger.info(f"✅ Prerequisitos para '{subtopic['label']}': {valid_prereqs}")
 
         logger.info(f"✅ Estructura generada: {len(roadmap.get('phases', []))} fases")
         return roadmap
@@ -242,7 +226,7 @@ Genera solo JSON válido:"""
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PROMPT 2: CONTENIDO EDUCATIVO (Modelo 4MAT + Aprendizaje Contextual)
+# PROMPT 2: CONTENIDO EDUCATIVO
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def generate_subtopic_content(
@@ -254,32 +238,22 @@ def generate_subtopic_content(
     course_title: str,
     domain: str = "generic"
 ) -> dict:
-    """
-    PROMPT 2: Genera contenido educativo detallado para un subtema
-    """
-
-    difficulty_map = {
-        1: "Recordar",
-        2: "Comprender",
-        3: "Aplicar",
-        4: "Analizar",
-        5: "Crear"
-    }
+    """Genera contenido educativo detallado para un subtema"""
+    difficulty_map = {1: "Recordar", 2: "Comprender", 3: "Aplicar", 4: "Analizar", 5: "Crear"}
     difficulty_text = difficulty_map.get(difficulty, "Comprender")
 
-    # PROMPT ACORTADO - Esta es la única modificación
     prompt = f"""Genera contenido educativo para "{subtopic_label}".
 
 Nivel: {difficulty_text}
 Curso: {course_title}
 
-Devuelve SOLO JSON (sin markdown):
+Devuelve SOLO JSON:
 {{
   "motivation": "Problema real que motiva (1-2 oraciones)",
   "explanation": "Explicación clara del concepto (2-3 párrafos)",
   "analogy": "Analogía simple (1 oración)",
-  "examples": ["Ejemplo práctico 1", "Ejemplo práctico 2"],
-  "critical_questions": ["Pregunta reflexión 1", "Pregunta reflexión 2"],
+  "examples": ["Ejemplo 1", "Ejemplo 2"],
+  "critical_questions": ["Pregunta 1", "Pregunta 2"],
   "practice_task": "Ejercicio para aplicar el concepto",
   "resources": ["Recurso 1", "Recurso 2"]
 }}"""
@@ -289,14 +263,13 @@ Devuelve SOLO JSON (sin markdown):
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=3000,
-            timeout=120
+            max_tokens=2000,
+            timeout=60
         )
 
         raw = response.choices[0].message.content.strip()
         cleaned = _clean_json_response(raw)
         content_data = json.loads(cleaned)
-
         logger.info(f"✅ Contenido generado para: {subtopic_label}")
         return content_data
 
@@ -306,7 +279,7 @@ Devuelve SOLO JSON (sin markdown):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FUNCIÓN DE COMPATIBILIDAD (para código existente)
+# FUNCIONES DE COMPATIBILIDAD
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def generate_curriculum(
@@ -316,15 +289,11 @@ def generate_curriculum(
     num_concepts: int = 8,
     difficulty_level: str = "intermediate",
 ) -> dict:
-    """
-    Pipeline para curriculum tradicional (mantenido por compatibilidad con código existente)
-    """
+    """Pipeline para curriculum tradicional"""
     logger.info(f"Generando currículum: '{title}' (nivel: {difficulty_level})")
 
-    # Por compatibilidad, usar la estructura del roadmap pero limitada a conceptos
     roadmap = generate_roadmap_structure(title, description, domain, difficulty_level)
 
-    # Extraer conceptos de la estructura
     concepts = []
     for phase in roadmap.get("phases", []):
         for topic in phase.get("topics", []):
@@ -337,10 +306,8 @@ def generate_curriculum(
                     "examples": []
                 })
 
-    # Limitar al número solicitado
     concepts = concepts[:num_concepts]
 
-    # Generar edges basados en prerrequisitos
     edges = []
     for phase in roadmap.get("phases", []):
         for topic in phase.get("topics", []):
@@ -352,7 +319,6 @@ def generate_curriculum(
                         "strength": 0.9
                     })
 
-    # Validar DAG
     from .curriculum import validate_dag
     is_valid, clean_edges = validate_dag(concepts, edges)
 
@@ -390,7 +356,8 @@ Example: [{{"source": "Variables", "target": "Functions", "strength": 0.9}}]"""
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=800
+            max_tokens=800,
+            timeout=30
         )
         raw = response.choices[0].message.content.strip()
         cleaned = _clean_json_response(raw)
@@ -433,7 +400,7 @@ def validate_dag(concepts: list[dict], edges: list[dict]) -> tuple[bool, list[di
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FUNCIÓN PRINCIPAL - ORQUESTA LOS PROMPTS
+# FUNCIÓN PRINCIPAL
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def generate_roadmap(
@@ -442,33 +409,21 @@ def generate_roadmap(
     domain: str = "generic",
     difficulty_level: str = "intermediate",
 ) -> dict:
-    """
-    Pipeline principal:
-    - Prompt 1: Genera estructura
-    - Los subtemas se guardan SIN contenido detallado
-    - El contenido se generará bajo demanda con generate_subtopic_content
-    """
-
+    """Pipeline principal para generar roadmap"""
     logger.info(f"📚 Generando roadmap: '{title}' (nivel: {difficulty_level})")
 
-    # PROMPT 1: Estructura
     roadmap = generate_roadmap_structure(title, description, domain, difficulty_level)
 
-    # Asegurar que los subtemas tienen campos para contenido futuro
     total_subtopics = 0
     for phase in roadmap.get("phases", []):
         for topic in phase.get("topics", []):
             for subtopic in topic.get("subtopics", []):
                 total_subtopics += 1
-                # Inicializar campos de contenido (se llenarán bajo demanda)
                 subtopic["content_generated"] = False
-                # Asegurar que prerequisites es un array
                 if "prerequisites" not in subtopic:
                     subtopic["prerequisites"] = []
 
     logger.info(f"✅ Roadmap generado: {len(roadmap.get('phases', []))} fases, {total_subtopics} conceptos")
-    logger.info(f"💡 El contenido detallado se generará bajo demanda al publicar en Classroom")
-
     return roadmap
 
 
@@ -477,17 +432,13 @@ def generate_roadmap(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def save_course_graph(course_id: str, roadmap: dict) -> dict:
-    """
-    Guarda el grafo de un curso a partir del roadmap generado por IA.
-    Crea nodos (concept_nodes) y edges (concept_edges) en Supabase.
-    """
+    """Guarda el grafo de un curso en Supabase"""
     logger.info(f"Guardando grafo para curso {course_id}")
 
     concepts = []
     edges = []
     label_to_id = {}
 
-    # Extraer conceptos y edges del roadmap
     for phase in roadmap.get("phases", []):
         phase_num = phase.get("phase_number", 1)
         bloom_levels = phase.get("bloom_levels", [])
@@ -522,7 +473,6 @@ def save_course_graph(course_id: str, roadmap: dict) -> dict:
 
                 label_to_id[label] = node_id
 
-                # Registrar edges por prerequisites
                 for prereq_label in subtopic.get("prerequisites", []):
                     edges.append({
                         "source_label": prereq_label,
@@ -530,7 +480,6 @@ def save_course_graph(course_id: str, roadmap: dict) -> dict:
                         "strength": 0.9
                     })
 
-    # Guardar nodos en batches (para evitar timeout)
     batch_size = 50
     for i in range(0, len(concepts), batch_size):
         batch = concepts[i:i+batch_size]
@@ -538,16 +487,12 @@ def save_course_graph(course_id: str, roadmap: dict) -> dict:
         if not result.data:
             logger.error(f"Error guardando nodos batch {i}")
 
-    # Guardar edges
     edges_created = 0
     for edge in edges:
         source_id = label_to_id.get(edge["source_label"])
         target_id = label_to_id.get(edge["target_label"])
-
         if source_id and target_id:
-            # Verificar si ya existe el edge
             existing = supabase.table("concept_edges").select("id").eq("course_id", course_id).eq("source_id", source_id).eq("target_id", target_id).execute()
-
             if not existing.data:
                 result = supabase.table("concept_edges").insert({
                     "course_id": course_id,
@@ -560,7 +505,6 @@ def save_course_graph(course_id: str, roadmap: dict) -> dict:
                     edges_created += 1
 
     logger.info(f"✅ Grafo guardado: {len(concepts)} nodos, {edges_created} edges")
-
     return {
         "nodes_created": len(concepts),
         "edges_created": edges_created,

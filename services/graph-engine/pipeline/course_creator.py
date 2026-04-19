@@ -5,7 +5,7 @@ from loguru import logger
 from typing import Dict, Any, Optional
 from db.client import supabase
 
-async def create_course_from_suggestion(
+def create_course_from_suggestion(
     course_suggestion: Dict[str, Any],
     bootcamp_title: str
 ) -> Optional[str]:
@@ -14,7 +14,7 @@ async def create_course_from_suggestion(
     """
     logger.info(f"Creando curso: {course_suggestion.get('title')}")
 
-    # Generar roadmap básico para el curso
+    # Generar roadmap básico para el curso con prerequisites poblados
     roadmap = {
         "title": course_suggestion.get('title'),
         "duration_months": 2 if course_suggestion.get('difficulty_level') == 'beginner' else 4,
@@ -42,10 +42,16 @@ async def create_course_from_suggestion(
                                 "prerequisites": []
                             },
                             {
-                                "label": f"Aplicaciones de {course_suggestion.get('title')}",
-                                "description": f"Aplicaciones prácticas de {course_suggestion.get('title')}",
+                                "label": f"Conceptos clave de {course_suggestion.get('title')}",
+                                "description": f"Conceptos fundamentales de {course_suggestion.get('title')}",
                                 "difficulty": 2,
                                 "prerequisites": [f"¿Qué es {course_suggestion.get('title')}?"]
+                            },
+                            {
+                                "label": f"Aplicaciones prácticas de {course_suggestion.get('title')}",
+                                "description": f"Aplicaciones prácticas de {course_suggestion.get('title')}",
+                                "difficulty": 3,
+                                "prerequisites": [f"Conceptos clave de {course_suggestion.get('title')}"]
                             }
                         ]
                     }
@@ -55,7 +61,6 @@ async def create_course_from_suggestion(
     }
 
     try:
-        # Crear el curso en la base de datos
         course_data = {
             "title": course_suggestion.get('title'),
             "description": course_suggestion.get('description'),

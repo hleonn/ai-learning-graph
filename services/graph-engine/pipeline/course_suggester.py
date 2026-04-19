@@ -25,55 +25,37 @@ def generate_course_suggestions(
     bootcamp_title: str,
     bootcamp_description: str,
     existing_courses: List[Dict[str, Any]],
-    num_suggestions: int = 5
+    num_suggestions: int = None
 ) -> List[Dict[str, Any]]:
     """
-    Genera sugerencias de cursos usando DeepSeek basado en el título y descripción del bootcamp
+    Genera sugerencias de cursos usando DeepSeek.
+    La IA decide cuántos cursos son necesarios (entre 3 y 7).
     """
     logger.info(f"Generando sugerencias de cursos para bootcamp: {bootcamp_title}")
 
-    # Crear lista de cursos existentes para contexto
     existing_titles = [c.get('title', '') for c in existing_courses]
-    existing_context = f"\nCursos ya existentes (no sugerir estos): {', '.join(existing_titles)}" if existing_titles else ""
+    existing_context = f"\nCursos ya existentes (NO sugerir estos): {', '.join(existing_titles)}" if existing_titles else ""
 
-    prompt = f"""Eres un experto en diseño curricular y creación de programas educativos.
+    prompt = f"""Eres un experto en diseño curricular.
 
-Para un bootcamp llamado "{bootcamp_title}" con la siguiente descripción:
+Bootcamp: "{bootcamp_title}"
+Descripción: {bootcamp_description[:500]}{existing_context}
 
-{bootcamp_description}
+Genera entre 3 y 7 cursos para este bootcamp (tú decides la cantidad según la complejidad).
+Los cursos deben seguir una progresión lógica.
 
-{existing_context}
-
-Genera una lista de {num_suggestions} cursos que debería incluir este bootcamp.
-Cada curso debe tener: título, descripción, dominio y nivel de dificultad.
-
-REGLAS IMPORTANTES:
-1. NO sugerir cursos que ya existen en la lista de existentes
-2. Los cursos deben seguir una progresión lógica (fundamentos primero, luego avanzado)
-3. Los títulos deben ser claros y descriptivos
-4. Las descripciones deben ser breves (máx 100 caracteres)
-
-Devuelve SOLO JSON en este formato:
+Devuelve SOLO JSON:
 [
-  {{
-    "title": "Nombre del curso",
-    "description": "Breve descripción del curso",
-    "domain": "data|web|cloud|devops|generic",
-    "difficulty_level": "beginner|intermediate|advanced"
-  }}
-]
-
-Dominios posibles: data, web, cloud, devops, generic
-Niveles: beginner, intermediate, advanced
-
-Asegúrate de que los cursos sean RELEVANTES para el tema del bootcamp."""
+  {{"title": "...", "description": "...", "domain": "data|web|cloud|devops|generic", "difficulty_level": "beginner|intermediate|advanced"}}
+]"""
 
     try:
         response = deepseek_client.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
-            max_tokens=2000
+            max_tokens=1000,
+            timeout=30
         )
 
         raw = response.choices[0].message.content.strip()
@@ -81,15 +63,14 @@ Asegúrate de que los cursos sean RELEVANTES para el tema del bootcamp."""
         suggestions = json.loads(cleaned)
 
         logger.info(f"✅ {len(suggestions)} cursos sugeridos por IA")
-        return suggestions[:num_suggestions]
+        return suggestions
 
     except Exception as e:
         logger.error(f"❌ Error generando sugerencias con IA: {e}")
-        # Fallback: cursos genéricos
         return [
-            {"title": f"Fundamentos de {bootcamp_title}", "description": f"Conceptos básicos de {bootcamp_title}", "domain": "generic", "difficulty_level": "beginner"},
-            {"title": f"{bootcamp_title} Avanzado", "description": f"Técnicas avanzadas de {bootcamp_title}", "domain": "generic", "difficulty_level": "intermediate"},
-            {"title": f"Proyecto de {bootcamp_title}", "description": f"Aplicación práctica de {bootcamp_title}", "domain": "generic", "difficulty_level": "advanced"}
+            {"title": f"Fundamentos de {bootcamp_title}", "description": "Conceptos básicos", "domain": "generic", "difficulty_level": "beginner"},
+            {"title": f"{bootcamp_title} Avanzado", "description": "Técnicas avanzadas", "domain": "generic", "difficulty_level": "intermediate"},
+            {"title": f"Proyecto de {bootcamp_title}", "description": "Aplicación práctica", "domain": "generic", "difficulty_level": "advanced"}
         ]
 
 
@@ -109,18 +90,18 @@ def analyze_course_relevance(
     courses_info = "\n".join([f"- {c.get('title')} (dominio: {c.get('domain', 'generic')})" for c in courses])
 
     prompt = f"""Para el bootcamp "{bootcamp_title}" con descripción:
-{bootcamp_description}
+{bootcamp_description[:300]}
 
-Analiza los siguientes cursos y determina cuáles son RELEVANTES y cuáles son IRRELEVANTES:
+Analiza estos cursos:
 
 {courses_info}
 
-Devuelve SOLO JSON en este formato:
+Devuelve SOLO JSON:
 {{
-  "relevant": ["título del curso relevante 1", "título del curso relevante 2"],
-  "irrelevant": ["título del curso irrelevante 1"],
+  "relevant": ["título relevante 1", "título relevante 2"],
+  "irrelevant": ["título irrelevante 1"],
   "suggestions": [
-    {{"replace": "título del curso irrelevante", "suggest": "curso sugerido alternativo", "reason": "razón"}}
+    {{"replace": "título irrelevante", "suggest": "alternativa", "reason": "razón"}}
   ]
 }}"""
 
@@ -129,19 +110,19 @@ Devuelve SOLO JSON en este formato:
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=1000
+            max_tokens=800,
+            timeout=30
         )
 
         raw = response.choices[0].message.content.strip()
         cleaned = clean_json_response(raw)
         result = json.loads(cleaned)
 
-        logger.info(f"✅ Análisis completado: {len(result.get('relevant', []))} relevantes, {len(result.get('irrelevant', []))} irrelevantes")
+        logger.info(f"✅ Análisis: {len(result.get('relevant', []))} relevantes, {len(result.get('irrelevant', []))} irrelevantes")
         return result
 
     except Exception as e:
         logger.error(f"❌ Error analizando relevancia: {e}")
-        # Fallback: considerar todos relevantes
         return {
             "relevant": [c.get('title') for c in courses],
             "irrelevant": [],
