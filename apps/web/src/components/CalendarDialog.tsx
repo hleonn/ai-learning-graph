@@ -12,10 +12,36 @@ interface CalendarDialogProps {
     modules: any[]
 }
 
+// Función para normalizar fecha a UTC
+function normalizeDate(dateString: string): Date {
+    const [year, month, day] = dateString.split('-').map(Number)
+    return new Date(Date.UTC(year, month - 1, day))
+}
+
+// Función para formatear fecha localmente
+function formatDateLocal(date: Date): string {
+    return date.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        timeZone: 'UTC'
+    })
+}
+
+// Función para calcular fecha de finalización correctamente
+function calcularFechaFin(startDateStr: string, totalWeeks: number, daysPerWeek: number): string {
+    const start = normalizeDate(startDateStr)
+    const totalDays = totalWeeks * daysPerWeek
+    const endDate = new Date(start)
+    endDate.setUTCDate(endDate.getUTCDate() + totalDays - 1)
+    return formatDateLocal(endDate)
+}
+
 export default function CalendarDialog({ isOpen, onClose, bootcampTitle, durationWeeks, totalHours, modules }: CalendarDialogProps) {
+    // Fecha de inicio por defecto: mañana en UTC
     const [startDate, setStartDate] = useState<string>(() => {
         const tomorrow = new Date()
-        tomorrow.setDate(tomorrow.getDate() + 1)
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
         return tomorrow.toISOString().split('T')[0]
     })
     const [intensity, setIntensity] = useState<IntensityMode>('intensive')
@@ -26,8 +52,9 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     const handleGenerateCalendar = async () => {
         setGenerating(true)
         try {
+            const startDateObj = normalizeDate(startDate)
             const calendar = calculateBootcampCalendar(
-                new Date(startDate),
+                startDateObj,
                 durationWeeks,
                 totalHours,
                 modules,
@@ -45,15 +72,8 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     const intensityOption = INTENSITY_OPTIONS.find(o => o.id === intensity) || INTENSITY_OPTIONS[0]
     const hoursPerWeek = intensityOption.daysPerWeek * intensityOption.hoursPerDay
     const totalWeeksWithIntensity = Math.ceil(totalHours / hoursPerWeek)
-
-    function calcularFechaFin(startDateStr: string, totalWeeks: number, daysPerWeek: number): string {
-        const start = new Date(startDateStr)
-        // Calcular días totales: semanas * días por semana
-        const totalDays = totalWeeks * daysPerWeek
-        const endDate = new Date(start)
-        endDate.setDate(endDate.getDate() + totalDays - 1)
-        return endDate.toLocaleDateString('es-ES')
-    }
+    const startDateObj = normalizeDate(startDate)
+    const formattedStartDate = formatDateLocal(startDateObj)
 
     return (
         <div style={styles.overlay}>
@@ -98,14 +118,11 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                     <div style={styles.summary}>
                         <p><strong>📊 Resumen:</strong></p>
                         <p>• Duración total: <strong>{durationWeeks} semanas</strong> (base)</p>
-                        <p>• Con intensidad {intensityOption.name}: <strong>{totalWeeksWithIntensity} semanas</strong>
-                        </p>
+                        <p>• Con intensidad {intensityOption.name}: <strong>{totalWeeksWithIntensity} semanas</strong></p>
                         <p>• Horas por semana: <strong>{hoursPerWeek}h</strong></p>
                         <p>• Total de horas: <strong>{totalHours}h</strong></p>
-                        <p>• 📅 Fecha de Inicio: <strong>{new Date(startDate).toLocaleDateString('es-ES')}</strong></p>
-                        <p>• 🏁 Fecha de
-                            Finalización: <strong>{calcularFechaFin(startDate, totalWeeksWithIntensity, intensityOption.daysPerWeek)}</strong>
-                        </p>
+                        <p>• 📅 Fecha de Inicio: <strong>{formattedStartDate}</strong></p>
+                        <p>• 🏁 Fecha de Finalización: <strong>{calcularFechaFin(startDate, totalWeeksWithIntensity, intensityOption.daysPerWeek)}</strong></p>
                     </div>
                 </div>
 

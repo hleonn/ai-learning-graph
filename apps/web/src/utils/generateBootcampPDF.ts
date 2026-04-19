@@ -26,28 +26,42 @@ interface BootcampData {
     end_date?: string
 }
 
-function calculateEndDate(startDate: Date, durationWeeks: number): Date {
-    const endDate = new Date(startDate)
-    endDate.setDate(endDate.getDate() + (durationWeeks * 7))
-    return endDate
+// ========== FUNCIONES UTC PARA MANEJO CORRECTO DE FECHAS ==========
+
+function normalizeDate(dateInput: string | Date): Date {
+    if (typeof dateInput === 'string') {
+        const [year, month, day] = dateInput.split('-').map(Number)
+        return new Date(Date.UTC(year, month - 1, day))
+    }
+    return new Date(Date.UTC(dateInput.getFullYear(), dateInput.getMonth(), dateInput.getDate()))
 }
 
-function formatDate(date: Date): string {
+function formatDateUTC(date: Date): string {
     return date.toLocaleDateString('es-ES', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
+        timeZone: 'UTC'
     })
+}
+
+function calculateEndDate(startDate: Date, durationWeeks: number): Date {
+    const endDate = new Date(startDate)
+    endDate.setUTCDate(endDate.getUTCDate() + (durationWeeks * 7))
+    return endDate
 }
 
 function getDefaultStartDate(): Date {
     const today = new Date()
-    const dayOfWeek = today.getDay()
+    const utcToday = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()))
+    const dayOfWeek = utcToday.getUTCDay()
     const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek
-    const nextMonday = new Date(today)
-    nextMonday.setDate(today.getDate() + daysUntilMonday)
+    const nextMonday = new Date(utcToday)
+    nextMonday.setUTCDate(utcToday.getUTCDate() + daysUntilMonday)
     return nextMonday
 }
+
+// ========== FUNCIONES AUXILIARES ==========
 
 function calculateModuleWeeksDistribution(modules: Module[], totalWeeks: number): number[] {
     const totalWeight = modules.reduce((sum, m) => sum + m.weight, 0)
@@ -84,13 +98,14 @@ function getComplexityLevel(complexity: number): string {
 function generateBootcampHTML(bootcamp: BootcampData): string {
     const totalHours = bootcamp.modules.reduce((sum, m) => sum + (m.estimated_hours || 0), 0)
     const hoursPerWeek = Math.round(totalHours / bootcamp.duration_weeks)
-    const createdDate = new Date(bootcamp.created_at).toLocaleDateString('es-ES')
+    const createdDate = formatDateUTC(normalizeDate(bootcamp.created_at))
 
-    const startDate = bootcamp.start_date ? new Date(bootcamp.start_date) : getDefaultStartDate()
-    const endDate = bootcamp.end_date ? new Date(bootcamp.end_date) : calculateEndDate(startDate, bootcamp.duration_weeks)
+    // Normalizar fechas UTC
+    const startDate = bootcamp.start_date ? normalizeDate(bootcamp.start_date) : getDefaultStartDate()
+    const endDate = bootcamp.end_date ? normalizeDate(bootcamp.end_date) : calculateEndDate(startDate, bootcamp.duration_weeks)
 
-    const formattedStartDate = formatDate(startDate)
-    const formattedEndDate = formatDate(endDate)
+    const formattedStartDate = formatDateUTC(startDate)
+    const formattedEndDate = formatDateUTC(endDate)
 
     const moduleWeeks = calculateModuleWeeksDistribution(bootcamp.modules, bootcamp.duration_weeks)
 
@@ -100,13 +115,13 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
     for (let i = 0; i < bootcamp.modules.length; i++) {
         const weeks = moduleWeeks[i]
         const moduleEndDate = new Date(currentStartDate)
-        moduleEndDate.setDate(moduleEndDate.getDate() + (weeks * 7) - 1)
+        moduleEndDate.setUTCDate(moduleEndDate.getUTCDate() + (weeks * 7) - 1)
         moduleDateRanges.push({
-            start: formatDate(currentStartDate),
-            end: formatDate(moduleEndDate)
+            start: formatDateUTC(currentStartDate),
+            end: formatDateUTC(moduleEndDate)
         })
         currentStartDate = new Date(moduleEndDate)
-        currentStartDate.setDate(currentStartDate.getDate() + 1)
+        currentStartDate.setUTCDate(currentStartDate.getUTCDate() + 1)
     }
 
     const generateModulesHTML = () => {
@@ -180,16 +195,16 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
             const weekStartDate = new Date(currentWeekDate)
             const weekEndDate = new Date(currentWeekDate)
-            weekEndDate.setDate(weekEndDate.getDate() + 6)
+            weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6)
 
             html += `
             <div class="week-card ${week === 1 ? 'current-week' : ''}">
                 <div class="week-number">Semana ${week}</div>
-                <div class="week-dates">${formatDate(weekStartDate)} - ${formatDate(weekEndDate)}</div>
+                <div class="week-dates">${formatDateUTC(weekStartDate)} - ${formatDateUTC(weekEndDate)}</div>
                 <div class="week-hours">${weekHours}h</div>
                 <div class="week-topics">${weekModules.slice(0, 2).join(', ') || 'Continuación'}</div>
             </div>`
-            currentWeekDate.setDate(currentWeekDate.getDate() + 7)
+            currentWeekDate.setUTCDate(currentWeekDate.getUTCDate() + 7)
         }
         html += '</div></div>'
         return html

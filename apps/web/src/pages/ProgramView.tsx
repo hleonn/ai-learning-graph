@@ -14,6 +14,21 @@ interface Course {
     difficulty_level?: string
 }
 
+// Función para normalizar fecha a UTC
+function normalizeDate(date: Date): Date {
+    return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+}
+
+// Función para obtener la fecha seleccionada en el calendario o fecha actual
+function getStoredStartDate(): Date {
+    const savedStartDate = localStorage.getItem('bootcamp_calendar_start_date')
+    if (savedStartDate) {
+        const [year, month, day] = savedStartDate.split('-').map(Number)
+        return new Date(Date.UTC(year, month - 1, day))
+    }
+    return normalizeDate(new Date())
+}
+
 export default function ProgramView() {
     const navigate = useNavigate()
     const location = useLocation()
@@ -46,7 +61,6 @@ export default function ProgramView() {
         description += `🎯 **Perfil de egreso:**\n`
         description += `Al completar este bootcamp, los participantes serán capaces de:\n`
 
-        // Extraer habilidades principales de los módulos
         const mainSkills = modules.slice(0, 3).map(m => {
             const skill = m.name?.split(' ').slice(0, 2).join(' ') || m.name
             return `• Dominar ${skill} y sus aplicaciones prácticas`
@@ -79,12 +93,10 @@ export default function ProgramView() {
 
                 if (programData) {
                     setProgram(programData)
-                    // Generar descripción automática si hay módulos
                     if (programData.modules && programData.modules.length > 0) {
                         const autoDescription = generateDescriptionFromModules(programData.modules)
                         setGeneratedDescription(autoDescription)
                     } else {
-                        // Fallback: usar la descripción original o generar una básica
                         setGeneratedDescription(programData.description || `Programa de formación en ${programData.title}`)
                     }
                 } else {
@@ -110,7 +122,6 @@ export default function ProgramView() {
         navigate(`/graph/${courseId}`)
     }
 
-    // Función para generar PDF del bootcamp completo
     const handleExportBootcampPDF = async () => {
         if (!program) return
 
@@ -127,7 +138,6 @@ export default function ProgramView() {
         await generateAndDownloadBootcampPDF(bootcampData)
     }
 
-    // Función para generar PDF de un módulo específico
     const handleExportModulePDF = (module: any, moduleIndex: number) => {
         alert(`📄 Generando PDF del módulo ${moduleIndex + 1}: "${module.name}"...\n\nPróximamente: Exportación detallada del módulo con sus subtemas y ejercicios.`)
     }
@@ -184,20 +194,30 @@ export default function ProgramView() {
         }
 
         const config = intensityMap[intensity]
-        const hoursPerWeek = config.daysPerWeek * config.hoursPerDay
-        const totalWeeks = Math.ceil(totalHours / hoursPerWeek)
+        const hoursPerWeekCalc = config.daysPerWeek * config.hoursPerDay
+        const intensityWeeks = Math.ceil(totalHours / hoursPerWeekCalc)
 
-        // Generar PDF con esta configuración
+        // Usar la fecha de inicio guardada en localStorage (desde el calendario)
+        const startDate = getStoredStartDate()
+
+        // Calcular fecha de fin en UTC
+        const endDate = new Date(startDate)
+        endDate.setUTCDate(endDate.getUTCDate() + (intensityWeeks * 7) - 1)
+
+        const formatDateForAPI = (date: Date): string => {
+            return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+        }
+
         const bootcampData = {
             id: program.id,
             title: `${program.title} (${config.name})`,
             description: generatedDescription || program.description,
-            duration_weeks: totalWeeks,
+            duration_weeks: intensityWeeks,
             modules: program.modules || [],
             total_weight: 1,
             created_at: program.created_at,
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: new Date(Date.now() + totalWeeks * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            start_date: formatDateForAPI(startDate),
+            end_date: formatDateForAPI(endDate)
         }
 
         await generateAndDownloadBootcampPDF(bootcampData)
@@ -214,7 +234,6 @@ export default function ProgramView() {
             </div>
 
             <div style={styles.content}>
-                {/* Información general */}
                 <div style={styles.infoCard}>
                     <div style={styles.infoGrid}>
                         <div style={styles.infoItem}>
@@ -241,7 +260,6 @@ export default function ProgramView() {
                             <span style={styles.infoLabel}>📊 Módulos</span>
                             <span style={styles.infoValue}>{program.modules?.length || 0} módulos</span>
                         </div>
-
                     </div>
                     <div style={{marginTop: 16, display: 'flex', justifyContent: 'flex-end'}}>
                         <button style={styles.calendarBtn} onClick={() => setShowCalendar(true)}>
@@ -249,26 +267,16 @@ export default function ProgramView() {
                         </button>
                     </div>
                     <div style={styles.pdfButtonsContainer}>
-                        <button
-                            style={styles.pdfIntensityBtn}
-                            onClick={() => handleGenerateIntensityPDF('intensive')}
-                        >
+                        <button style={styles.pdfIntensityBtn} onClick={() => handleGenerateIntensityPDF('intensive')}>
                             🔥 Programa Intensivo (8h/día)
                         </button>
-                        <button
-                            style={styles.pdfIntensityBtn}
-                            onClick={() => handleGenerateIntensityPDF('partial')}
-                        >
+                        <button style={styles.pdfIntensityBtn} onClick={() => handleGenerateIntensityPDF('partial')}>
                             📘 Programa Parcial (4h/día)
                         </button>
-                        <button
-                            style={styles.pdfIntensityBtn}
-                            onClick={() => handleGenerateIntensityPDF('weekend')}
-                        >
+                        <button style={styles.pdfIntensityBtn} onClick={() => handleGenerateIntensityPDF('weekend')}>
                             🌅 Programa Fin de Semana (4h/día)
                         </button>
                     </div>
-                    {/* Descripción generada automáticamente */}
                     <div style={styles.descriptionSection}>
                         <h3 style={styles.descriptionTitle}>📖 Sobre este programa</h3>
                         <div style={styles.description}>
@@ -279,15 +287,11 @@ export default function ProgramView() {
                     </div>
                 </div>
 
-                {/* Módulos del programa */}
                 {program.modules && program.modules.length > 0 && (
                     <div style={styles.section}>
                         <div style={styles.sectionHeader}>
                             <h2 style={styles.sectionTitle}>📋 Módulos del Programa</h2>
-                            <button
-                                style={styles.exportAllBtn}
-                                onClick={handleExportBootcampPDF}
-                            >
+                            <button style={styles.exportAllBtn} onClick={handleExportBootcampPDF}>
                                 📄 Exportar programa completo
                             </button>
                         </div>
@@ -304,10 +308,7 @@ export default function ProgramView() {
                                         <span>📊 Complejidad: {Math.round((module.complexity || 0.5) * 100)}%</span>
                                         <span>⏱️ {module.estimated_hours || 40}h estimadas</span>
                                     </div>
-                                    <button
-                                        style={styles.moduleExportBtn}
-                                        onClick={() => handleExportModulePDF(module, idx)}
-                                    >
+                                    <button style={styles.moduleExportBtn} onClick={() => handleExportModulePDF(module, idx)}>
                                         📄 Exportar módulo a PDF
                                     </button>
                                 </div>
@@ -316,7 +317,6 @@ export default function ProgramView() {
                     </div>
                 )}
 
-                {/* Cursos del programa */}
                 <div style={styles.section}>
                     <h2 style={styles.sectionTitle}>📚 Cursos Incluidos ({program.course_ids?.length || 0})</h2>
                     <div style={styles.coursesGrid}>
@@ -324,10 +324,7 @@ export default function ProgramView() {
                             <div key={courseId} style={styles.courseCard}>
                                 <div style={styles.courseNumber}>#{idx + 1}</div>
                                 <h3 style={styles.courseTitle}>{getCourseTitle(courseId)}</h3>
-                                <button
-                                    style={styles.viewCourseBtn}
-                                    onClick={() => handleViewCourse(courseId)}
-                                >
+                                <button style={styles.viewCourseBtn} onClick={() => handleViewCourse(courseId)}>
                                     Ver grafo del curso →
                                 </button>
                             </div>
@@ -337,14 +334,11 @@ export default function ProgramView() {
             </div>
 
             <div style={styles.footer}>
-                <button
-                    style={styles.exportBtn}
-                    onClick={handleExportBootcampPDF}
-                >
+                <button style={styles.exportBtn} onClick={handleExportBootcampPDF}>
                     📄 Exportar programa completo a PDF
                 </button>
             </div>
-            {/* Modal del calendario */}
+
             <CalendarDialog
                 isOpen={showCalendar}
                 onClose={() => setShowCalendar(false)}
