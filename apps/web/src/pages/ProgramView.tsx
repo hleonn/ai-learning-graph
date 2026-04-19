@@ -174,6 +174,35 @@ export default function ProgramView() {
     const totalWeeks = program.duration_weeks || 16
     const hoursPerWeek = Math.round(totalHours / totalWeeks)
 
+    const handleGenerateIntensityPDF = async (intensity: 'intensive' | 'partial' | 'weekend') => {
+        if (!program) return
+
+        const intensityMap = {
+            intensive: { name: 'Intensivo', hoursPerDay: 8, daysPerWeek: 5, icon: '🔥' },
+            partial: { name: 'Parcial', hoursPerDay: 4, daysPerWeek: 5, icon: '📘' },
+            weekend: { name: 'Fin de Semana', hoursPerDay: 4, daysPerWeek: 2, icon: '🌅' }
+        }
+
+        const config = intensityMap[intensity]
+        const hoursPerWeek = config.daysPerWeek * config.hoursPerDay
+        const totalWeeks = Math.ceil(totalHours / hoursPerWeek)
+
+        // Generar PDF con esta configuración
+        const bootcampData = {
+            id: program.id,
+            title: `${program.title} (${config.name})`,
+            description: generatedDescription || program.description,
+            duration_weeks: totalWeeks,
+            modules: program.modules || [],
+            total_weight: 1,
+            created_at: program.created_at,
+            start_date: new Date().toISOString().split('T')[0],
+            end_date: new Date(Date.now() + totalWeeks * 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        }
+
+        await generateAndDownloadBootcampPDF(bootcampData)
+    }
+
     return (
         <div style={styles.page}>
             <div style={styles.header}>
@@ -219,7 +248,26 @@ export default function ProgramView() {
                             📅 Ver Calendario
                         </button>
                     </div>
-
+                    <div style={styles.pdfButtonsContainer}>
+                        <button
+                            style={styles.pdfIntensityBtn}
+                            onClick={() => handleGenerateIntensityPDF('intensive')}
+                        >
+                            🔥 Programa Intensivo (8h/día)
+                        </button>
+                        <button
+                            style={styles.pdfIntensityBtn}
+                            onClick={() => handleGenerateIntensityPDF('partial')}
+                        >
+                            📘 Programa Parcial (4h/día)
+                        </button>
+                        <button
+                            style={styles.pdfIntensityBtn}
+                            onClick={() => handleGenerateIntensityPDF('weekend')}
+                        >
+                            🌅 Programa Fin de Semana (4h/día)
+                        </button>
+                    </div>
                     {/* Descripción generada automáticamente */}
                     <div style={styles.descriptionSection}>
                         <h3 style={styles.descriptionTitle}>📖 Sobre este programa</h3>
@@ -235,7 +283,7 @@ export default function ProgramView() {
                 {program.modules && program.modules.length > 0 && (
                     <div style={styles.section}>
                         <div style={styles.sectionHeader}>
-                        <h2 style={styles.sectionTitle}>📋 Módulos del Programa</h2>
+                            <h2 style={styles.sectionTitle}>📋 Módulos del Programa</h2>
                             <button
                                 style={styles.exportAllBtn}
                                 onClick={handleExportBootcampPDF}
@@ -567,11 +615,30 @@ const styles: Record<string, React.CSSProperties> = {
         background: '#9B59B6',
         color: '#fff',
         border: 'none',
-        borderRadius: 6,
+        borderRadius: 8,
         cursor: 'pointer',
         fontSize: 13,
         fontWeight: 500,
         marginTop: 8
+    },
+    pdfButtonsContainer: {
+        display: 'flex',
+        gap: 12,
+        marginTop: 16,
+        flexWrap: 'wrap',
+        justifyContent: 'center'
+    },
+    pdfIntensityBtn: {
+        padding: '8px 16px',
+        background: '#1D9E75',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        flex: 1,
+        minWidth: '180px'
     },
 }
 

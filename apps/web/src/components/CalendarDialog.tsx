@@ -46,6 +46,15 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     const hoursPerWeek = intensityOption.daysPerWeek * intensityOption.hoursPerDay
     const totalWeeksWithIntensity = Math.ceil(totalHours / hoursPerWeek)
 
+    function calcularFechaFin(startDateStr: string, totalWeeks: number, daysPerWeek: number): string {
+        const start = new Date(startDateStr)
+        // Calcular días totales: semanas * días por semana
+        const totalDays = totalWeeks * daysPerWeek
+        const endDate = new Date(start)
+        endDate.setDate(endDate.getDate() + totalDays - 1)
+        return endDate.toLocaleDateString('es-ES')
+    }
+
     return (
         <div style={styles.overlay}>
             <div style={styles.dialog}>
@@ -89,9 +98,14 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                     <div style={styles.summary}>
                         <p><strong>📊 Resumen:</strong></p>
                         <p>• Duración total: <strong>{durationWeeks} semanas</strong> (base)</p>
-                        <p>• Con intensidad {intensityOption.name}: <strong>{totalWeeksWithIntensity} semanas</strong></p>
+                        <p>• Con intensidad {intensityOption.name}: <strong>{totalWeeksWithIntensity} semanas</strong>
+                        </p>
                         <p>• Horas por semana: <strong>{hoursPerWeek}h</strong></p>
                         <p>• Total de horas: <strong>{totalHours}h</strong></p>
+                        <p>• 📅 Fecha de Inicio: <strong>{new Date(startDate).toLocaleDateString('es-ES')}</strong></p>
+                        <p>• 🏁 Fecha de
+                            Finalización: <strong>{calcularFechaFin(startDate, totalWeeksWithIntensity, intensityOption.daysPerWeek)}</strong>
+                        </p>
                     </div>
                 </div>
 
