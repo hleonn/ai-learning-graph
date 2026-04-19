@@ -20,50 +20,81 @@ router = APIRouter(prefix="/bootcamp", tags=["bootcamp"])
 
 @router.post("/recommend")
 async def recommend_bootcamp(request: BootcampRecommendationRequest) -> BootcampRecommendationResponse:
-    """Recomienda estructura de bootcamp basada en cursos existentes"""
+    """Recomienda estructura de bootcamp basada en cursos existentes con IA"""
     logger.info(f"Recomendando bootcamp: {request.title}")
+    logger.info(f"Cursos seleccionados por el usuario: {request.required_course_ids}")
+
+    from pipeline.course_suggester import generate_course_suggestions, analyze_course_relevance
 
     existing_courses = []
     missing_courses = []
+    irrelevant_courses = []
+    relevant_suggestions = []
+    bootcamp_domain = "generic"
 
-    # Verificar cursos existentes
+    # 1. Verificar cursos existentes (los que el usuario ya seleccionó)
     for course_id in request.required_course_ids:
         course_res = supabase.table("courses").select("id, title, domain, difficulty_level").eq("id", course_id).execute()
         if course_res.data:
             existing_courses.append(course_res.data[0])
+            logger.info(f"Curso existente encontrado: {course_res.data[0].get('title')}")
 
-    # Buscar cursos relacionados por dominio
-    title_lower = request.title.lower()
-    desc_lower = request.description.lower()
+    # 2. Generar sugerencias de cursos con IA (dinámico, no estático)
+    suggested_courses = generate_course_suggestions(
+        bootcamp_title=request.title,
+        bootcamp_description=request.description,
+        existing_courses=existing_courses,
+        num_suggestions=5
+    )
 
-    if "web" in title_lower or "web" in desc_lower or "frontend" in title_lower or "react" in title_lower:
-        suggested_courses = [
-            {"title": "HTML Fundamentos", "description": "Estructura y semántica web", "domain": "web", "difficulty_level": "beginner"},
-            {"title": "CSS Esencial", "description": "Estilos y diseño responsivo", "domain": "web", "difficulty_level": "beginner"},
-            {"title": "JavaScript Básico", "description": "Programación en el navegador", "domain": "web", "difficulty_level": "beginner"},
-            {"title": "React Moderno", "description": "Componentes y estado", "domain": "web", "difficulty_level": "intermediate"},
-            {"title": "Node.js API", "description": "Backend con JavaScript", "domain": "web", "difficulty_level": "intermediate"}
-        ]
-    elif "data" in title_lower or "data" in desc_lower or "machine learning" in title_lower or "ia" in title_lower or "ai" in title_lower:
-        suggested_courses = [
-            {"title": "Python para Data Science", "description": "Fundamentos de Python", "domain": "data", "difficulty_level": "beginner"},
-            {"title": "SQL para Análisis", "description": "Consultas y bases de datos", "domain": "data", "difficulty_level": "beginner"},
-            {"title": "Pandas y NumPy", "description": "Manipulación de datos", "domain": "data", "difficulty_level": "intermediate"},
-            {"title": "Machine Learning Básico", "description": "Algoritmos fundamentales", "domain": "data", "difficulty_level": "intermediate"},
-            {"title": "Deep Learning con PyTorch", "description": "Redes neuronales", "domain": "data", "difficulty_level": "advanced"}
-        ]
-    else:
-        suggested_courses = [
-            {"title": f"Fundamentos de {request.title}", "description": f"Conceptos básicos de {request.title}", "domain": "generic", "difficulty_level": "beginner"},
-            {"title": f"{request.title} Avanzado", "description": f"Técnicas avanzadas de {request.title}", "domain": "generic", "difficulty_level": "intermediate"},
-            {"title": f"Proyecto de {request.title}", "description": f"Aplicación práctica de {request.title}", "domain": "generic", "difficulty_level": "advanced"}
-        ]
-
-    # Verificar qué cursos sugeridos faltan
+    # 3. Verificar qué cursos sugeridos faltan y cuáles ya existen
     existing_titles = [c.get('title', '').lower() for c in existing_courses]
+
     for suggested in suggested_courses:
-        if suggested['title'].lower() not in existing_titles:
-            missing_courses.append(suggested)
+        suggested_title = suggested.get('title', '').lower()
+        if suggested_title not in existing_titles:
+            # Verificar si el curso ya existe en la base de datos (por título exacto)
+            existing_course_res = supabase.table("courses").select("id, title, domain, difficulty_level").eq("title", suggested.get('title')).execute()
+            if existing_course_res.data:
+                # El curso ya existe, usarlo
+                missing_courses.append(existing_course_res.data[0])
+                logger.info(f"Curso existente encontrado por título: {suggested.get('title')}")
+            else:
+                # El curso no existe, sugerirlo para creación
+                missing_courses.append(suggested)
+                logger.info(f"Nuevo curso sugerido para creación: {suggested.get('title')}")
+
+    # 4. Analizar relevancia de cursos existentes (si hay cursos seleccionados)
+    if existing_courses:
+        analysis = analyze_course_relevance(
+            bootcamp_title=request.title,
+            bootcamp_description=request.description,
+            courses=existing_courses
+        )
+
+        # Filtrar cursos relevantes
+        relevant_titles = set(analysis.get('relevant', []))
+        irrelevant_titles = set(analysis.get('irrelevant', []))
+
+        relevant_courses = [c for c in existing_courses if c.get('title') in relevant_titles]
+        irrelevant_courses = [c for c in existing_courses if c.get('title') in irrelevant_titles]
+        relevant_suggestions = analysis.get('suggestions', [])
+
+        existing_courses = relevant_courses
+        logger.info(f"Cursos relevantes: {len(relevant_courses)}, irrelevantes: {len(irrelevant_courses)}")
+
+    # 5. Determinar dominio del bootcamp (para referencia)
+    title_lower = request.title.lower()
+    if "data" in title_lower or "machine learning" in title_lower or "ml" in title_lower or "ia" in title_lower:
+        bootcamp_domain = "data"
+    elif "web" in title_lower or "frontend" in title_lower or "react" in title_lower or "javascript" in title_lower:
+        bootcamp_domain = "web"
+    elif "cloud" in title_lower or "aws" in title_lower or "azure" in title_lower or "gcp" in title_lower:
+        bootcamp_domain = "cloud"
+    elif "devops" in title_lower or "ci/cd" in title_lower or "docker" in title_lower:
+        bootcamp_domain = "devops"
+
+    logger.info(f"Resumen: {len(existing_courses)} cursos relevantes, {len(missing_courses)} faltantes, {len(irrelevant_courses)} irrelevantes")
 
     # Crear bootcamp sugerido
     bootcamp_id = str(uuid.uuid4())
@@ -78,11 +109,20 @@ async def recommend_bootcamp(request: BootcampRecommendationRequest) -> Bootcamp
         version=1
     )
 
-    return BootcampRecommendationResponse(
+    # Crear respuesta con campos adicionales
+    response = BootcampRecommendationResponse(
         existing_courses=existing_courses,
         missing_courses=missing_courses,
         suggested_bootcamp=suggested_bootcamp
     )
+
+    # Añadir campos extras
+    response.irrelevant_courses = irrelevant_courses
+    response.relevant_suggestions = relevant_suggestions
+    response.bootcamp_domain = bootcamp_domain
+    response.generated_by_ai = True
+
+    return response
 
 
 @router.post("/compose")
@@ -101,8 +141,8 @@ async def compose_bootcamp(request: ComposeRequest) -> Bootcamp:
     # Componer grafo combinado
     weighted_nodes, edges, graph = compose_bootcamp_graph(request.course_ids, request.student_id)
 
-    # Organizar en módulos (4 módulos por defecto)
-    num_modules = max(2, min(6, request.course_ids.count))
+    # Organizar en módulos
+    num_modules = max(2, min(6, len(request.course_ids)))
     modules = organize_modules(weighted_nodes, graph, target_modules=num_modules)
 
     # Generar nombres con IA
@@ -127,7 +167,6 @@ async def compose_bootcamp(request: ComposeRequest) -> Bootcamp:
     for node in weighted_nodes:
         node_data = node.dict()
         node_data["bootcamp_id"] = request.bootcamp_id
-        # Verificar si ya existe
         existing = supabase.table("bootcamp_nodes").select("id").eq("id", node.id).execute()
         if existing.data:
             supabase.table("bootcamp_nodes").update(node_data).eq("id", node.id).execute()
@@ -142,10 +181,8 @@ async def export_to_gexf(request: GEXFExportRequest):
     """Exporta el grafo del bootcamp a formato GEXF (para Gephi)"""
     logger.info(f"Exportando bootcamp {request.bootcamp_id} a GEXF")
 
-    # Obtener nodos del bootcamp
     nodes_res = supabase.table("bootcamp_nodes").select("*").eq("bootcamp_id", request.bootcamp_id).execute()
 
-    # Obtener edges del bootcamp (de los cursos originales)
     course_ids = list(set([n.get('original_course_id') for n in nodes_res.data if n.get('original_course_id')]))
     all_edges = []
 
@@ -156,7 +193,6 @@ async def export_to_gexf(request: GEXFExportRequest):
     nodes = nodes_res.data
     edges = all_edges
 
-    # Construir XML GEXF
     gexf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <gexf xmlns="http://www.gexf.net/1.3" version="1.3">
   <meta lastmodifieddate="{datetime.now().strftime('%Y-%m-%d')}">
@@ -173,7 +209,6 @@ async def export_to_gexf(request: GEXFExportRequest):
     </attributes>
     <nodes>
 """
-
     for node in nodes:
         node_id = node.get('id', '')
         label = node.get('label', 'Unknown')
@@ -198,7 +233,6 @@ async def export_to_gexf(request: GEXFExportRequest):
     </nodes>
     <edges>
 """
-
     edge_id = 0
     for edge in edges:
         source = edge.get('source_id', '')
@@ -225,17 +259,14 @@ async def get_bootcamp_progress(bootcamp_id: str, student_id: str):
     """Obtiene el progreso inteligente de un estudiante en un bootcamp"""
     logger.info(f"Progreso de bootcamp {bootcamp_id} para estudiante {student_id}")
 
-    # Obtener bootcamp
     bootcamp_res = supabase.table("bootcamps").select("*").eq("id", bootcamp_id).execute()
     if not bootcamp_res.data:
         raise HTTPException(status_code=404, detail="Bootcamp no encontrado")
 
     bootcamp = Bootcamp(**bootcamp_res.data[0])
 
-    # Obtener nodos del bootcamp con mastery del estudiante
     nodes_res = supabase.table("bootcamp_nodes").select("*").eq("bootcamp_id", bootcamp_id).execute()
 
-    # Convertir a WeightedNode y añadir mastery
     weighted_nodes = []
     for node_data in nodes_res.data:
         mastery_res = supabase.table("student_mastery").select("mastery_score").eq("user_id", student_id).eq("node_id", node_data['id']).execute()
@@ -261,7 +292,6 @@ async def get_bootcamp_progress(bootcamp_id: str, student_id: str):
         )
         weighted_nodes.append(wn)
 
-    # Calcular progreso personalizado
     progress_data = calculate_personalized_progress(weighted_nodes, bootcamp.modules)
 
     return {

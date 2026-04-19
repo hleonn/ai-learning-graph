@@ -88,3 +88,12 @@ class GEXFExportRequest(BaseModel):
     bootcamp_id: str
     include_weights: bool = True
     include_mastery: bool = False
+
+class BootcampRecommendationResponse(BaseModel):
+    existing_courses: List[Dict[str, Any]] = []
+    missing_courses: List[Dict[str, Any]] = []
+    suggested_bootcamp: Optional[Bootcamp] = None
+    irrelevant_courses: List[Dict[str, Any]] = []
+    relevant_suggestions: List[Dict[str, Any]] = []
+    bootcamp_domain: str = "generic"
+    generated_by_ai: bool = True
