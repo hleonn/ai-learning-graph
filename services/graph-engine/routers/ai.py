@@ -381,7 +381,7 @@ def generate_roadmap_endpoint(req: RoadmapRequest):
             "domain": req.domain,
             "difficulty_level": req.difficulty_level,
             "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            # CORRECCIÓN: Eliminado "updated_at" - no existe en el schema
         }
 
         # Insertar curso
