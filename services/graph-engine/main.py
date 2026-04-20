@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-from routers import health, graph, mastery, ai, bootcamp,
+from routers import health, graph, mastery, ai, bootcamp
 
 app = FastAPI(
     title="AI Learning Graph — Graph Engine",
