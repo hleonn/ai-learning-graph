@@ -187,7 +187,7 @@ Devuelve SOLO JSON (sin explicaciones):
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=3000,
-            timeout=45
+            timeout=120
         )
 
         raw = response.choices[0].message.content.strip()
@@ -264,7 +264,7 @@ Devuelve SOLO JSON:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=2000,
-            timeout=60
+            timeout=90
         )
 
         raw = response.choices[0].message.content.strip()
@@ -357,7 +357,7 @@ Example: [{{"source": "Variables", "target": "Functions", "strength": 0.9}}]"""
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5,
             max_tokens=800,
-            timeout=30
+            timeout=60
         )
         raw = response.choices[0].message.content.strip()
         cleaned = _clean_json_response(raw)

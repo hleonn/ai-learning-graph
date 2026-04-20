@@ -221,7 +221,7 @@ async function proxyToGraphEngine(req: express.Request, res: express.Response, p
             url,
             data: req.body,
             headers: { 'Content-Type': 'application/json' },
-            timeout: 120000, // ← AÑADE ESTO: 120 segundos
+            timeout: 180000, // ← AÑADE ESTO: 180 segundos
         })
 
         console.log(`✅ Proxy éxito: ${response.status}`);
