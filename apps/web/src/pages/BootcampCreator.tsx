@@ -528,7 +528,9 @@ export default function BootcampCreator() {
         }
     }
 
-    // Generar cursos faltantes con feedback visual detallado
+    // ============================================================
+    // GENERAR CURSOS FALTANTES - VERSIÓN SECUENCIAL CON DELAYS
+    // ============================================================
     const generateMissingCourses = async () => {
         if (!recommendation?.missing_courses?.length) {
             alert('No hay cursos faltantes para generar')
@@ -542,26 +544,46 @@ export default function BootcampCreator() {
 
         setGeneratingCourses(true)
 
+        // Generar UNO POR UNO secuencialmente para evitar timeouts
         for (let i = 0; i < totalCourses; i++) {
             const course = missingCourses[i]
-            const courseId = await generateFullCourse(course, i + 1, totalCourses)
+            console.log(`\n📚 [${i + 1}/${totalCourses}] Generando curso: "${course.title}"`)
 
-            if (courseId) {
-                newGeneratedIds.push(courseId)
-                existingSelected.push(courseId)
+            // Mostrar progreso en UI
+            setGenerationProgress({
+                current: i + 1,
+                total: totalCourses,
+                courseName: course.title,
+                status: 'generating'
+            })
+
+            try {
+                const courseId = await generateFullCourse(course, i + 1, totalCourses)
+
+                if (courseId) {
+                    newGeneratedIds.push(courseId)
+                    existingSelected.push(courseId)
+                    console.log(`✅ [${i + 1}/${totalCourses}] Curso generado: ${course.title} (ID: ${courseId})`)
+                } else {
+                    console.error(`❌ [${i + 1}/${totalCourses}] Falló generación: ${course.title}`)
+                }
+            } catch (error) {
+                console.error(`❌ [${i + 1}/${totalCourses}] Error generando ${course.title}:`, error)
             }
 
-            // Pequeña pausa entre cursos
-            await new Promise(resolve => setTimeout(resolve, 1000))
+            // ESPERA DE 5 SEGUNDOS entre cursos para no saturar DeepSeek
+            // Esto es CRÍTICO para evitar timeouts 504
+            if (i < totalCourses - 1) {
+                console.log(`⏳ Esperando 5 segundos antes del próximo curso...`)
+                await new Promise(resolve => setTimeout(resolve, 5000))
+            }
         }
 
         // Actualizar estados
         setSelectedCourses(existingSelected)
         setGeneratedCourseIds(newGeneratedIds)
         setGeneratingCourses(false)
-
-        // Limpiar progreso después de un momento
-        setTimeout(() => setGenerationProgress(null), 2000)
+        setGenerationProgress(null)
 
         // Recargar lista de cursos disponibles
         try {
@@ -576,7 +598,7 @@ export default function BootcampCreator() {
         if (successCount === totalCourses) {
             alert(`✅ Éxito: Se generaron ${totalCourses} cursos con sus grafos correctamente.\n\nAhora puedes verificar los grafos y construir el bootcamp.`)
         } else {
-            alert(`⚠️ Parcial: ${successCount} de ${totalCourses} cursos generados. Revisa la consola para más detalles.`)
+            alert(`⚠️ Parcial: ${successCount} de ${totalCourses} cursos generados.\n\nLos cursos que fallaron pueden intentarse nuevamente.\n\nRevisa la consola para más detalles.`)
         }
 
         // Verificar automáticamente los grafos después de generar
@@ -593,8 +615,6 @@ export default function BootcampCreator() {
         })
     }
 
-    // Construcción virtual del bootcamp con pesos progresivos y grafo global
-    // Construcción virtual del bootcamp con pesos progresivos y grafo global
     // Construcción virtual del bootcamp con pesos progresivos y grafo global
     const buildBootcampDiscrete = async () => {
         if (!allCoursesHaveGraphs) {
