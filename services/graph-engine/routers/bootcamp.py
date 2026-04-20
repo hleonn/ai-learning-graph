@@ -341,3 +341,34 @@ async def get_bootcamp(bootcamp_id: str):
         raise HTTPException(status_code=404, detail="Bootcamp no encontrado")
 
     return result.data[0]
+
+@router.post("/programs")
+async def save_bootcamp_as_program(program_data: dict):
+    """
+    Alias para guardar un bootcamp como programa de formación.
+    Compatible con el frontend que llama a /programs
+    """
+    logger.info(f"Guardando programa vía /programs: {program_data.get('title', 'Sin título')}")
+
+    try:
+        # Generar ID si no viene
+        if "id" not in program_data or not program_data["id"]:
+            program_data["id"] = str(uuid.uuid4())
+
+        # Agregar timestamps
+        program_data["created_at"] = datetime.now().isoformat()
+        program_data["updated_at"] = datetime.now().isoformat()
+        program_data["version"] = 1
+
+        # Insertar en Supabase
+        result = supabase.table("bootcamps").insert(program_data).execute()
+
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Error al guardar el programa")
+
+        logger.success(f"✅ Programa guardado: {program_data['id']}")
+        return result.data[0]
+
+    except Exception as e:
+        logger.error(f"❌ Error guardando programa: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
