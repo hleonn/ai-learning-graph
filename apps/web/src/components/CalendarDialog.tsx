@@ -52,6 +52,10 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     const handleGenerateCalendar = async () => {
         setGenerating(true)
         try {
+            // GUARDAR FECHA E INTENSIDAD EN LOCALSTORAGE
+            localStorage.setItem('bootcamp_calendar_start_date', startDate)
+            localStorage.setItem('bootcamp_calendar_intensity', intensity)
+
             const startDateObj = normalizeDate(startDate)
             const calendar = calculateBootcampCalendar(
                 startDateObj,

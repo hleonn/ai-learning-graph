@@ -59,6 +59,11 @@ export interface CalendarData {
     days: CalendarDay[]
 }
 
+function formatDateUTC(date: Date): string {
+    return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+        .toLocaleDateString('es-ES', { timeZone: 'UTC' })
+}
+
 /**
  * Calcula el calendario del bootcamp basado en fecha de inicio e intensidad
  */
@@ -71,8 +76,10 @@ export function calculateBootcampCalendar(
 ): CalendarData {
     const intensityConfig = INTENSITY_OPTIONS.find(o => o.id === intensity) || INTENSITY_OPTIONS[0]
     const hoursPerWeek = intensityConfig.daysPerWeek * intensityConfig.hoursPerDay
+
+    // Calcular endDate correctamente en UTC
     const endDate = new Date(startDate)
-    endDate.setDate(endDate.getDate() + (durationWeeks * 7))
+    endDate.setUTCDate(endDate.getUTCDate() + (durationWeeks * 7) - 1)
 
     const days: CalendarDay[] = []
     let currentDate = new Date(startDate)
@@ -93,23 +100,22 @@ export function calculateBootcampCalendar(
         currentWeekStart += moduleWeeks
     }
 
-    while (currentDate <= endDate && days.length < durationWeeks * 7) {
-        const dayOfWeek = currentDate.getDay() // 0 = domingo, 1 = lunes, etc.
+    const totalDaysToGenerate = durationWeeks * 7
+    let daysGenerated = 0
+
+    while (daysGenerated < totalDaysToGenerate) {
+        const dayOfWeek = currentDate.getUTCDay() // 0 = domingo, 1 = lunes, etc.
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
 
         // Determinar si este día tiene clases según la intensidad
-        let hasClass = false
         let hours = 0
 
         if (intensity === 'intensive') {
-            hasClass = dayOfWeek >= 1 && dayOfWeek <= 5 // Lunes a Viernes
-            hours = hasClass ? 8 : 0
+            hours = (dayOfWeek >= 1 && dayOfWeek <= 5) ? 8 : 0
         } else if (intensity === 'partial') {
-            hasClass = dayOfWeek >= 1 && dayOfWeek <= 5 // Lunes a Viernes
-            hours = hasClass ? 4 : 0
+            hours = (dayOfWeek >= 1 && dayOfWeek <= 5) ? 4 : 0
         } else if (intensity === 'weekend') {
-            hasClass = dayOfWeek === 0 || dayOfWeek === 6 // Sábado o Domingo
-            hours = hasClass ? 4 : 0
+            hours = (dayOfWeek === 0 || dayOfWeek === 6) ? 4 : 0
         }
 
         // Determinar qué módulos y temas corresponden a este día
@@ -134,7 +140,9 @@ export function calculateBootcampCalendar(
             isWeekend
         })
 
-        currentDate.setDate(currentDate.getDate() + 1)
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1)
+        daysGenerated++
+
         if (dayOfWeek === 0) { // Domingo, cambiar de semana
             weekNumber++
         }
@@ -175,7 +183,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
     if (currentWeek.length > 0) weeks.push(currentWeek)
 
     const formatDate = (date: Date): string => {
-        return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        return formatDateUTC(date)
     }
 
     return `<!DOCTYPE html>

@@ -155,7 +155,7 @@ export default function ProgramView() {
         return (
             <div style={styles.center}>
                 <p style={styles.error}>❌ {error || 'Programa no encontrado'}</p>
-                <button onClick={() => navigate('/dashboard')} style={styles.backBtn}>← Volver al Dashboard</button>
+                <button onClick={() => navigate('/dashboard?tab=programs')} style={styles.backBtn}>← Volver a Programas</button>
             </div>
         )
     }
@@ -202,7 +202,9 @@ export default function ProgramView() {
 
         // Calcular fecha de fin en UTC
         const endDate = new Date(startDate)
-        endDate.setUTCDate(endDate.getUTCDate() + (intensityWeeks * 7) - 1)
+        const configForEnd = intensityMap[intensity]
+        const weeksForEnd = Math.ceil(totalHours / (configForEnd.daysPerWeek * configForEnd.hoursPerDay))
+        endDate.setUTCDate(endDate.getUTCDate() + (weeksForEnd * 7) - 1)
 
         const formatDateForAPI = (date: Date): string => {
             return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
@@ -226,7 +228,7 @@ export default function ProgramView() {
     return (
         <div style={styles.page}>
             <div style={styles.header}>
-                <button onClick={() => navigate('/dashboard')} style={styles.backBtn}>← Volver al Dashboard</button>
+                <button onClick={() => navigate('/dashboard?tab=programs')} style={styles.backBtn}>← Volver a Programas</button>
                 <div>
                     <h1 style={styles.title}>{getTypeIcon(program.type)} {program.title}</h1>
                     <p style={styles.subtitle}>{getTypeName(program.type)} de formación</p>
