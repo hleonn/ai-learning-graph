@@ -17,6 +17,7 @@ from loguru import logger
 from dotenv import load_dotenv
 import uuid
 from db.client import supabase
+import hashlib  # <--- Librería estándar para calcular posiciones iniciales
 
 load_dotenv()
 
@@ -428,16 +429,21 @@ def generate_roadmap(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# GUARDAR GRAFO DEL CURSO
+# GUARDAR GRAFO DEL CURSO (CORREGIDO PARA EVITAR NODOS AMONTONADOS)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def save_course_graph(course_id: str, roadmap: dict) -> dict:
-    """Guarda el grafo de un curso en Supabase"""
+    """Guarda el grafo de un curso en Supabase con posiciones iniciales distribuidas"""
     logger.info(f"Guardando grafo para curso {course_id}")
 
     concepts = []
     edges = []
     label_to_id = {}
+
+    # --- Configuración para el layout de grafo ---
+    spacing_x = 250  # Espacio horizontal entre nodos
+    spacing_y = 150  # Espacio vertical entre niveles
+    # -------------------------------------------
 
     for phase in roadmap.get("phases", []):
         phase_num = phase.get("phase_number", 1)
@@ -453,6 +459,13 @@ def save_course_graph(course_id: str, roadmap: dict) -> dict:
                 node_id = str(uuid.uuid4())
                 label = subtopic.get("label", "")
 
+                # --- Cálculo de posición inicial (evita que se amontonen) ---
+                # Usamos el hash del label para dar variedad en X y la fase para Y
+                hash_val = int(hashlib.md5(label.encode()).hexdigest()[:8], 16)
+                x = (hash_val % 10) * spacing_x
+                y = phase_num * spacing_y
+                # ----------------------------------------------------------
+
                 concepts.append({
                     "id": node_id,
                     "course_id": course_id,
@@ -465,9 +478,9 @@ def save_course_graph(course_id: str, roadmap: dict) -> dict:
                     "expected_outcomes": expected_outcomes,
                     "skills": skills,
                     "tech_stack": tech_stack,
-                    "position_x": 0,
-                    "position_y": 0,
-                    "content": subtopic.get("content", ""),
+                    "position_x": x,  # <--- ¡VALOR CALCULADO!
+                    "position_y": y,  # <--- ¡VALOR CALCULADO!
+                    "content": subtopic.get("description", ""),
                     "examples": subtopic.get("examples", [])
                 })
 

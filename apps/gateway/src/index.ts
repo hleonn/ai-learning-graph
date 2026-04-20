@@ -244,6 +244,7 @@ app.use('/graph', (req, res) => proxyToGraphEngine(req, res, 'graph'))
 app.use('/mastery', (req, res) => proxyToGraphEngine(req, res, 'mastery'))
 app.use('/ai', (req, res) => proxyToGraphEngine(req, res, 'ai'))
 app.use('/bootcamp', (req, res) => proxyToGraphEngine(req, res, 'bootcamp'))
+app.use('/programs', (req, res) => proxyToGraphEngine(req, res, 'programs'))
 // ── Error handler ─────────────────────────────────────────────────────────────
 app.use(errorHandler)
 
