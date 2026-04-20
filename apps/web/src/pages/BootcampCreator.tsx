@@ -444,9 +444,9 @@ export default function BootcampCreator() {
     }
 
     // Generar un curso completo usando la nueva API
+    // Generar un curso completo usando la nueva API
     const generateFullCourse = async (courseInfo: RecommendedCourse, index: number, total: number): Promise<string | null> => {
         try {
-            // 1. Generar roadmap con IA
             setGenerationProgress({
                 current: index,
                 total: total,
@@ -471,55 +471,23 @@ export default function BootcampCreator() {
 
             const roadmapData = await roadmapResponse.json()
 
-            // Extraer fases correctamente
-            let phases = null
-            if (roadmapData.phases && Array.isArray(roadmapData.phases)) {
-                phases = roadmapData.phases
-            } else if (roadmapData.data && roadmapData.data.phases) {
-                phases = roadmapData.data.phases
-            } else if (Array.isArray(roadmapData) && roadmapData[0]?.phases) {
-                phases = roadmapData[0].phases
-            }
+            // EL BACKEND YA GUARDÓ EL CURSO AUTOMÁTICAMENTE
+            // Extraemos el ID que nos devuelve
+            const courseId = roadmapData.course_id
 
-            if (!phases || phases.length === 0) {
-                throw new Error('No se generaron fases para el curso')
-            }
-
-            const finalRoadmap = {
-                title: courseInfo.title,
-                duration_months: phases.length,
-                phases: phases
-            }
-
-            // 2. Construir el grafo
-            setGenerationProgress({
-                current: index,
-                total: total,
-                courseName: courseInfo.title,
-                status: 'building_graph'
-            })
-
-            // Usar la nueva función que crea curso + grafo
-            const result = await createCourseWithRoadmap({
-                title: courseInfo.title,
-                description: courseInfo.description,
-                domain: courseInfo.domain,
-                difficulty_level: courseInfo.difficulty_level,
-                roadmap: finalRoadmap
-            })
-
-            if (!result.success) {
-                throw new Error(result.message)
+            if (!courseId) {
+                throw new Error('No se recibió course_id del backend')
             }
 
             setGenerationProgress(prev => prev ? {
                 ...prev,
                 status: 'completed',
-                nodeCount: result.nodeCount,
-                edgeCount: result.edgeCount
+                nodeCount: roadmapData.graph_stats?.nodes_created || 0,
+                edgeCount: roadmapData.graph_stats?.edges_created || 0
             } : null)
 
-            return result.id
+            console.log(`✅ Curso guardado automáticamente con ID: ${courseId}`)
+            return courseId
 
         } catch (error) {
             console.error(`Error generando curso ${courseInfo.title}:`, error)

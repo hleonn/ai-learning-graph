@@ -1,4 +1,4 @@
-from pipeline.curriculum import generate_curriculum, generate_roadmap, generate_subtopic_content
+from pipeline.curriculum import generate_curriculum, generate_roadmap, generate_subtopic_content, save_course_graph
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from loguru import logger
@@ -8,7 +8,8 @@ from algorithms.bkt import mastery_level
 from pipeline.embeddings import generate_course_embeddings
 from pipeline.recommender import recommend_path
 import numpy as np
-
+import uuid
+from datetime import datetime
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ def generate_embeddings(course_id: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(_run_embedding_pipeline, course_id)
     return {
         "message": f"Pipeline de embeddings iniciado para curso {course_id}",
-        "status":  "running",
+        "status": "running",
     }
 
 
@@ -46,7 +47,7 @@ def _run_embedding_pipeline(course_id: str):
         logger.error(f"No se encontraron nodos para curso: {course_id}")
         return
 
-    G     = build_graph(nodes, edges)
+    G = build_graph(nodes, edges)
     fused = generate_course_embeddings(G, nodes)
     logger.success(f"Embeddings generados: {len(fused)} nodos para curso {course_id}")
 
@@ -73,14 +74,14 @@ def get_similar_nodes(course_id: str, node_id: str, k: int = 5):
     if not nodes:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
-    G     = build_graph(nodes, edges)
+    G = build_graph(nodes, edges)
     fused = generate_course_embeddings(G, nodes)
 
     if node_id not in fused:
         raise HTTPException(status_code=404, detail="Nodo no encontrado")
 
     query_vec = fused[node_id]
-    node_map  = {n["id"]: n for n in nodes}
+    node_map = {n["id"]: n for n in nodes}
 
     similarities = []
     for other_id, other_vec in fused.items():
@@ -88,8 +89,8 @@ def get_similar_nodes(course_id: str, node_id: str, k: int = 5):
             continue
         cosine_sim = float(np.dot(query_vec, other_vec))
         similarities.append({
-            "node_id":    other_id,
-            "label":      node_map[other_id]["label"],
+            "node_id": other_id,
+            "label": node_map[other_id]["label"],
             "similarity": round(cosine_sim, 4),
             "difficulty": node_map[other_id]["difficulty"],
         })
@@ -97,7 +98,7 @@ def get_similar_nodes(course_id: str, node_id: str, k: int = 5):
     similarities.sort(key=lambda x: x["similarity"], reverse=True)
 
     return {
-        "query_node":    node_map[node_id]["label"],
+        "query_node": node_map[node_id]["label"],
         "similar_nodes": similarities[:k],
     }
 
@@ -110,7 +111,7 @@ def get_recommendations(user_id: str, course_id: str, k: int = 5):
     """
     logger.info(f"Recomendación: user={user_id[:8]} course={course_id[:8]}")
 
-    # ── 1. Obtener datos del curso ────────────────────────────────────────────
+    # 1. Obtener datos del curso
     nodes_res = (
         supabase.table("concept_nodes")
         .select("*")
@@ -129,7 +130,7 @@ def get_recommendations(user_id: str, course_id: str, k: int = 5):
     if not nodes:
         raise HTTPException(status_code=404, detail="Curso no encontrado")
 
-    # ── 2. Obtener mastery del estudiante ─────────────────────────────────────
+    # 2. Obtener mastery del estudiante
     node_ids = [n["id"] for n in nodes]
     mastery_res = (
         supabase.table("student_mastery")
@@ -143,7 +144,7 @@ def get_recommendations(user_id: str, course_id: str, k: int = 5):
         for m in mastery_res.data
     }
 
-    # ── 3. Obtener eventos recientes ──────────────────────────────────────────
+    # 3. Obtener eventos recientes
     events_res = (
         supabase.table("learning_events")
         .select("node_id")
@@ -155,39 +156,39 @@ def get_recommendations(user_id: str, course_id: str, k: int = 5):
     )
     recently_studied = list({e["node_id"] for e in events_res.data})
 
-    # ── 4. Construir grafo y calcular métricas ────────────────────────────────
-    G          = build_graph(nodes, edges)
-    pagerank   = compute_pagerank(G)
+    # 4. Construir grafo y calcular métricas
+    G = build_graph(nodes, edges)
+    pagerank = compute_pagerank(G)
     embeddings = generate_course_embeddings(G, nodes)
     node_labels = {n["id"]: n["label"] for n in nodes}
 
-    # ── 5. Generar recomendaciones ────────────────────────────────────────────
+    # 5. Generar recomendaciones
     recommendations = recommend_path(
-        G                = G,
-        mastery_scores   = mastery_scores,
-        pagerank         = pagerank,
-        embeddings       = embeddings,
-        node_labels      = node_labels,
-        recently_studied = recently_studied,
-        k                = k,
+        G=G,
+        mastery_scores=mastery_scores,
+        pagerank=pagerank,
+        embeddings=embeddings,
+        node_labels=node_labels,
+        recently_studied=recently_studied,
+        k=k,
     )
 
     return {
-        "user_id":         user_id,
-        "course_id":       course_id,
+        "user_id": user_id,
+        "course_id": course_id,
         "recommendations": recommendations,
         "context": {
             "recently_studied": recently_studied,
-            "total_nodes":      len(nodes),
-            "mastered_nodes":   sum(1 for s in mastery_scores.values() if s >= 0.8),
+            "total_nodes": len(nodes),
+            "mastered_nodes": sum(1 for s in mastery_scores.values() if s >= 0.8),
         }
     }
 
 
 class CurriculumRequest(BaseModel):
-    title:        str
-    description:  str
-    domain:       str = "generic"
+    title: str
+    description: str
+    domain: str = "generic"
     num_concepts: int = 8
     difficulty_level: str = "intermediate"
 
@@ -201,18 +202,18 @@ def create_curriculum(req: CurriculumRequest):
     logger.info(f"Generando currículo: {req.title} (nivel: {req.difficulty_level})")
 
     result = generate_curriculum(
-        title        = req.title,
-        description  = req.description,
-        domain       = req.domain,
-        num_concepts = req.num_concepts,
-        difficulty_level = req.difficulty_level,
+        title=req.title,
+        description=req.description,
+        domain=req.domain,
+        num_concepts=req.num_concepts,
+        difficulty_level=req.difficulty_level,
     )
 
     return {
-        "title":        req.title,
-        "domain":       req.domain,
+        "title": req.title,
+        "domain": req.domain,
         "difficulty_level": req.difficulty_level,
-        "curriculum":   result,
+        "curriculum": result,
         "preview": {
             "concepts": [
                 {"label": c["label"], "difficulty": c["difficulty"]}
@@ -231,28 +232,28 @@ def save_curriculum(course_id: str, req: CurriculumRequest):
     logger.info(f"Generando y guardando currículo para curso: {course_id}")
 
     result = generate_curriculum(
-        title        = req.title,
-        description  = req.description,
-        domain       = req.domain,
-        num_concepts = req.num_concepts,
-        difficulty_level = req.difficulty_level,
+        title=req.title,
+        description=req.description,
+        domain=req.domain,
+        num_concepts=req.num_concepts,
+        difficulty_level=req.difficulty_level,
     )
 
-    concepts  = result["concepts"]
-    edges     = result["edges"]
+    concepts = result["concepts"]
+    edges = result["edges"]
 
-    # ── Insertar nodos ────────────────────────────────────────────────────────
+    # Insertar nodos
     spacing = 150
     nodes_data = [
         {
-            "course_id":   course_id,
-            "label":       c["label"],
+            "course_id": course_id,
+            "label": c["label"],
             "description": c["description"],
-            "difficulty":  c["difficulty"],
-            "content":     c.get("content", ""),
-            "examples":    c.get("examples", []),
-            "position_x":  (i % 4) * spacing + 100,
-            "position_y":  (i // 4) * spacing + 100,
+            "difficulty": c["difficulty"],
+            "content": c.get("content", ""),
+            "examples": c.get("examples", []),
+            "position_x": (i % 4) * spacing + 100,
+            "position_y": (i // 4) * spacing + 100,
         }
         for i, c in enumerate(concepts)
     ]
@@ -263,18 +264,18 @@ def save_curriculum(course_id: str, req: CurriculumRequest):
     # Mapa label → id
     label_to_id = {n["label"]: n["id"] for n in inserted_nodes}
 
-    # ── Insertar edges ────────────────────────────────────────────────────────
+    # Insertar edges
     edges_data = []
     for edge in edges:
         src_id = label_to_id.get(edge["source"])
         tgt_id = label_to_id.get(edge["target"])
         if src_id and tgt_id:
             edges_data.append({
-                "course_id":             course_id,
-                "source_id":             src_id,
-                "target_id":             tgt_id,
+                "course_id": course_id,
+                "source_id": src_id,
+                "target_id": tgt_id,
                 "prerequisite_strength": edge["strength"],
-                "edge_type":             "prerequisite",
+                "edge_type": "prerequisite",
             })
 
     if edges_data:
@@ -286,10 +287,10 @@ def save_curriculum(course_id: str, req: CurriculumRequest):
     )
 
     return {
-        "course_id":     course_id,
+        "course_id": course_id,
         "nodes_created": len(inserted_nodes),
         "edges_created": len(edges_data),
-        "is_valid_dag":  result["is_valid_dag"],
+        "is_valid_dag": result["is_valid_dag"],
         "concepts": [
             {"id": label_to_id.get(c["label"]), "label": c["label"], "difficulty": c["difficulty"]}
             for c in concepts
@@ -357,17 +358,53 @@ class RoadmapRequest(BaseModel):
 def generate_roadmap_endpoint(req: RoadmapRequest):
     """
     Genera un roadmap de aprendizaje estructurado por fases Bloom.
+    Y LO GUARDA AUTOMÁTICAMENTE EN SUPABASE
     """
     logger.info(f"Generando roadmap: {req.title} (nivel: {req.difficulty_level})")
 
-    result = generate_roadmap(
-        title=req.title,
-        description=req.description,
-        domain=req.domain,
-        difficulty_level=req.difficulty_level,
-    )
+    try:
+        # 1. Generar roadmap
+        result = generate_roadmap(
+            title=req.title,
+            description=req.description,
+            domain=req.domain,
+            difficulty_level=req.difficulty_level,
+        )
 
-    return result
+        # 2. Crear el curso en Supabase
+        course_id = str(uuid.uuid4())
+
+        course_data = {
+            "id": course_id,
+            "title": req.title,
+            "description": req.description,
+            "domain": req.domain,
+            "difficulty_level": req.difficulty_level,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+
+        # Insertar curso
+        course_result = supabase.table("courses").insert(course_data).execute()
+
+        if not course_result.data:
+            raise HTTPException(status_code=500, detail="Error guardando curso")
+
+        # 3. Guardar el grafo (nodos y edges)
+        graph_result = save_course_graph(course_id, result)
+
+        logger.success(f"✅ Curso y grafo guardados: {course_id} - {graph_result['nodes_created']} nodos")
+
+        # 4. Devolver resultado con el ID del curso
+        return {
+            **result,
+            "course_id": course_id,
+            "graph_stats": graph_result
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error en generate_roadmap_endpoint: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 class SubtopicContentRequest(BaseModel):
