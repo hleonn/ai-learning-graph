@@ -59,9 +59,19 @@ export interface CalendarData {
     days: CalendarDay[]
 }
 
+// ✅ SEMANAS FIJAS según intensidad
+const SEMANAS_POR_INTENSIDAD: Record<IntensityMode, number> = {
+    'intensive': 16,
+    'partial': 32,
+    'weekend': 80
+}
+
 function formatDateUTC(date: Date): string {
-    return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-        .toLocaleDateString('es-ES', { timeZone: 'UTC' })
+    // ✅ Formatear correctamente sin restar días
+    const year = date.getUTCFullYear()
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(date.getUTCDate()).padStart(2, '0')
+    return `${day}/${month}/${year}`
 }
 
 /**
@@ -69,7 +79,7 @@ function formatDateUTC(date: Date): string {
  */
 export function calculateBootcampCalendar(
     startDate: Date,
-    durationWeeks: number,
+    // durationWeeks: number,  // Ya no se usa para el cálculo principal
     totalHours: number,
     modules: any[],
     intensity: IntensityMode
@@ -77,9 +87,12 @@ export function calculateBootcampCalendar(
     const intensityConfig = INTENSITY_OPTIONS.find(o => o.id === intensity) || INTENSITY_OPTIONS[0]
     const hoursPerWeek = intensityConfig.daysPerWeek * intensityConfig.hoursPerDay
 
+    // ✅ USAR SEMANAS FIJAS según intensidad
+    const totalWeeks = SEMANAS_POR_INTENSIDAD[intensity]
+
     // Calcular endDate correctamente en UTC
     const endDate = new Date(startDate)
-    endDate.setUTCDate(endDate.getUTCDate() + (durationWeeks * 7) - 1)
+    endDate.setUTCDate(endDate.getUTCDate() + (totalWeeks * 7) - 1)
 
     const days: CalendarDay[] = []
     let currentDate = new Date(startDate)
@@ -100,22 +113,25 @@ export function calculateBootcampCalendar(
         currentWeekStart += moduleWeeks
     }
 
-    const totalDaysToGenerate = durationWeeks * 7
+    const totalDaysToGenerate = totalWeeks * 7
     let daysGenerated = 0
 
     while (daysGenerated < totalDaysToGenerate) {
-        const dayOfWeek = currentDate.getUTCDay() // 0 = domingo, 1 = lunes, etc.
+        const dayOfWeek = currentDate.getUTCDay() // 0 = domingo, 1 = lunes, 2 = martes, 3 = miércoles, 4 = jueves, 5 = viernes, 6 = sábado
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
 
         // Determinar si este día tiene clases según la intensidad
         let hours = 0
 
         if (intensity === 'intensive') {
+            // ✅ Lunes(1) a Viernes(5)
             hours = (dayOfWeek >= 1 && dayOfWeek <= 5) ? 8 : 0
         } else if (intensity === 'partial') {
+            // ✅ Lunes(1) a Viernes(5)
             hours = (dayOfWeek >= 1 && dayOfWeek <= 5) ? 4 : 0
         } else if (intensity === 'weekend') {
-            hours = (dayOfWeek === 0 || dayOfWeek === 6) ? 4 : 0
+            // ✅ Sábado(6) y Domingo(0)
+            hours = (dayOfWeek === 6 || dayOfWeek === 0) ? 4 : 0
         }
 
         // Determinar qué módulos y temas corresponden a este día
@@ -124,10 +140,9 @@ export function calculateBootcampCalendar(
             currentWeek >= m.weekStart && currentWeek <= m.weekEnd
         )
 
-        const modulesForDay = modulesForWeek.map(m => m.module.name.split(' ').slice(0, 2).join(' '))
-        const topicsForDay = modulesForWeek.slice(0, 2).flatMap(m =>
-            [`${m.module.name} - Módulo ${m.module.order}`]
-        )
+        // ✅ NO TRUNCAR - mostrar nombre completo
+        const modulesForDay = modulesForWeek.map(m => m.module.name)
+        const topicsForDay = modulesForWeek.map(m => `${m.module.name} - Módulo ${m.module.order}`)
 
         days.push({
             date: new Date(currentDate),
@@ -143,7 +158,8 @@ export function calculateBootcampCalendar(
         currentDate.setUTCDate(currentDate.getUTCDate() + 1)
         daysGenerated++
 
-        if (dayOfWeek === 0) { // Domingo, cambiar de semana
+        // ✅ Cambiar de semana cuando sea DOMINGO (0)
+        if (dayOfWeek === 0) {
             weekNumber++
         }
     }
@@ -151,7 +167,7 @@ export function calculateBootcampCalendar(
     return {
         startDate,
         endDate,
-        totalWeeks: durationWeeks,
+        totalWeeks,
         totalHours,
         hoursPerWeek,
         intensity,
@@ -304,7 +320,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
             padding: 12px;
             border-right: 1px solid #e0e0e0;
             border-bottom: 1px solid #e0e0e0;
-            min-height: 100px;
+            min-height: 120px;
         }
         
         .day-card.weekend {
@@ -339,8 +355,9 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         }
         
         .day-modules {
-            font-size: 0.65rem;
+            font-size: 0.7rem;
             color: #555;
+            line-height: 1.3;
         }
         
         .day-modules span {
@@ -420,7 +437,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
                             <div class="day-date">${formatDate(day.date)}</div>
                             ${day.hours > 0 ? `<div class="day-hours">${day.hours}h</div>` : '<div class="day-hours" style="background:#ccc;">Descanso</div>'}
                             <div class="day-modules">
-                                ${day.modules.slice(0, 2).map(m => `<span>📘 ${m}</span>`).join('')}
+                                ${day.modules.map(m => `<span>📘 ${m}</span>`).join('')}
                             </div>
                         </div>
                     `).join('')}
