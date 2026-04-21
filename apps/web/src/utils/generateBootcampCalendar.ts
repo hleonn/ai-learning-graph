@@ -436,9 +436,11 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
                             <div class="day-name">${day.dayName}</div>
                             <div class="day-date">${formatDate(day.date)}</div>
                             ${day.hours > 0 ? `<div class="day-hours">${day.hours}h</div>` : '<div class="day-hours" style="background:#ccc;">Descanso</div>'}
+                            ${day.hours > 0 ? `
                             <div class="day-modules">
                                 ${day.modules.map(m => `<span>📘 ${m}</span>`).join('')}
                             </div>
+                            ` : ''}
                         </div>
                     `).join('')}
                 </div>
