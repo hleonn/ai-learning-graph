@@ -29,9 +29,12 @@ function formatDateLocal(date: Date): string {
 }
 
 // Función para calcular fecha de finalización correctamente
-function calcularFechaFin(startDateStr: string, totalWeeks: number, daysPerWeek: number): string {
+function calcularFechaFin(startDateStr: string, totalWeeks: number): string {
     const start = normalizeDate(startDateStr)
-    const totalDays = totalWeeks * daysPerWeek
+
+    // Cada semana cuenta como 7 días naturales
+    const totalDays = totalWeeks * 7
+
     const endDate = new Date(start)
     endDate.setUTCDate(endDate.getUTCDate() + totalDays - 1)
     return formatDateLocal(endDate)
@@ -42,7 +45,6 @@ function ajustarAProximoSabado(date: Date): Date {
     const result = new Date(date)
     const dayOfWeek = result.getUTCDay()
 
-    // 0 = Domingo, 6 = Sábado
     if (dayOfWeek !== 6) {
         const daysUntilSaturday = dayOfWeek === 0 ? 6 : 6 - dayOfWeek
         result.setUTCDate(result.getUTCDate() + daysUntilSaturday)
@@ -65,7 +67,13 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     const [intensity, setIntensity] = useState<IntensityMode>('intensive')
     const [generating, setGenerating] = useState(false)
 
-    // ✅ Ajustar fecha de inicio cuando se selecciona Fin de semana
+    // ✅ SEMANAS FIJAS según intensidad
+    const semanasPorIntensidad: Record<IntensityMode, number> = {
+        'intensive': 16,
+        'partial': 32,
+        'weekend': 80
+    }
+
     const handleIntensityChange = (newIntensity: IntensityMode) => {
         setIntensity(newIntensity)
 
@@ -75,15 +83,6 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
             setStartDate(toDateInputFormat(nextSaturday))
         }
     }
-
-    // ✅ Calcular semanas según intensidad (valores fijos)
-    const semanasPorIntensidad: Record<IntensityMode, number> = {
-        'intensive': 16,
-        'partial': 32,
-        'weekend': 80
-    }
-
-    const totalWeeksWithIntensity = semanasPorIntensidad[intensity]
 
     if (!isOpen) return null
 
@@ -112,12 +111,14 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
 
     const intensityOption = INTENSITY_OPTIONS.find(o => o.id === intensity) || INTENSITY_OPTIONS[0]
     const hoursPerWeek = intensityOption.daysPerWeek * intensityOption.hoursPerDay
+    const totalWeeksWithIntensity = semanasPorIntensidad[intensity]
+
     const startDateObj = normalizeDate(startDate)
     const formattedStartDate = formatDateLocal(startDateObj)
-    const endDate = calcularFechaFin(startDate, totalWeeksWithIntensity, intensityOption.daysPerWeek)
+    const endDate = calcularFechaFin(startDate, totalWeeksWithIntensity)
 
-    // ✅ Verificar si se puede mostrar el resumen
-    const puedeMostrarResumen = startDate && intensity
+    // ✅ Verificar si se puede mostrar el resumen (AMBAS CONDICIONES)
+    const puedeMostrarResumen = !!(startDate && intensity)
 
     return (
         <div style={styles.overlay}>
@@ -128,7 +129,7 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                 </div>
 
                 <div style={styles.dialogContent}>
-                    {/* 1️⃣ INTENSIDAD DEL PROGRAMA - PRIMERO */}
+                    {/* 1️⃣ INTENSIDAD DEL PROGRAMA */}
                     <div style={styles.field}>
                         <label style={styles.label}>⚡ Intensidad del programa</label>
                         <div style={styles.intensityGrid}>
@@ -151,7 +152,7 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                         </div>
                     </div>
 
-                    {/* 2️⃣ FECHA DE INICIO - SEGUNDO */}
+                    {/* 2️⃣ FECHA DE INICIO */}
                     <div style={styles.field}>
                         <label style={styles.label}>📅 Fecha de inicio</label>
                         <input
@@ -166,7 +167,7 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                         )}
                     </div>
 
-                    {/* 3️⃣ RESUMEN - TERCERO (SOLO SI HAY INTENSIDAD Y FECHA) */}
+                    {/* 3️⃣ RESUMEN - SOLO SI AMBAS CONDICIONES SE CUMPLEN */}
                     {puedeMostrarResumen && (
                         <div style={styles.summary}>
                             <p><strong>📊 Resumen:</strong></p>
