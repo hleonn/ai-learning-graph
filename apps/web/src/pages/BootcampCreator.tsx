@@ -1125,7 +1125,7 @@ export default function BootcampCreator() {
 
                         {/* Cursos faltantes */}
                         <div style={styles.recommendationSection}>
-                            <h3>⚠️ Cursos recomendados (faltantes)</h3>
+                            <h3>⚠️ Cursos que te recomiendo (Generalos!)</h3>
                             {recommendation.missing_courses?.length > 0 ? (
                                 <>
                                     <ul>

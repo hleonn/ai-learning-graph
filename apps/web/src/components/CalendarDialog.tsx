@@ -38,7 +38,6 @@ function calcularFechaFin(startDateStr: string, totalWeeks: number, daysPerWeek:
 }
 
 export default function CalendarDialog({ isOpen, onClose, bootcampTitle, durationWeeks, totalHours, modules }: CalendarDialogProps) {
-    // Fecha de inicio por defecto: mañana en UTC
     const [startDate, setStartDate] = useState<string>(() => {
         const tomorrow = new Date()
         tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
@@ -52,7 +51,6 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     const handleGenerateCalendar = async () => {
         setGenerating(true)
         try {
-            // GUARDAR FECHA E INTENSIDAD EN LOCALSTORAGE
             localStorage.setItem('bootcamp_calendar_start_date', startDate)
             localStorage.setItem('bootcamp_calendar_intensity', intensity)
 
@@ -78,6 +76,7 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     const totalWeeksWithIntensity = Math.ceil(totalHours / hoursPerWeek)
     const startDateObj = normalizeDate(startDate)
     const formattedStartDate = formatDateLocal(startDateObj)
+    const endDate = calcularFechaFin(startDate, totalWeeksWithIntensity, intensityOption.daysPerWeek)
 
     return (
         <div style={styles.overlay}>
@@ -88,17 +87,7 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                 </div>
 
                 <div style={styles.dialogContent}>
-                    <div style={styles.field}>
-                        <label style={styles.label}>📅 Fecha de inicio</label>
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            style={styles.input}
-                            min={new Date().toISOString().split('T')[0]}
-                        />
-                    </div>
-
+                    {/* 1️⃣ INTENSIDAD DEL PROGRAMA - PRIMERO */}
                     <div style={styles.field}>
                         <label style={styles.label}>⚡ Intensidad del programa</label>
                         <div style={styles.intensityGrid}>
@@ -112,13 +101,28 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                                     }}
                                 >
                                     <span style={styles.intensityIcon}>{option.icon}</span>
-                                    <span style={styles.intensityName}>{option.name}</span>
-                                    <span style={styles.intensityDesc}>{option.description}</span>
+                                    <div style={styles.intensityInfo}>
+                                        <span style={styles.intensityName}>{option.name}</span>
+                                        <span style={styles.intensityDesc}>{option.description}</span>
+                                    </div>
                                 </button>
                             ))}
                         </div>
                     </div>
 
+                    {/* 2️⃣ FECHA DE INICIO - SEGUNDO */}
+                    <div style={styles.field}>
+                        <label style={styles.label}>📅 Fecha de inicio</label>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            style={styles.input}
+                            min={new Date().toISOString().split('T')[0]}
+                        />
+                    </div>
+
+                    {/* 3️⃣ RESUMEN - TERCERO */}
                     <div style={styles.summary}>
                         <p><strong>📊 Resumen:</strong></p>
                         <p>• Duración total: <strong>{durationWeeks} semanas</strong> (base)</p>
@@ -126,7 +130,7 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                         <p>• Horas por semana: <strong>{hoursPerWeek}h</strong></p>
                         <p>• Total de horas: <strong>{totalHours}h</strong></p>
                         <p>• 📅 Fecha de Inicio: <strong>{formattedStartDate}</strong></p>
-                        <p>• 🏁 Fecha de Finalización: <strong>{calcularFechaFin(startDate, totalWeeksWithIntensity, intensityOption.daysPerWeek)}</strong></p>
+                        <p>• 🏁 Fecha de Finalización: <strong>{endDate}</strong></p>
                     </div>
                 </div>
 
@@ -234,11 +238,15 @@ const styles: Record<string, React.CSSProperties> = {
     intensityIcon: {
         fontSize: 24
     },
+    intensityInfo: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2
+    },
     intensityName: {
         fontWeight: 600,
         fontSize: 14,
-        color: '#1E3A5F',
-        minWidth: 80
+        color: '#1E3A5F'
     },
     intensityDesc: {
         fontSize: 12,
