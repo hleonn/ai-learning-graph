@@ -715,13 +715,14 @@ export default function BootcampCreator() {
                 'Deep Learning': 5
             }
 
-            const suggestedOrder = [...courseInfos]
-                .sort((a, b) => {
-                    const orderA = pedagogicalOrderMap[a.title.split(' ')[0]] || 99
-                    const orderB = pedagogicalOrderMap[b.title.split(' ')[0]] || 99
-                    return orderA - orderB
-                })
-                .map(c => c.id)
+            const suggestedOrder = selectedCourses
+            // const suggestedOrder = [...courseInfos]
+            //     .sort((a, b) => {
+            //         const orderA = pedagogicalOrderMap[a.title.split(' ')[0]] || 99
+            //         const orderB = pedagogicalOrderMap[b.title.split(' ')[0]] || 99
+            //         return orderA - orderB
+            //     })
+            //     .map(c => c.id)
 
             console.log('📋 ORDEN PEDAGÓGICO MANUAL:', suggestedOrder.map(id => courseInfos.find(c => c.id === id)?.title))
             console.log('📋 Orden sugerido por dependencias:', suggestedOrder.map((id: string) => {
