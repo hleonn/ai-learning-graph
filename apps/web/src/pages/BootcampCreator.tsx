@@ -497,27 +497,59 @@ export default function BootcampCreator() {
     }
 
     // ============================================================
-    // GENERAR CURSOS FALTANTES - VERSIÓN SECUENCIAL CON DELAYS
-    // ============================================================
+// GENERAR CURSOS FALTANTES - VERSIÓN SECUENCIAL CON DELAYS
+// Y VERIFICACIÓN DE EXISTENCIA PREVIA
+// ============================================================
     const generateMissingCourses = async () => {
         if (!recommendation?.missing_courses?.length) {
             alert('No hay cursos faltantes para generar')
             return
         }
 
-        const missingCourses = recommendation.missing_courses
-        const totalCourses = missingCourses.length
+        // Obtener cursos existentes de la base de datos
+        let existingCoursesList: Course[] = []
+        try {
+            const refreshed = await getCourses()
+            existingCoursesList = refreshed.courses || []
+        } catch (error) {
+            console.error('Error obteniendo cursos existentes:', error)
+        }
+
+        // Crear un Set con los títulos normalizados de cursos existentes
+        const existingTitles = new Set(
+            existingCoursesList.map(c => c.title.toLowerCase().trim())
+        )
+
+        // Filtrar solo los cursos que REALMENTE no existen
+        const trulyMissing = recommendation.missing_courses.filter(
+            (c: RecommendedCourse) => !existingTitles.has(c.title.toLowerCase().trim())
+        )
+
+        const alreadyExistCount = recommendation.missing_courses.length - trulyMissing.length
+
+        if (alreadyExistCount > 0) {
+            console.log(`📋 ${alreadyExistCount} cursos ya existen en la base de datos`)
+        }
+
+        if (trulyMissing.length === 0) {
+            alert(`✅ Todos los cursos recomendados ya existen en la base de datos.\n\nUsa "Verificar Grafos" para confirmar su estado.`)
+            setGeneratingCourses(false)
+            return
+        }
+
+        const totalCourses = trulyMissing.length
         const existingSelected = [...selectedCourses]
         const newGeneratedIds: string[] = []
 
         setGeneratingCourses(true)
 
-        // Generar UNO POR UNO secuencialmente para evitar timeouts
+        console.log(`📚 Generando ${totalCourses} cursos nuevos (${alreadyExistCount} ya existían)`)
+
+        // Generar UNO POR UNO secuencialmente
         for (let i = 0; i < totalCourses; i++) {
-            const course = missingCourses[i]
+            const course = trulyMissing[i]
             console.log(`\n📚 [${i + 1}/${totalCourses}] Generando curso: "${course.title}"`)
 
-            // Mostrar progreso en UI
             setGenerationProgress({
                 current: i + 1,
                 total: totalCourses,
@@ -539,8 +571,7 @@ export default function BootcampCreator() {
                 console.error(`❌ [${i + 1}/${totalCourses}] Error generando ${course.title}:`, error)
             }
 
-            // ESPERA DE 5 SEGUNDOS entre cursos para no saturar DeepSeek
-            // Esto es CRÍTICO para evitar timeouts 504
+            // ESPERA DE 5 SEGUNDOS entre cursos
             if (i < totalCourses - 1) {
                 console.log(`⏳ Esperando 5 segundos antes del próximo curso...`)
                 await new Promise(resolve => setTimeout(resolve, 5000))
@@ -566,7 +597,7 @@ export default function BootcampCreator() {
         if (successCount === totalCourses) {
             alert(`✅ Éxito: Se generaron ${totalCourses} cursos con sus grafos correctamente.\n\nAhora puedes verificar los grafos y construir el bootcamp.`)
         } else {
-            alert(`⚠️ Parcial: ${successCount} de ${totalCourses} cursos generados.\n\nLos cursos que fallaron pueden intentarse nuevamente.\n\nRevisa la consola para más detalles.`)
+            alert(`⚠️ Parcial: ${successCount} de ${totalCourses} cursos generados.\n\nLos cursos que fallaron pueden intentarse nuevamente.`)
         }
 
         // Verificar automáticamente los grafos después de generar
@@ -574,7 +605,7 @@ export default function BootcampCreator() {
             await checkCoursesGraphs(existingSelected)
         }
 
-        // Guardar estado después de generar cursos
+        // Guardar estado
         saveStateToLocalStorage({
             selectedCourses: existingSelected,
             generatedCourseIds: newGeneratedIds,
