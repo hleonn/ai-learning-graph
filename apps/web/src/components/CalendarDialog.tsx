@@ -37,6 +37,25 @@ function calcularFechaFin(startDateStr: string, totalWeeks: number, daysPerWeek:
     return formatDateLocal(endDate)
 }
 
+// Función para ajustar fecha al próximo sábado
+function ajustarAProximoSabado(date: Date): Date {
+    const result = new Date(date)
+    const dayOfWeek = result.getUTCDay()
+
+    // 0 = Domingo, 6 = Sábado
+    if (dayOfWeek !== 6) {
+        const daysUntilSaturday = dayOfWeek === 0 ? 6 : 6 - dayOfWeek
+        result.setUTCDate(result.getUTCDate() + daysUntilSaturday)
+    }
+
+    return result
+}
+
+// Función para formatear fecha a YYYY-MM-DD
+function toDateInputFormat(date: Date): string {
+    return date.toISOString().split('T')[0]
+}
+
 export default function CalendarDialog({ isOpen, onClose, bootcampTitle, durationWeeks, totalHours, modules }: CalendarDialogProps) {
     const [startDate, setStartDate] = useState<string>(() => {
         const tomorrow = new Date()
@@ -45,6 +64,26 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     })
     const [intensity, setIntensity] = useState<IntensityMode>('intensive')
     const [generating, setGenerating] = useState(false)
+
+    // ✅ Ajustar fecha de inicio cuando se selecciona Fin de semana
+    const handleIntensityChange = (newIntensity: IntensityMode) => {
+        setIntensity(newIntensity)
+
+        if (newIntensity === 'weekend') {
+            const currentDate = normalizeDate(startDate)
+            const nextSaturday = ajustarAProximoSabado(currentDate)
+            setStartDate(toDateInputFormat(nextSaturday))
+        }
+    }
+
+    // ✅ Calcular semanas según intensidad (valores fijos)
+    const semanasPorIntensidad: Record<IntensityMode, number> = {
+        'intensive': 16,
+        'partial': 32,
+        'weekend': 80
+    }
+
+    const totalWeeksWithIntensity = semanasPorIntensidad[intensity]
 
     if (!isOpen) return null
 
@@ -73,10 +112,12 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
 
     const intensityOption = INTENSITY_OPTIONS.find(o => o.id === intensity) || INTENSITY_OPTIONS[0]
     const hoursPerWeek = intensityOption.daysPerWeek * intensityOption.hoursPerDay
-    const totalWeeksWithIntensity = Math.ceil(totalHours / hoursPerWeek)
     const startDateObj = normalizeDate(startDate)
     const formattedStartDate = formatDateLocal(startDateObj)
     const endDate = calcularFechaFin(startDate, totalWeeksWithIntensity, intensityOption.daysPerWeek)
+
+    // ✅ Verificar si se puede mostrar el resumen
+    const puedeMostrarResumen = startDate && intensity
 
     return (
         <div style={styles.overlay}>
@@ -94,7 +135,7 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                             {INTENSITY_OPTIONS.map(option => (
                                 <button
                                     key={option.id}
-                                    onClick={() => setIntensity(option.id)}
+                                    onClick={() => handleIntensityChange(option.id)}
                                     style={{
                                         ...styles.intensityBtn,
                                         ...(intensity === option.id ? styles.intensityBtnActive : {})
@@ -120,23 +161,35 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                             style={styles.input}
                             min={new Date().toISOString().split('T')[0]}
                         />
+                        {intensity === 'weekend' && (
+                            <p style={styles.hint}>⚠️ El programa de fin de semana comienza en sábado</p>
+                        )}
                     </div>
 
-                    {/* 3️⃣ RESUMEN - TERCERO */}
-                    <div style={styles.summary}>
-                        <p><strong>📊 Resumen:</strong></p>
-                        <p>• Duración total: <strong>{durationWeeks} semanas</strong> (base)</p>
-                        <p>• Con intensidad {intensityOption.name}: <strong>{totalWeeksWithIntensity} semanas</strong></p>
-                        <p>• Horas por semana: <strong>{hoursPerWeek}h</strong></p>
-                        <p>• Total de horas: <strong>{totalHours}h</strong></p>
-                        <p>• 📅 Fecha de Inicio: <strong>{formattedStartDate}</strong></p>
-                        <p>• 🏁 Fecha de Finalización: <strong>{endDate}</strong></p>
-                    </div>
+                    {/* 3️⃣ RESUMEN - TERCERO (SOLO SI HAY INTENSIDAD Y FECHA) */}
+                    {puedeMostrarResumen && (
+                        <div style={styles.summary}>
+                            <p><strong>📊 Resumen:</strong></p>
+                            <p>• Duración total: <strong>{totalWeeksWithIntensity} semanas</strong></p>
+                            <p>• Intensidad: <strong>{intensityOption.name}</strong></p>
+                            <p>• Horas por semana: <strong>{hoursPerWeek}h</strong></p>
+                            <p>• Total de horas: <strong>{totalHours}h</strong></p>
+                            <p>• 📅 Fecha de Inicio: <strong>{formattedStartDate}</strong></p>
+                            <p>• 🏁 Fecha de Finalización: <strong>{endDate}</strong></p>
+                        </div>
+                    )}
                 </div>
 
                 <div style={styles.dialogFooter}>
                     <button onClick={onClose} style={styles.cancelBtn}>Cancelar</button>
-                    <button onClick={handleGenerateCalendar} disabled={generating} style={styles.generateBtn}>
+                    <button
+                        onClick={handleGenerateCalendar}
+                        disabled={generating || !puedeMostrarResumen}
+                        style={{
+                            ...styles.generateBtn,
+                            ...(!puedeMostrarResumen ? styles.generateBtnDisabled : {})
+                        }}
+                    >
                         {generating ? 'Generando...' : '📅 Generar Calendario'}
                     </button>
                 </div>
@@ -214,6 +267,12 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: 14,
         fontFamily: 'inherit'
     },
+    hint: {
+        fontSize: 11,
+        color: '#F5A623',
+        margin: '4px 0 0',
+        fontStyle: 'italic'
+    },
     intensityGrid: {
         display: 'flex',
         flexDirection: 'column',
@@ -285,5 +344,10 @@ const styles: Record<string, React.CSSProperties> = {
         cursor: 'pointer',
         fontSize: 13,
         fontWeight: 600
+    },
+    generateBtnDisabled: {
+        background: '#D3D1C7',
+        cursor: 'not-allowed',
+        opacity: 0.6
     }
 }
