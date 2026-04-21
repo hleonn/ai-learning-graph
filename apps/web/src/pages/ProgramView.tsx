@@ -389,7 +389,11 @@ const styles: Record<string, React.CSSProperties> = {
     content: {
         display: 'flex',
         flexDirection: 'column',
-        gap: 32
+        gap: 32,
+        flex: 1,
+        overflowY: 'auto',      // ← AGREGAR SCROLL
+        maxHeight: 'calc(100vh - 200px)',  // ← LIMITAR ALTURA
+        paddingRight: 8
     },
     infoCard: {
         background: '#fff',
@@ -466,7 +470,8 @@ const styles: Record<string, React.CSSProperties> = {
     modulesGrid: {
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: 16
+        gap: 16,
+        overflowY: 'visible'
     },
     moduleCard: {
         background: '#fff',
