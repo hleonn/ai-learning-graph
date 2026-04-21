@@ -79,7 +79,7 @@ function formatDateUTC(date: Date): string {
  */
 export function calculateBootcampCalendar(
     startDate: Date,
-    // durationWeeks: number,  // Ya no se usa para el cálculo principal
+    _durationWeeks: number,  // Ya no se usa para el cálculo principal
     totalHours: number,
     modules: any[],
     intensity: IntensityMode
