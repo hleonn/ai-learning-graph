@@ -71,6 +71,7 @@ interface BootcampCreatorState {
     graphCheckResultsData: Array<[string, { hasGraph: boolean; nodeCount: number; edgeCount: number }]>
     allCoursesHaveGraphs: boolean
     timestamp: number
+    originalMissingOrder?: string[]
 }
 
 // Función para guardar estado en localStorage
@@ -78,7 +79,12 @@ const saveStateToLocalStorage = (state: Partial<BootcampCreatorState>) => {
     try {
         const existing = localStorage.getItem(STORAGE_KEY_BOOTCAMP_STATE)
         const currentState = existing ? JSON.parse(existing) : {}
-        const newState = { ...currentState, ...state, timestamp: Date.now() }
+        const newState = {
+            ...currentState,
+            ...state,
+            timestamp: Date.now(),
+            originalMissingOrder: state.originalMissingOrder || currentState.originalMissingOrder
+        }
         localStorage.setItem(STORAGE_KEY_BOOTCAMP_STATE, JSON.stringify(newState))
         console.log('💾 Estado del bootcamp guardado en localStorage')
     } catch (error) {
@@ -142,6 +148,7 @@ export default function BootcampCreator() {
     const [generatedCourseIds, setGeneratedCourseIds] = useState<string[]>([])
     const [bootcampBuilt, setBootcampBuilt] = useState(false)
     const [savingProgram, setSavingProgram] = useState(false)
+    const [originalMissingOrder, setOriginalMissingOrder] = useState<string[]>([])
 
     // Cargar cursos disponibles y restaurar estado guardado
     useEffect(() => {
@@ -165,6 +172,10 @@ export default function BootcampCreator() {
                     setBootcampBuilt(savedState.bootcampBuilt)
                     setGeneratedCourseIds(savedState.generatedCourseIds)
                     setAllCoursesHaveGraphs(savedState.allCoursesHaveGraphs)
+
+                    if (savedState.originalMissingOrder) {
+                        setOriginalMissingOrder(savedState.originalMissingOrder)
+                    }
 
                     // Restaurar graphCheckResults
                     if (savedState.graphCheckResultsData) {
@@ -274,6 +285,11 @@ export default function BootcampCreator() {
             setRecommendation(data)
             setBootcampId(data.suggested_bootcamp?.id || null)
 
+            // ✅ GUARDAR EL ORDEN PEDAGÓGICO ORIGINAL DE DEEPSEEK
+            const missingOrder = data.missing_courses?.map((c: any) => c.title) || []
+            setOriginalMissingOrder(missingOrder)
+            console.log('📋 Orden pedagógico original:', missingOrder)
+
             // Guardar estado después de recomendación
             saveStateToLocalStorage({
                 bootcampTitle,
@@ -283,7 +299,8 @@ export default function BootcampCreator() {
                 recommendation: data,
                 bootcampId: data.suggested_bootcamp?.id || null,
                 graphCheckResultsData: Array.from(graphCheckResults.entries()),
-                allCoursesHaveGraphs
+                allCoursesHaveGraphs,
+                originalMissingOrder: missingOrder
             })
 
             // Verificar si el backend reconoció correctamente los cursos
@@ -444,7 +461,6 @@ export default function BootcampCreator() {
     }
 
     // Generar un curso completo usando la nueva API
-    // Generar un curso completo usando la nueva API
     const generateFullCourse = async (courseInfo: RecommendedCourse, index: number, total: number): Promise<string | null> => {
         try {
             setGenerationProgress({
@@ -497,9 +513,9 @@ export default function BootcampCreator() {
     }
 
     // ============================================================
-// GENERAR CURSOS FALTANTES - VERSIÓN SECUENCIAL CON DELAYS
-// Y VERIFICACIÓN DE EXISTENCIA PREVIA
-// ============================================================
+    // GENERAR CURSOS FALTANTES - VERSIÓN SECUENCIAL CON DELAYS
+    // Y VERIFICACIÓN DE EXISTENCIA PREVIA
+    // ============================================================
     const generateMissingCourses = async () => {
         if (!recommendation?.missing_courses?.length) {
             alert('No hay cursos faltantes para generar')
@@ -705,30 +721,27 @@ export default function BootcampCreator() {
                 }
             }
 
-            // 3. Sugerir orden pedagógico basado en dependencias reales
-            const pedagogicalOrderMap: Record<string, number> = {
-                'PYTHON_DEBE_SER_PRIMERO': 1,
-                'Python': 1,
-                'SQL': 2,
-                'Pandas': 3,
-                'Machine Learning': 4,
-                'Deep Learning': 5
+            // 3. ✅ ORDENAR SEGÚN EL ORDEN PEDAGÓGICO ORIGINAL DE DEEPSEEK
+            const suggestedOrder: string[] = []
+            const courseMap = new Map(courseInfos.map(c => [c.title, c.id]))
+
+            // Primero agregar en el orden pedagógico original
+            for (const title of originalMissingOrder) {
+                const courseId = courseMap.get(title)
+                if (courseId && selectedCourses.includes(courseId)) {
+                    suggestedOrder.push(courseId)
+                }
             }
 
-            const suggestedOrder = selectedCourses
-            // const suggestedOrder = [...courseInfos]
-            //     .sort((a, b) => {
-            //         const orderA = pedagogicalOrderMap[a.title.split(' ')[0]] || 99
-            //         const orderB = pedagogicalOrderMap[b.title.split(' ')[0]] || 99
-            //         return orderA - orderB
-            //     })
-            //     .map(c => c.id)
+            // Luego agregar cualquier curso que no esté en el orden original (cursos existentes)
+            for (const courseId of selectedCourses) {
+                if (!suggestedOrder.includes(courseId)) {
+                    suggestedOrder.push(courseId)
+                }
+            }
 
-            console.log('📋 ORDEN PEDAGÓGICO MANUAL:', suggestedOrder.map(id => courseInfos.find(c => c.id === id)?.title))
-            console.log('📋 Orden sugerido por dependencias:', suggestedOrder.map((id: string) => {
-                const course = courseInfos.find(c => c.id === id)
-                return course?.title
-            }).filter(Boolean))
+            console.log('📋 ORDEN PEDAGÓGICO ORIGINAL:', originalMissingOrder)
+            console.log('📋 Orden aplicado a módulos:', suggestedOrder.map(id => courseInfos.find(c => c.id === id)?.title))
 
             // 4. Calcular pesos progresivos
             const weights = calculateProgressiveWeights(courseInfos, suggestedOrder)
@@ -749,13 +762,13 @@ export default function BootcampCreator() {
 
             const totalBootcampHours = durationWeeks * 40
             // Calcular distribución uniforme de semanas por módulo
-// Primero, calcular semanas por módulo basado en peso
+            // Primero, calcular semanas por módulo basado en peso
             let totalWeight = 0
             for (const w of weights) {
                 totalWeight += w.weight
             }
 
-// Calcular semanas por módulo (redondeado, asegurando suma = durationWeeks)
+            // Calcular semanas por módulo (redondeado, asegurando suma = durationWeeks)
             let remainingWeeks = durationWeeks
             const moduleWeeks: number[] = []
             for (let i = 0; i < weights.length; i++) {
@@ -768,7 +781,7 @@ export default function BootcampCreator() {
                 remainingWeeks -= weeks
             }
 
-// Ajustar para que la suma sea exactamente durationWeeks
+            // Ajustar para que la suma sea exactamente durationWeeks
             const totalAssignedWeeks = moduleWeeks.reduce((a, b) => a + b, 0)
             if (totalAssignedWeeks !== durationWeeks) {
                 const diff = durationWeeks - totalAssignedWeeks
@@ -901,6 +914,7 @@ export default function BootcampCreator() {
             setGeneratedCourseIds([])
             setGraphCheckResults(new Map())
             setAllCoursesHaveGraphs(false)
+            setOriginalMissingOrder([])
             alert('🧹 Progreso limpiado. Puedes comenzar un nuevo bootcamp.')
         }
     }
