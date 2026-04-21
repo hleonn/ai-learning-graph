@@ -30,23 +30,30 @@ def generate_course_suggestions(
     """
     Genera sugerencias de cursos usando DeepSeek.
     La IA decide cuántos cursos son necesarios (entre 3 y 7).
+    Los cursos se devuelven en ORDEN PEDAGÓGICO (el primero es el inicial).
     """
     logger.info(f"Generando sugerencias de cursos para bootcamp: {bootcamp_title}")
 
     existing_titles = [c.get('title', '') for c in existing_courses]
     existing_context = f"\nCursos ya existentes (NO sugerir estos): {', '.join(existing_titles)}" if existing_titles else ""
 
-    prompt = f"""Eres un experto en diseño curricular.
+    prompt = f"""Eres un experto en diseño curricular basado en la Taxonomía de Bloom.
 
 Bootcamp: "{bootcamp_title}"
 Descripción: {bootcamp_description[:500]}{existing_context}
 
 Genera entre 3 y 7 cursos para este bootcamp (tú decides la cantidad según la complejidad).
-Los cursos deben seguir una progresión lógica.
 
-Devuelve SOLO JSON:
+**IMPORTANTE:** Los cursos DEBEN estar en ORDEN PEDAGÓGICO.
+- El PRIMER curso debe ser el más básico (nivel beginner, fundamentos)
+- El ÚLTIMO curso debe ser el más avanzado (proyecto final, integración)
+- Respeta la progresión: Recordar → Comprender → Aplicar → Analizar → Evaluar → Crear
+
+Devuelve SOLO JSON (el orden del array es el orden pedagógico):
 [
-  {{"title": "...", "description": "...", "domain": "data|web|cloud|devops|generic", "difficulty_level": "beginner|intermediate|advanced"}}
+  {{"title": "Curso inicial (fundamentos)", "description": "...", "domain": "data|web|cloud|devops|generic", "difficulty_level": "beginner"}},
+  {{"title": "Curso intermedio", "description": "...", "domain": "...", "difficulty_level": "intermediate"}},
+  {{"title": "Curso avanzado", "description": "...", "domain": "...", "difficulty_level": "advanced"}}
 ]"""
 
     try:
@@ -62,15 +69,16 @@ Devuelve SOLO JSON:
         cleaned = clean_json_response(raw)
         suggestions = json.loads(cleaned)
 
-        logger.info(f"✅ {len(suggestions)} cursos sugeridos por IA")
+        logger.info(f"✅ {len(suggestions)} cursos sugeridos por IA (en orden pedagógico)")
         return suggestions
 
     except Exception as e:
         logger.error(f"❌ Error generando sugerencias con IA: {e}")
+        # Fallback con orden pedagógico
         return [
-            {"title": f"Fundamentos de {bootcamp_title}", "description": "Conceptos básicos", "domain": "generic", "difficulty_level": "beginner"},
-            {"title": f"{bootcamp_title} Avanzado", "description": "Técnicas avanzadas", "domain": "generic", "difficulty_level": "intermediate"},
-            {"title": f"Proyecto de {bootcamp_title}", "description": "Aplicación práctica", "domain": "generic", "difficulty_level": "advanced"}
+            {"title": f"Fundamentos de {bootcamp_title}", "description": "Conceptos básicos y fundamentos esenciales", "domain": "generic", "difficulty_level": "beginner"},
+            {"title": f"{bootcamp_title} Intermedio", "description": "Técnicas y aplicaciones prácticas", "domain": "generic", "difficulty_level": "intermediate"},
+            {"title": f"Proyecto de {bootcamp_title}", "description": "Integración y aplicación profesional", "domain": "generic", "difficulty_level": "advanced"}
         ]
 
 
