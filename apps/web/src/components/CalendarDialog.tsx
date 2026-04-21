@@ -58,6 +58,20 @@ function toDateInputFormat(date: Date): string {
     return date.toISOString().split('T')[0]
 }
 
+// ✅ Calcular semanas según intensidad basado en durationWeeks del bootcamp
+function calcularSemanasPorIntensidad(baseWeeks: number, intensity: IntensityMode): number {
+    switch (intensity) {
+        case 'intensive':
+            return baseWeeks           // 40h/sem → misma duración
+        case 'partial':
+            return baseWeeks * 2       // 20h/sem → doble duración
+        case 'weekend':
+            return baseWeeks * 5       // 8h/sem → 5x duración
+        default:
+            return baseWeeks
+    }
+}
+
 export default function CalendarDialog({ isOpen, onClose, bootcampTitle, durationWeeks, totalHours, modules }: CalendarDialogProps) {
     const [startDate, setStartDate] = useState<string>(() => {
         const tomorrow = new Date()
@@ -66,13 +80,6 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
     })
     const [intensity, setIntensity] = useState<IntensityMode>('intensive')
     const [generating, setGenerating] = useState(false)
-
-    // ✅ SEMANAS FIJAS según intensidad
-    const semanasPorIntensidad: Record<IntensityMode, number> = {
-        'intensive': 16,
-        'partial': 32,
-        'weekend': 80
-    }
 
     const handleIntensityChange = (newIntensity: IntensityMode) => {
         setIntensity(newIntensity)
@@ -111,7 +118,9 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
 
     const intensityOption = INTENSITY_OPTIONS.find(o => o.id === intensity) || INTENSITY_OPTIONS[0]
     const hoursPerWeek = intensityOption.daysPerWeek * intensityOption.hoursPerDay
-    const totalWeeksWithIntensity = semanasPorIntensidad[intensity]
+
+    // ✅ Cálculo dinámico basado en durationWeeks del bootcamp
+    const totalWeeksWithIntensity = calcularSemanasPorIntensidad(durationWeeks, intensity)
 
     const startDateObj = normalizeDate(startDate)
     const formattedStartDate = formatDateLocal(startDateObj)
@@ -171,8 +180,8 @@ export default function CalendarDialog({ isOpen, onClose, bootcampTitle, duratio
                     {puedeMostrarResumen && (
                         <div style={styles.summary}>
                             <p><strong>📊 Resumen:</strong></p>
-                            <p>• Duración total: <strong>{totalWeeksWithIntensity} semanas</strong></p>
-                            <p>• Intensidad: <strong>{intensityOption.name}</strong></p>
+                            <p>• Duración base: <strong>{durationWeeks} semanas</strong></p>
+                            <p>• Con intensidad {intensityOption.name}: <strong>{totalWeeksWithIntensity} semanas</strong></p>
                             <p>• Horas por semana: <strong>{hoursPerWeek}h</strong></p>
                             <p>• Total de horas: <strong>{totalHours}h</strong></p>
                             <p>• 📅 Fecha de Inicio: <strong>{formattedStartDate}</strong></p>
