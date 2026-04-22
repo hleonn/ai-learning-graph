@@ -773,17 +773,19 @@ export default function BootcampCreator() {
             const moduleWeeks: number[] = []
             for (let i = 0; i < weights.length; i++) {
                 const weight = weights[i]
-                let weeks = Math.round((weight.weight / totalWeight) * durationWeeks)
+                let weeks = Math.max(1, Math.round((weight.weight / totalWeight) * durationWeeks))
                 if (i === weights.length - 1) {
-                    weeks = remainingWeeks // El último módulo toma las semanas restantes
+                    weeks = Math.max(1, remainingWeeks)
+                }else {
+                    weeks = Math.min(weeks, remainingWeeks - (weights.length - i - 1))
                 }
-                moduleWeeks.push(Math.max(1, weeks))
+                moduleWeeks.push(weeks)
                 remainingWeeks -= weeks
             }
 
             // Ajustar para que la suma sea exactamente durationWeeks
             const totalAssignedWeeks = moduleWeeks.reduce((a, b) => a + b, 0)
-            if (totalAssignedWeeks !== durationWeeks) {
+            if (totalAssignedWeeks !== durationWeeks && moduleWeeks.length > 0) {
                 const diff = durationWeeks - totalAssignedWeeks
                 moduleWeeks[moduleWeeks.length - 1] += diff
             }

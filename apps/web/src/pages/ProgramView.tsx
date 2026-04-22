@@ -5,7 +5,6 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { getProgram, getCourses, type Program } from '../lib/api'
 import { generateAndDownloadBootcampPDF } from '../utils/generateBootcampPDF'
 import CalendarDialog from '../components/CalendarDialog'
-import BloomProgressChart from '../components/BloomProgressChart'
 
 interface Course {
     id: string
@@ -185,10 +184,6 @@ export default function ProgramView() {
     const totalWeeks = program.duration_weeks || 16
     const hoursPerWeek = Math.round(totalHours / totalWeeks)
 
-    // Calcular total de nodos y edges (si están disponibles en los módulos)
-    const totalNodes = program.modules?.reduce((sum, m) => sum + (m.nodeCount || 0), 0) || 0
-    const totalEdges = program.modules?.reduce((sum, m) => sum + (m.edgeCount || 0), 0) || 0
-
     const handleGenerateIntensityPDF = async (intensity: 'intensive' | 'partial' | 'weekend') => {
         if (!program) return
 
@@ -322,17 +317,6 @@ export default function ProgramView() {
                             ))}
                         </div>
                     </div>
-                )}
-
-                {/* ✅ NUEVO: Gráfico de Avance y Taxonomía de Bloom */}
-                {program.modules && program.modules.length > 0 && (
-                    <BloomProgressChart
-                        modules={program.modules}
-                        durationWeeks={program.duration_weeks || 16}
-                        totalHours={totalHours}
-                        totalNodes={totalNodes}
-                        totalEdges={totalEdges}
-                    />
                 )}
 
                 <div style={styles.section}>

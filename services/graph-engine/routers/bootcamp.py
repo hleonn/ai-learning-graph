@@ -18,6 +18,16 @@ from db.client import supabase
 router = APIRouter(prefix="/bootcamp", tags=["bootcamp"])
 
 
+# ========== FUNCIÓN DE NORMALIZACIÓN PARA EVITAR DUPLICADOS ==========
+def normalize_title(title: str) -> str:
+    """Normaliza títulos para comparación semántica"""
+    title = title.lower().strip()
+    # Palabras comunes que no cambian el significado del curso
+    stop_words = ['fundamentos', 'de', 'para', 'y', 'con', 'en', 'del', 'la', 'el', 'los', 'las', 'un', 'una', 'introduccion', 'a']
+    words = [w for w in title.split() if w not in stop_words]
+    return ' '.join(sorted(words))
+
+
 @router.post("/recommend")
 async def recommend_bootcamp(request: BootcampRecommendationRequest) -> BootcampRecommendationResponse:
     """Recomienda estructura de bootcamp basada en cursos existentes con IA"""
@@ -47,22 +57,42 @@ async def recommend_bootcamp(request: BootcampRecommendationRequest) -> Bootcamp
         num_suggestions=5
     )
 
-    # 3. Verificar qué cursos sugeridos faltan y cuáles ya existen
-    existing_titles = [c.get('title', '').lower() for c in existing_courses]
+    # 3. Verificar qué cursos sugeridos faltan y cuáles ya existen (CON NORMALIZACIÓN)
+    existing_normalized = [normalize_title(c.get('title', '')) for c in existing_courses]
 
     for suggested in suggested_courses:
-        suggested_title = suggested.get('title', '').lower()
-        if suggested_title not in existing_titles:
-            # Verificar si el curso ya existe en la base de datos (por título exacto)
-            existing_course_res = supabase.table("courses").select("id, title, domain, difficulty_level").eq("title", suggested.get('title')).execute()
-            if existing_course_res.data:
-                # El curso ya existe, usarlo
-                missing_courses.append(existing_course_res.data[0])
-                logger.info(f"Curso existente encontrado por título: {suggested.get('title')}")
-            else:
-                # El curso no existe, sugerirlo para creación
-                missing_courses.append(suggested)
-                logger.info(f"Nuevo curso sugerido para creación: {suggested.get('title')}")
+        suggested_title = suggested.get('title', '')
+        suggested_norm = normalize_title(suggested_title)
+
+        # Verificar coincidencia exacta normalizada
+        if suggested_norm in existing_normalized:
+            logger.info(f"Curso ya existe (normalizado): '{suggested_title}'")
+            continue
+
+        # Verificar solapamiento semántico (>60% de palabras coinciden)
+        suggested_words = set(suggested_norm.split())
+        is_duplicate = False
+
+        for i, ex_norm in enumerate(existing_normalized):
+            ex_words = set(ex_norm.split())
+            if suggested_words and ex_words:
+                overlap = len(suggested_words & ex_words) / max(len(suggested_words), len(ex_words))
+                if overlap > 0.6:
+                    logger.info(f"Curso similar existente: '{suggested_title}' ≈ '{existing_courses[i].get('title')}' (overlap: {overlap:.2f})")
+                    is_duplicate = True
+                    break
+
+        if is_duplicate:
+            continue
+
+        # Verificar si el curso ya existe en la base de datos (por título exacto)
+        existing_course_res = supabase.table("courses").select("id, title, domain, difficulty_level").eq("title", suggested_title).execute()
+        if existing_course_res.data:
+            missing_courses.append(existing_course_res.data[0])
+            logger.info(f"Curso existente encontrado por título: {suggested_title}")
+        else:
+            missing_courses.append(suggested)
+            logger.info(f"Nuevo curso sugerido para creación: {suggested_title}")
 
     # 4. Analizar relevancia de cursos existentes (si hay cursos seleccionados)
     if existing_courses:
@@ -341,6 +371,7 @@ async def get_bootcamp(bootcamp_id: str):
         raise HTTPException(status_code=404, detail="Bootcamp no encontrado")
 
     return result.data[0]
+
 
 @router.post("/programs")
 async def save_bootcamp_as_program(program_data: dict):
