@@ -102,19 +102,27 @@ const MODULE_COLORS = [
 
 // ========== GENERAR DIAGRAMA DE GANTT ==========
 // ========== GENERAR DIAGRAMA DE GANTT ==========
+// ========== GENERAR DIAGRAMA DE GANTT ==========
 function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: number[]): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
+
+    // Calcular ancho total basado en totalWeeks (escala fija)
+    const totalWidth = 760  // Ancho total del SVG
+    const scale = totalWidth / totalWeeks
 
     let currentX = 0
     const modulePositions: { x: number; width: number; mod: Module; weeks: number; color: string }[] = []
 
     sortedModules.forEach((mod, idx) => {
         const weeks = moduleWeeks[idx]
-        const width = (weeks / totalWeeks) * 780  // ← 780 para dejar margen derecho
+        let width = weeks * scale
+
+        // Ancho mínimo para que quepa el texto
+        width = Math.max(width, 140)
 
         modulePositions.push({
             x: currentX,
-            width: Math.max(width, 120),  // ← Ancho mínimo para textos cortos
+            width: width,
             mod,
             weeks,
             color: MODULE_COLORS[idx % MODULE_COLORS.length]
@@ -123,10 +131,16 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
         currentX += width
     })
 
-    // Ajustar el último módulo para que no exceda 780
-    const lastModule = modulePositions[modulePositions.length - 1]
-    if (lastModule.x + lastModule.width > 780) {
-        lastModule.width = 780 - lastModule.x
+    // Si el último módulo se sale, ajustar la escala de todos
+    const totalUsedWidth = currentX
+    if (totalUsedWidth > totalWidth) {
+        const adjustmentFactor = totalWidth / totalUsedWidth
+        currentX = 0
+        modulePositions.forEach(item => {
+            item.width = item.width * adjustmentFactor
+            item.x = currentX
+            currentX += item.width
+        })
     }
 
     let labelsHTML = ''
@@ -142,50 +156,55 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
     let barsHTML = ''
     modulePositions.forEach((item) => {
         const bgColor = `${item.color}15`
-        const words = item.mod.name.split(' ')
-        let line1 = ''
-        let line2 = ''
+        const name = item.mod.name
 
-        if (words.length > 4) {
-            const mid = Math.ceil(words.length / 2)
-            line1 = words.slice(0, mid).join(' ')
-            line2 = words.slice(mid).join(' ')
-        } else if (words.length === 4) {
-            line1 = words.slice(0, 2).join(' ')
-            line2 = words.slice(2).join(' ')
-        } else {
-            line1 = item.mod.name
-            line2 = ''
+        // Dividir en líneas de máximo 22 caracteres
+        const words = name.split(' ')
+        const lines: string[] = []
+        let currentLine = ''
+
+        words.forEach(word => {
+            if ((currentLine + ' ' + word).length <= 24) {
+                currentLine = currentLine ? currentLine + ' ' + word : word
+            } else {
+                lines.push(currentLine)
+                currentLine = word
+            }
+        })
+        if (currentLine) lines.push(currentLine)
+
+        // Máximo 3 líneas
+        const displayLines = lines.slice(0, 3)
+        if (displayLines.length === 3 && lines.length > 3) {
+            displayLines[2] = displayLines[2].substring(0, 20) + '...'
         }
 
-        // Truncar si es muy largo para el ancho disponible
-        const maxChars = Math.floor(item.width / 7)
-        if (line1.length > maxChars) line1 = line1.substring(0, maxChars - 3) + '...'
-        if (line2.length > maxChars) line2 = line2.substring(0, maxChars - 3) + '...'
+        const y = 4 + (item.mod.order - 1) * 58
+        const barHeight = 46
 
-        const y = 4 + (item.mod.order - 1) * 58  // ← Más altura entre barras
-        const barHeight = 46  // ← Barras más altas
+        // Calcular posición Y para centrar el texto
+        const startY = y + 20 - (displayLines.length - 1) * 6
 
-        // Centrar texto verticalmente
-        const textY1 = line2 ? y + 20 : y + 28
-        const textY2 = y + 36
+        let textElements = ''
+        displayLines.forEach((line, i) => {
+            textElements += `<text x="${item.x + 8}" y="${startY + i * 14}" font-family="DM Sans, sans-serif" font-size="9" fill="#1a1f36" font-weight="500">${line}</text>`
+        })
 
         barsHTML += `
-            <rect x="${item.x}" y="${y}" width="${item.width}" height="${barHeight}" rx="8" fill="${bgColor}" stroke="${item.color}" stroke-width="1.5"/>
-            <text x="${item.x + 10}" y="${textY1}" font-family="DM Sans, sans-serif" font-size="10" fill="#1a1f36" font-weight="500">${line1}</text>
-            ${line2 ? `<text x="${item.x + 10}" y="${textY2}" font-family="DM Sans, sans-serif" font-size="10" fill="#1a1f36" font-weight="500">${line2}</text>` : ''}
+            <rect x="${item.x}" y="${y}" width="${item.width - 2}" height="${barHeight}" rx="8" fill="${bgColor}" stroke="${item.color}" stroke-width="1.5"/>
+            ${textElements}
         `
     })
 
     let xAxisHTML = ''
     for (let i = 0; i <= totalWeeks; i++) {
-        const x = (i / totalWeeks) * 780
+        const x = i * scale
         xAxisHTML += `<text x="${x}" y="282" font-family="DM Sans, sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
     }
 
     let gridHTML = ''
     for (let i = 0; i <= totalWeeks; i++) {
-        const x = (i / totalWeeks) * 780
+        const x = i * scale
         gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="268" stroke="#e8edf5" stroke-width="1"/>`
     }
 
@@ -197,7 +216,7 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
             ${labelsHTML}
         </div>
         <div class="gantt-chart-area">
-            <svg class="gantt-svg" viewBox="0 0 780 ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
+            <svg class="gantt-svg" viewBox="0 0 ${totalWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
                 <g stroke="#e8edf5" stroke-width="1">
                     ${gridHTML}
                 </g>
