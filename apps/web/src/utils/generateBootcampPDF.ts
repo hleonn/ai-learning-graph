@@ -107,6 +107,7 @@ const MODULE_COLORS = [
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
+// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 function generateBloomProgressChart(modules: Module[], totalWeeks: number): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const moduleCount = sortedModules.length
@@ -123,8 +124,8 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
     })
 
     const svgWidth = 800
-    const marginTop = 40      // ← Espacio extra en la parte superior
-    const chartTop = 20       // ← Y=0 estará 40px más abajo del borde superior
+    const marginTop = 60      // ← AUMENTADO DE 40 A 60
+    const chartTop = 20
     const chartBottom = 240
     const chartHeight = chartBottom - chartTop
 
@@ -173,8 +174,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
 
             <!-- SVG del gráfico -->
             <div class="bloom-svg-container">
-                <!-- ✅ viewBox con Y negativo para bajar el origen visual -->
-                <svg viewBox="0 -${marginTop} ${svgWidth} 310" class="bloom-main-svg">
+                <svg viewBox="0 -${marginTop} ${svgWidth} 330" class="bloom-main-svg">
                     <defs>
                         <linearGradient id="areaGrad" x1="0" y1="0" x2="1" y2="0">
                             ${moduleData.map((mod, idx) => `
@@ -244,7 +244,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
             </div>
 
             <!-- Eje Y derecho - Taxonomía Bloom -->
-            <div class="bloom-y-axis-right" style="padding-top: ${marginTop}px;">
+            <div class="bloom-y-axis-right" style="padding-top: ${marginTop}">
                 ${bloomLevels.map(level => `
                     <div class="bloom-item">
                         <span class="bloom-level">${level}</span>
