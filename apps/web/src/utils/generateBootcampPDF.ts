@@ -26,8 +26,6 @@ interface BootcampData {
     end_date?: string
 }
 
-// ========== FUNCIONES UTC PARA MANEJO CORRECTO DE FECHAS ==========
-
 function normalizeDate(dateInput: string | Date): Date {
     if (typeof dateInput === 'string') {
         const [year, month, day] = dateInput.split('-').map(Number)
@@ -61,8 +59,6 @@ function getDefaultStartDate(): Date {
     return nextMonday
 }
 
-// ========== FUNCIONES AUXILIARES ==========
-
 function calculateModuleWeeksDistribution(modules: Module[], totalWeeks: number): number[] {
     const totalWeight = modules.reduce((sum, m) => sum + m.weight, 0)
     const moduleWeeks: number[] = []
@@ -95,24 +91,10 @@ function getComplexityLevel(complexity: number): string {
     return 'Introducción'
 }
 
-// Colores para los módulos
 const MODULE_COLORS = [
     '#5b8dee', '#9b72e8', '#f07a3a', '#3bbf8c', '#2ab8c8', '#e85d75', '#a78bfa'
 ]
 
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 function generateBloomProgressChart(modules: Module[], totalWeeks: number): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const moduleCount = sortedModules.length
@@ -129,10 +111,29 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
     })
 
     const svgWidth = 800
+    // ── VALORES CLAVE ──────────────────────────────────────────────
+    // El SVG tiene viewBox="0 -marginTop svgWidth 330"
+    // El área del gráfico va de chartTop(20) a chartBottom(240)
+    // El eje Y necesita alinearse con esos puntos dentro del SVG.
+    //
+    // La altura total del SVG renderizado = 330 + marginTop (en px virtuales).
+    // Los puntos de datos están entre y=20 y y=240 dentro del viewBox,
+    // por lo que dentro del SVG completo (incluyendo el offset -marginTop)
+    // están entre (marginTop + 20) y (marginTop + 240) desde el top del SVG.
+    //
+    // Para que el eje izquierdo se alinee necesitamos:
+    //   paddingTop  = proporción de (marginTop + chartTop)  sobre totalSVGHeight
+    //   paddingBot  = proporción de (330 - chartBottom)     sobre totalSVGHeight
+    // ──────────────────────────────────────────────────────────────
     const marginTop = 60
     const chartTop = 20
     const chartBottom = 240
     const chartHeight = chartBottom - chartTop
+    const totalSVGVirtualHeight = 330 + marginTop   // 390
+
+    // Estos porcentajes se aplican como padding en % sobre la altura del contenedor flex
+    const paddingTopPct    = ((marginTop + chartTop)       / totalSVGVirtualHeight) * 100   // ~20.5%
+    const paddingBottomPct = ((330 - chartBottom)          / totalSVGVirtualHeight) * 100   // ~23.1%
 
     const points = moduleData.map((mod, idx) => {
         const x = 40 + (idx / (moduleCount - 1 || 1)) * (svgWidth - 80)
@@ -154,7 +155,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
 
     const bloomLevels = ['Recordar y Comprender', 'Comprender y Aplicar', 'Aplicar y Analizar', 'Analizar y Evaluar', 'Evaluar y Crear']
 
-    // Construir HTML por partes para evitar anidamiento complejo
+    // ── Eje izquierdo: módulos en orden inverso (mayor arriba) ─────
     let modulesHTML = ''
     moduleData.slice().reverse().forEach(mod => {
         modulesHTML += `
@@ -243,10 +244,13 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         </div>
         
         <div class="bloom-chart-layout">
-            <div class="bloom-y-axis-left" style="padding-top: ${marginTop}px;">
+
+            <!-- EJE IZQUIERDO: módulos -->
+            <div class="bloom-y-axis-left" style="padding-top: ${paddingTopPct.toFixed(2)}%; padding-bottom: ${paddingBottomPct.toFixed(2)}%;">
                 ${modulesHTML}
             </div>
 
+            <!-- GRÁFICO SVG -->
             <div class="bloom-svg-container">
                 <svg viewBox="0 -${marginTop} ${svgWidth} 330" class="bloom-main-svg">
                     <defs>
@@ -261,11 +265,9 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
                     <g stroke="#e8edf5" stroke-width="1">
                         ${gridVerticalHTML}
                     </g>
-
                     <g stroke="#e8edf5" stroke-width="1" stroke-dasharray="3,4">
                         ${gridHorizontalHTML}
                     </g>
-
                     <g stroke="#c5cde0" stroke-width="1.2" stroke-dasharray="4,4">
                         ${moduleLinesHTML}
                     </g>
@@ -284,7 +286,8 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
                 </svg>
             </div>
 
-            <div class="bloom-y-axis-right" style="padding-top: ${marginTop};">
+            <!-- EJE DERECHO: Bloom -->
+            <div class="bloom-y-axis-right" style="padding-top: ${paddingTopPct.toFixed(2)}%; padding-bottom: ${paddingBottomPct.toFixed(2)}%;">
                 ${bloomHTML}
             </div>
         </div>
@@ -310,7 +313,6 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
 }
 
 
-// ========== ESTILOS CSS PARA LA GRÁFICA ==========
 const BLOOM_CHART_STYLES = `
 .bloom-chart-container {
     background: white;
@@ -347,17 +349,29 @@ const BLOOM_CHART_STYLES = `
 .bloom-chart-layout {
     display: flex;
     gap: 0;
-    margin-top: 8px;
+    align-items: stretch;   /* ← ambos ejes estiran al alto del SVG */
 }
 
-.bloom-y-axis-left {
+/* ── Estilos compartidos por ambos ejes ── */
+.bloom-y-axis-left,
+.bloom-y-axis-right {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    /* La altura la da el SVG; padding-top/bottom vienen como inline style */
+    box-sizing: border-box;
+}
+
+.bloom-y-axis-left {
     min-width: 90px;
     padding-right: 12px;
-    height: 210px;
-    margin-top: 20px;
+    align-items: flex-end;
+}
+
+.bloom-y-axis-right {
+    min-width: 140px;
+    padding-left: 12px;
+    align-items: flex-start;
 }
 
 .bloom-y-item {
@@ -381,21 +395,12 @@ const BLOOM_CHART_STYLES = `
 
 .bloom-svg-container {
     flex: 1;
+    min-width: 0;
 }
 
 .bloom-main-svg {
     width: 100%;
     display: block;
-}
-
-.bloom-y-axis-right {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-width: 140px;
-    padding-left: 12px;
-    height: 210px;
-    margin-top: 20px;
 }
 
 .bloom-item {
@@ -463,21 +468,6 @@ const BLOOM_CHART_STYLES = `
     background: #e4e8f0;
 }
 
-.bloom-legend {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    color: #6b7394;
-}
-
-.bloom-legend-line {
-    width: 22px;
-    height: 1px;
-    border-top: 2px dashed #6b7394;
-    display: inline-block;
-}
-
 @media print {
     .bloom-chart-container {
         box-shadow: none;
@@ -493,7 +483,6 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
     const hoursPerWeek = Math.round(totalHours / bootcamp.duration_weeks)
     const createdDate = formatDateUTC(normalizeDate(bootcamp.created_at))
 
-    // Normalizar fechas UTC
     const startDate = bootcamp.start_date ? normalizeDate(bootcamp.start_date) : getDefaultStartDate()
     const endDate = bootcamp.end_date ? normalizeDate(bootcamp.end_date) : calculateEndDate(startDate, bootcamp.duration_weeks)
 
@@ -611,11 +600,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
     <title>${bootcamp.title} - Programa del Bootcamp</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -646,10 +631,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             transition: all 0.2s ease;
         }
 
-        .action-btn:hover {
-            background: #f0f0f0;
-            border-color: #999;
-        }
+        .action-btn:hover { background: #f0f0f0; border-color: #999; }
 
         .program {
             max-width: 1000px;
@@ -666,25 +648,10 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             color: white;
         }
 
-        .header h1 {
-            font-size: 2.2rem;
-            margin-bottom: 10px;
-            font-weight: 700;
-        }
+        .header h1 { font-size: 2.2rem; margin-bottom: 10px; font-weight: 700; }
+        .header h2 { font-size: 1rem; font-weight: 400; opacity: 0.9; margin-bottom: 20px; }
 
-        .header h2 {
-            font-size: 1rem;
-            font-weight: 400;
-            opacity: 0.9;
-            margin-bottom: 20px;
-        }
-
-        .badge-container {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 15px;
-        }
+        .badge-container { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px; }
 
         .badge {
             background: rgba(255,255,255,0.15);
@@ -695,11 +662,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             border: 1px solid rgba(255,255,255,0.2);
         }
 
-        .date-range {
-            display: flex;
-            gap: 20px;
-            margin-top: 10px;
-        }
+        .date-range { display: flex; gap: 20px; margin-top: 10px; }
 
         .date-badge {
             background: rgba(255,255,255,0.2);
@@ -716,57 +679,17 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             border-bottom: 1px solid #e0e0e0;
         }
 
-        .stat {
-            text-align: center;
-        }
+        .stat { text-align: center; }
+        .stat-number { font-size: 2rem; font-weight: 700; color: #1E3A5F; margin-bottom: 5px; }
+        .stat-label { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        .stat-number {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #1E3A5F;
-            margin-bottom: 5px;
-        }
+        .description-section { padding: 25px 30px; background: #fff; border-bottom: 1px solid #e0e0e0; }
+        .description-section h3 { color: #1E3A5F; margin-bottom: 12px; font-size: 1.2rem; }
+        .description-text { color: #333; line-height: 1.6; font-size: 0.9rem; }
 
-        .stat-label {
-            font-size: 0.7rem;
-            color: #555;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .description-section {
-            padding: 25px 30px;
-            background: #fff;
-            border-bottom: 1px solid #e0e0e0;
-        }
-
-        .description-section h3 {
-            color: #1E3A5F;
-            margin-bottom: 12px;
-            font-size: 1.2rem;
-        }
-
-        .description-text {
-            color: #333;
-            line-height: 1.6;
-            font-size: 0.9rem;
-        }
-
-        .modules-section {
-            padding: 25px 30px;
-        }
-
-        .modules-section h3 {
-            color: #1E3A5F;
-            margin-bottom: 20px;
-            font-size: 1.3rem;
-        }
-
-        .modules-container {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
+        .modules-section { padding: 25px 30px; }
+        .modules-section h3 { color: #1E3A5F; margin-bottom: 20px; font-size: 1.3rem; }
+        .modules-container { display: flex; flex-direction: column; gap: 20px; }
 
         .module-card {
             border: 1px solid #e0e0e0;
@@ -776,10 +699,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             transition: transform 0.2s;
         }
 
-        .module-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
+        .module-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 
         .module-header {
             display: flex;
@@ -800,67 +720,17 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             letter-spacing: 1px;
         }
 
-        .module-weight {
-            font-size: 0.8rem;
-            color: #666;
-            background: #f0f0f0;
-            padding: 4px 10px;
-            border-radius: 20px;
-        }
+        .module-weight { font-size: 0.8rem; color: #666; background: #f0f0f0; padding: 4px 10px; border-radius: 20px; }
+        .module-title { font-size: 1.2rem; font-weight: 700; color: #1E3A5F; margin-bottom: 8px; }
+        .module-description { color: #555; font-size: 0.85rem; line-height: 1.5; margin-bottom: 15px; }
 
-        .module-title {
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: #1E3A5F;
-            margin-bottom: 8px;
-        }
+        .module-metrics { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 15px; }
+        .metric { flex: 1; min-width: 120px; }
+        .metric-label { display: block; font-size: 0.7rem; color: #888; margin-bottom: 4px; }
+        .metric-value { display: block; font-size: 1rem; font-weight: 600; color: #1E3A5F; margin-bottom: 4px; }
 
-        .module-description {
-            color: #555;
-            font-size: 0.85rem;
-            line-height: 1.5;
-            margin-bottom: 15px;
-        }
-
-        .module-metrics {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin-bottom: 15px;
-        }
-
-        .metric {
-            flex: 1;
-            min-width: 120px;
-        }
-
-        .metric-label {
-            display: block;
-            font-size: 0.7rem;
-            color: #888;
-            margin-bottom: 4px;
-        }
-
-        .metric-value {
-            display: block;
-            font-size: 1rem;
-            font-weight: 600;
-            color: #1E3A5F;
-            margin-bottom: 4px;
-        }
-
-        .progress-bar {
-            height: 6px;
-            background: #e0e0e0;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: #1D9E75;
-            border-radius: 3px;
-        }
+        .progress-bar { height: 6px; background: #e0e0e0; border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; background: #1D9E75; border-radius: 3px; }
 
         .prerequisites {
             font-size: 0.75rem;
@@ -870,124 +740,35 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             margin-top: 10px;
         }
 
-        .prerequisites strong {
-            color: #1E3A5F;
-        }
+        .prerequisites strong { color: #1E3A5F; }
 
         ${BLOOM_CHART_STYLES}
 
-        .weekly-distribution {
-            padding: 25px 30px;
-            background: #f8f8f8;
-            border-top: 1px solid #e0e0e0;
-        }
+        .weekly-distribution { padding: 25px 30px; background: #f8f8f8; border-top: 1px solid #e0e0e0; }
+        .weekly-distribution h3 { color: #1E3A5F; margin-bottom: 20px; font-size: 1.2rem; }
 
-        .weekly-distribution h3 {
-            color: #1E3A5F;
-            margin-bottom: 20px;
-            font-size: 1.2rem;
-        }
+        .weekly-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
 
-        .weekly-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 12px;
-        }
+        .week-card { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; text-align: center; }
+        .week-card.current-week { border: 2px solid #1D9E75; background: #E1F5EE; }
+        .week-number { font-weight: 700; color: #1E3A5F; font-size: 0.8rem; margin-bottom: 5px; }
+        .week-dates { font-size: 0.6rem; color: #666; margin: 4px 0; }
+        .week-hours { font-size: 0.9rem; font-weight: 600; color: #1D9E75; }
+        .week-topics { font-size: 0.65rem; color: #888; margin-top: 5px; }
 
-        .week-card {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 10px;
-            text-align: center;
-        }
-
-        .week-card.current-week {
-            border: 2px solid #1D9E75;
-            background: #E1F5EE;
-        }
-
-        .week-number {
-            font-weight: 700;
-            color: #1E3A5F;
-            font-size: 0.8rem;
-            margin-bottom: 5px;
-        }
-
-        .week-dates {
-            font-size: 0.6rem;
-            color: #666;
-            margin: 4px 0;
-        }
-
-        .week-hours {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #1D9E75;
-        }
-
-        .week-topics {
-            font-size: 0.65rem;
-            color: #888;
-            margin-top: 5px;
-        }
-
-        .footer {
-            background: #1E3A5F;
-            color: white;
-            padding: 20px 30px;
-            text-align: center;
-        }
-
-        .footer h3 {
-            font-size: 1.1rem;
-            margin-bottom: 10px;
-        }
-
-        .footer-info {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin: 10px 0;
-            font-size: 0.75rem;
-            opacity: 0.8;
-        }
-
-        .footer small {
-            font-size: 0.65rem;
-            opacity: 0.6;
-        }
+        .footer { background: #1E3A5F; color: white; padding: 20px 30px; text-align: center; }
+        .footer h3 { font-size: 1.1rem; margin-bottom: 10px; }
+        .footer-info { display: flex; justify-content: center; gap: 20px; margin: 10px 0; font-size: 0.75rem; opacity: 0.8; }
+        .footer small { font-size: 0.65rem; opacity: 0.6; }
 
         @media print {
-            @page {
-                size: letter;
-                margin: 0.5cm;
-            }
-            body {
-                background: white;
-                padding: 0;
-                margin: 0;
-            }
-            .action-container {
-                display: none;
-            }
-            .program {
-                max-width: 100%;
-                box-shadow: none;
-                border-radius: 0;
-            }
-            .module-card {
-                break-inside: avoid;
-                page-break-inside: avoid;
-            }
-            .weekly-grid {
-                break-inside: avoid;
-            }
-            .badge {
-                background: #f0f0f0;
-                color: black;
-                border: 1px solid #999;
-            }
+            @page { size: letter; margin: 0.5cm; }
+            body { background: white; padding: 0; margin: 0; }
+            .action-container { display: none; }
+            .program { max-width: 100%; box-shadow: none; border-radius: 0; }
+            .module-card { break-inside: avoid; page-break-inside: avoid; }
+            .weekly-grid { break-inside: avoid; }
+            .badge { background: #f0f0f0; color: black; border: 1px solid #999; }
         }
     </style>
 </head>
