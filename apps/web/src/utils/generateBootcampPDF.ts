@@ -103,6 +103,7 @@ const MODULE_COLORS = [
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
+// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 function generateBloomProgressChart(modules: Module[], totalWeeks: number): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const moduleCount = sortedModules.length
@@ -119,15 +120,15 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         }
     })
 
-    // ✅ Valores ajustados para mejor visualización
-    const svgWidth = 780  // Un poco menos para dar margen
-    const chartTop = 50   // Bajado significativamente
-    const chartBottom = 240
+    // ✅ Valores ajustados - ORIGEN MÁS BAJO
+    const svgWidth = 780
+    const chartTop = 70      // ← AUMENTADO DE 50 A 70
+    const chartBottom = 250  // ← AUMENTADO DE 240 A 250
     const chartHeight = chartBottom - chartTop
 
     // Generar puntos para la curva
     const points = moduleData.map((mod, idx) => {
-        const x = 20 + (idx / (moduleCount - 1 || 1)) * (svgWidth - 40)  // Margen horizontal
+        const x = 20 + (idx / (moduleCount - 1 || 1)) * (svgWidth - 40)
         const y = chartBottom - (mod.progressPercent / 100) * chartHeight
         return { x, y }
     })
@@ -173,7 +174,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
 
             <!-- SVG del gráfico -->
             <div class="bloom-svg-container">
-                <svg viewBox="0 0 800 310" class="bloom-main-svg">
+                <svg viewBox="0 0 800 330" class="bloom-main-svg">
                     <defs>
                         <linearGradient id="areaGrad" x1="0" y1="0" x2="1" y2="0">
                             ${moduleData.map((mod, idx) => `
@@ -220,12 +221,10 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         const isFirst = idx === 0
         const isLast = idx === moduleCount - 1
 
-        // ✅ Ajuste agresivo para burbujas
         let translateX = p.x - 38
         if (isFirst) translateX = p.x + 5
         if (isLast) translateX = p.x - 80
 
-        // Ajuste vertical para que no se corte
         const translateY = Math.max(p.y - 45, 5)
 
         return `
