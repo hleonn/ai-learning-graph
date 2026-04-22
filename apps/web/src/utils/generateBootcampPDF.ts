@@ -356,8 +356,8 @@ const BLOOM_CHART_STYLES = `
     justify-content: space-between;
     min-width: 90px;
     padding-right: 12px;
-    height: 210px;
-    margin-top: 20px;
+    // height: 210px;
+    // margin-top: 20px;
 }
 
 .bloom-y-item {
@@ -394,8 +394,8 @@ const BLOOM_CHART_STYLES = `
     justify-content: space-between;
     min-width: 140px;
     padding-left: 12px;
-    height: 210px;
-    margin-top: 20px;
+    // height: 210px;
+    // margin-top: 20px;
 }
 
 .bloom-item {
