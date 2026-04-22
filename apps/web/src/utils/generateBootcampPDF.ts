@@ -101,19 +101,12 @@ const MODULE_COLORS = [
 ]
 
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
-function generateBloomProgressChart(modules: Module[], totalWeeks: number): string {
+function generateBloomProgressChart(
+    modules: Module[],
+    totalWeeks: number,
+    startDate: string,
+    endDate: string
+): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const moduleCount = sortedModules.length
 
@@ -237,7 +230,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style="margin-right: 8px;">
                     <polyline points="1,14 5,8 9,10 13,4 17,6" stroke="#5b8dee" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
                 </svg>
-                <span>Avance y Taxonomía de Bloom</span>
+                <span>Avance Programado del ${startDate} al ${endDate}</span>
             </div>
             <div class="bloom-chart-subtitle">Progresión pedagógica por módulo</div>
         </div>
@@ -1038,7 +1031,13 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
         ${generateModulesHTML()}
     </div>
 
-    ${generateBloomProgressChart(bootcamp.modules, bootcamp.duration_weeks)}
+    ${generateBloomProgressChart(
+        bootcamp.modules, 
+        bootcamp.duration_weeks,
+        formattedStartDate,
+        formattedEndDate
+        )}
+        
 
     ${generateWeeklyDistribution()}
 
