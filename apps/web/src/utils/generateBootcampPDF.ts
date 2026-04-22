@@ -101,30 +101,33 @@ const MODULE_COLORS = [
 ]
 
 // ========== GENERAR DIAGRAMA DE GANTT ==========
+// ========== GENERAR DIAGRAMA DE GANTT ==========
 function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: number[]): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
 
     let currentX = 0
-    const modulePositions: { x: number; width: number; mod: Module; weeks: number; color: string; progress: number }[] = []
+    const modulePositions: { x: number; width: number; mod: Module; weeks: number; color: string }[] = []
 
-    let cumulativeWeight = 0
     sortedModules.forEach((mod, idx) => {
-        cumulativeWeight += mod.weight
-        const progressPercent = Math.round(cumulativeWeight * 100)
         const weeks = moduleWeeks[idx]
-        const width = (weeks / totalWeeks) * 800
+        const width = (weeks / totalWeeks) * 780  // ← 780 para dejar margen derecho
 
         modulePositions.push({
             x: currentX,
-            width,
+            width: Math.max(width, 120),  // ← Ancho mínimo para textos cortos
             mod,
             weeks,
-            color: MODULE_COLORS[idx % MODULE_COLORS.length],
-            progress: progressPercent
+            color: MODULE_COLORS[idx % MODULE_COLORS.length]
         })
 
         currentX += width
     })
+
+    // Ajustar el último módulo para que no exceda 780
+    const lastModule = modulePositions[modulePositions.length - 1]
+    if (lastModule.x + lastModule.width > 780) {
+        lastModule.width = 780 - lastModule.x
+    }
 
     let labelsHTML = ''
     modulePositions.forEach((item, idx) => {
@@ -147,37 +150,46 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
             const mid = Math.ceil(words.length / 2)
             line1 = words.slice(0, mid).join(' ')
             line2 = words.slice(mid).join(' ')
+        } else if (words.length === 4) {
+            line1 = words.slice(0, 2).join(' ')
+            line2 = words.slice(2).join(' ')
         } else {
             line1 = item.mod.name
             line2 = ''
         }
 
-        if (line1.length > 38) line1 = line1.substring(0, 35) + '...'
-        if (line2.length > 38) line2 = line2.substring(0, 35) + '...'
+        // Truncar si es muy largo para el ancho disponible
+        const maxChars = Math.floor(item.width / 7)
+        if (line1.length > maxChars) line1 = line1.substring(0, maxChars - 3) + '...'
+        if (line2.length > maxChars) line2 = line2.substring(0, maxChars - 3) + '...'
 
-        const y = 4 + (item.mod.order - 1) * 52
+        const y = 4 + (item.mod.order - 1) * 58  // ← Más altura entre barras
+        const barHeight = 46  // ← Barras más altas
+
+        // Centrar texto verticalmente
+        const textY1 = line2 ? y + 20 : y + 28
+        const textY2 = y + 36
 
         barsHTML += `
-            <rect x="${item.x}" y="${y}" width="${item.width}" height="34" rx="7" fill="${bgColor}" stroke="${item.color}" stroke-width="1"/>
-            <text x="${item.x + 8}" y="${y + 18}" font-family="DM Sans, sans-serif" font-size="9.5" fill="#1a1f36" font-weight="500">${line1}</text>
-            ${line2 ? `<text x="${item.x + 8}" y="${y + 30}" font-family="DM Sans, sans-serif" font-size="9.5" fill="#1a1f36" font-weight="500">${line2}</text>` : ''}
-            <text x="${item.x + item.width - 8}" y="${y + 30}" font-family="DM Sans, sans-serif" font-size="10" fill="${item.color}" font-weight="700" text-anchor="end">${item.progress}%</text>
+            <rect x="${item.x}" y="${y}" width="${item.width}" height="${barHeight}" rx="8" fill="${bgColor}" stroke="${item.color}" stroke-width="1.5"/>
+            <text x="${item.x + 10}" y="${textY1}" font-family="DM Sans, sans-serif" font-size="10" fill="#1a1f36" font-weight="500">${line1}</text>
+            ${line2 ? `<text x="${item.x + 10}" y="${textY2}" font-family="DM Sans, sans-serif" font-size="10" fill="#1a1f36" font-weight="500">${line2}</text>` : ''}
         `
     })
 
     let xAxisHTML = ''
     for (let i = 0; i <= totalWeeks; i++) {
-        const x = (i / totalWeeks) * 800
-        xAxisHTML += `<text x="${x}" y="272" font-family="DM Sans, sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
+        const x = (i / totalWeeks) * 780
+        xAxisHTML += `<text x="${x}" y="282" font-family="DM Sans, sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
     }
 
     let gridHTML = ''
     for (let i = 0; i <= totalWeeks; i++) {
-        const x = (i / totalWeeks) * 800
-        gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="260" stroke="#e8edf5" stroke-width="1"/>`
+        const x = (i / totalWeeks) * 780
+        gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="268" stroke="#e8edf5" stroke-width="1"/>`
     }
 
-    const svgHeight = (modulePositions.length * 52) + 30
+    const svgHeight = (modulePositions.length * 58) + 40
 
     return `
     <div class="gantt-container">
@@ -185,7 +197,7 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
             ${labelsHTML}
         </div>
         <div class="gantt-chart-area">
-            <svg class="gantt-svg" viewBox="0 0 800 ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
+            <svg class="gantt-svg" viewBox="0 0 780 ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
                 <g stroke="#e8edf5" stroke-width="1">
                     ${gridHTML}
                 </g>
