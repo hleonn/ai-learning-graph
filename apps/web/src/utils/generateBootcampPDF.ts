@@ -243,7 +243,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         </div>
         
         <div class="bloom-chart-layout">
-            <div class="bloom-y-axis-left" style="padding-top: ${marginTop}px;">
+            <div class="bloom-y-axis-left" style="padding-top: ${marginTop}px;height: ${chartHeight}px;">
                 ${modulesHTML}
             </div>
 
@@ -284,7 +284,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
                 </svg>
             </div>
 
-            <div class="bloom-y-axis-right" style="padding-top: ${marginTop};">
+            <div class="bloom-y-axis-right" style="padding-top: ${marginTop};height: ${chartHeight}">
                 ${bloomHTML}
             </div>
         </div>
@@ -356,8 +356,8 @@ const BLOOM_CHART_STYLES = `
     justify-content: space-between;
     min-width: 90px;
     padding-right: 12px;
-    height: 210px;
-    margin-top: 20px;
+    // height: 210px;
+    // margin-top: 20px;
 }
 
 .bloom-y-item {
@@ -394,8 +394,8 @@ const BLOOM_CHART_STYLES = `
     justify-content: space-between;
     min-width: 140px;
     padding-left: 12px;
-    height: 210px;
-    margin-top: 20px;
+    // height: 210px;
+    // margin-top: 20px;
 }
 
 .bloom-item {
