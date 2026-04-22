@@ -104,6 +104,7 @@ const MODULE_COLORS = [
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
+// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 function generateBloomProgressChart(modules: Module[], totalWeeks: number): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const moduleCount = sortedModules.length
@@ -120,10 +121,9 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         }
     })
 
-    // ✅ Valores ajustados - ORIGEN MÁS BAJO
     const svgWidth = 780
-    const chartTop = 70      // ← AUMENTADO DE 50 A 70
-    const chartBottom = 250  // ← AUMENTADO DE 240 A 250
+    const chartTop = 30      // Volvemos a un valor razonable
+    const chartBottom = 240
     const chartHeight = chartBottom - chartTop
 
     // Generar puntos para la curva
@@ -146,7 +146,6 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
 
     const areaPath = `${curvePath} L${points[points.length - 1].x},${chartBottom} L20,${chartBottom} Z`
 
-    // Niveles Bloom
     const bloomLevels = ['Recordar y Comprender', 'Comprender y Aplicar', 'Aplicar y Analizar', 'Analizar y Evaluar', 'Evaluar y Crear']
 
     return `
@@ -161,62 +160,64 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
             <div class="bloom-chart-subtitle">Progresión pedagógica por módulo</div>
         </div>
         
-        <div class="bloom-chart-layout">
-            <!-- Eje Y izquierdo - Módulos -->
-            <div class="bloom-y-axis-left" style="margin-top: ${chartTop - 10}px; height: ${chartHeight + 10}px;">
-                ${moduleData.slice().reverse().map(mod => `
-                    <div class="bloom-y-item">
-                        <span class="bloom-y-name" style="color: ${mod.color}">Módulo ${mod.order}</span>
-                        <span class="bloom-y-percent" style="color: ${mod.color}; background: ${mod.color}15">${mod.progressPercent}%</span>
-                    </div>
-                `).join('')}
-            </div>
+        <!-- ✅ CONTENEDOR CON PADDING-TOP PARA BAJAR TODO EL CONJUNTO -->
+        <div style="padding-top: 20px;">
+            <div class="bloom-chart-layout">
+                <!-- Eje Y izquierdo - Módulos -->
+                <div class="bloom-y-axis-left" style="height: ${chartHeight}px; justify-content: space-between; display: flex; flex-direction: column;">
+                    ${moduleData.slice().reverse().map(mod => `
+                        <div class="bloom-y-item">
+                            <span class="bloom-y-name" style="color: ${mod.color}">Módulo ${mod.order}</span>
+                            <span class="bloom-y-percent" style="color: ${mod.color}; background: ${mod.color}15">${mod.progressPercent}%</span>
+                        </div>
+                    `).join('')}
+                </div>
 
-            <!-- SVG del gráfico -->
-            <div class="bloom-svg-container">
-                <svg viewBox="0 0 800 330" class="bloom-main-svg">
-                    <defs>
-                        <linearGradient id="areaGrad" x1="0" y1="0" x2="1" y2="0">
-                            ${moduleData.map((mod, idx) => `
-                                <stop offset="${(idx / (moduleCount - 1 || 1)) * 100}%" stop-color="${mod.color}" stop-opacity="0.15" />
+                <!-- SVG del gráfico -->
+                <div class="bloom-svg-container">
+                    <svg viewBox="0 0 800 280" class="bloom-main-svg">
+                        <defs>
+                            <linearGradient id="areaGrad" x1="0" y1="0" x2="1" y2="0">
+                                ${moduleData.map((mod, idx) => `
+                                    <stop offset="${(idx / (moduleCount - 1 || 1)) * 100}%" stop-color="${mod.color}" stop-opacity="0.15" />
+                                `).join('')}
+                            </linearGradient>
+                            <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                                ${moduleData.map((mod, idx) => `
+                                    <stop offset="${(idx / (moduleCount - 1 || 1)) * 100}%" stop-color="${mod.color}" />
+                                `).join('')}
+                            </linearGradient>
+                        </defs>
+
+                        <!-- Grid vertical -->
+                        <g stroke="#e8edf5" stroke-width="1">
+                            ${points.map(p => `<line x1="${p.x}" y1="${chartTop}" x2="${p.x}" y2="${chartBottom}" />`).join('')}
+                        </g>
+
+                        <!-- Grid horizontal -->
+                        <g stroke="#e8edf5" stroke-width="1" stroke-dasharray="3,4">
+                            ${[0, 25, 50, 75, 100].map(pct => `
+                                <line x1="20" y1="${chartBottom - (pct / 100) * chartHeight}" x2="${svgWidth}" y2="${chartBottom - (pct / 100) * chartHeight}" />
                             `).join('')}
-                        </linearGradient>
-                        <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-                            ${moduleData.map((mod, idx) => `
-                                <stop offset="${(idx / (moduleCount - 1 || 1)) * 100}%" stop-color="${mod.color}" />
+                        </g>
+
+                        <!-- Líneas verticales de fin de módulo -->
+                        <g stroke="#c5cde0" stroke-width="1.2" stroke-dasharray="4,4">
+                            ${points.map(p => `
+                                <line x1="${p.x}" y1="${chartTop}" x2="${p.x}" y2="${chartBottom}" />
                             `).join('')}
-                        </linearGradient>
-                    </defs>
+                        </g>
 
-                    <!-- Grid vertical -->
-                    <g stroke="#e8edf5" stroke-width="1">
-                        ${points.map(p => `<line x1="${p.x}" y1="${chartTop}" x2="${p.x}" y2="${chartBottom}" />`).join('')}
-                    </g>
+                        <line x1="20" y1="${chartBottom}" x2="${svgWidth}" y2="${chartBottom}" stroke="#c5cde0" stroke-width="1.5" />
 
-                    <!-- Grid horizontal -->
-                    <g stroke="#e8edf5" stroke-width="1" stroke-dasharray="3,4">
-                        ${[0, 25, 50, 75, 100].map(pct => `
-                            <line x1="20" y1="${chartBottom - (pct / 100) * chartHeight}" x2="${svgWidth}" y2="${chartBottom - (pct / 100) * chartHeight}" />
-                        `).join('')}
-                    </g>
+                        <!-- Área bajo la curva -->
+                        <path d="${areaPath}" fill="url(#areaGrad)" />
 
-                    <!-- Líneas verticales de fin de módulo -->
-                    <g stroke="#c5cde0" stroke-width="1.2" stroke-dasharray="4,4">
-                        ${points.map(p => `
-                            <line x1="${p.x}" y1="${chartTop}" x2="${p.x}" y2="${chartBottom}" />
-                        `).join('')}
-                    </g>
+                        <!-- Curva principal -->
+                        <path d="${curvePath}" fill="none" stroke="url(#lineGrad)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
 
-                    <line x1="20" y1="${chartBottom}" x2="${svgWidth}" y2="${chartBottom}" stroke="#c5cde0" stroke-width="1.5" />
-
-                    <!-- Área bajo la curva -->
-                    <path d="${areaPath}" fill="url(#areaGrad)" />
-
-                    <!-- Curva principal -->
-                    <path d="${curvePath}" fill="none" stroke="url(#lineGrad)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
-
-                    <!-- Puntos y etiquetas -->
-                    ${points.map((p, idx) => {
+                        <!-- Puntos y etiquetas -->
+                        ${points.map((p, idx) => {
         const mod = moduleData[idx]
         const isFirst = idx === 0
         const isLast = idx === moduleCount - 1
@@ -228,35 +229,36 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         const translateY = Math.max(p.y - 45, 5)
 
         return `
-                            <g>
-                                <circle cx="${p.x}" cy="${p.y}" r="5.5" fill="white" stroke="${mod.color}" stroke-width="2.5" />
-                                <g transform="translate(${translateX}, ${translateY})">
-                                    <rect x="0" y="0" width="76" height="36" rx="8" fill="white" stroke="${mod.color}" stroke-width="1.5" />
-                                    <text x="38" y="14" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="10" font-weight="700" fill="${mod.color}">Módulo ${mod.order}</text>
-                                    <text x="38" y="28" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" font-weight="800" fill="#1a1f36">${mod.progressPercent}%</text>
+                                <g>
+                                    <circle cx="${p.x}" cy="${p.y}" r="5.5" fill="white" stroke="${mod.color}" stroke-width="2.5" />
+                                    <g transform="translate(${translateX}, ${translateY})">
+                                        <rect x="0" y="0" width="76" height="36" rx="8" fill="white" stroke="${mod.color}" stroke-width="1.5" />
+                                        <text x="38" y="14" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="10" font-weight="700" fill="${mod.color}">Módulo ${mod.order}</text>
+                                        <text x="38" y="28" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" font-weight="800" fill="#1a1f36">${mod.progressPercent}%</text>
+                                    </g>
                                 </g>
-                            </g>
-                        `
+                            `
     }).join('')}
 
-                    <!-- Eje X -->
-                    <g font-family="DM Sans, sans-serif" font-size="11" fill="#6b7394" text-anchor="middle">
-                        ${[...Array(totalWeeks + 1)].map((_, i) => {
+                        <!-- Eje X -->
+                        <g font-family="DM Sans, sans-serif" font-size="11" fill="#6b7394" text-anchor="middle">
+                            ${[...Array(totalWeeks + 1)].map((_, i) => {
         const x = 20 + (i / totalWeeks) * (svgWidth - 40)
-        return `<text x="${x}" y="275">${i}</text>`
+        return `<text x="${x}" y="260">${i}</text>`
     }).join('')}
-                    </g>
-                    <text x="400" y="295" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" fill="#6b7394" font-weight="500">Semanas</text>
-                </svg>
-            </div>
+                        </g>
+                        <text x="400" y="278" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" fill="#6b7394" font-weight="500">Semanas</text>
+                    </svg>
+                </div>
 
-            <!-- Eje Y derecho - Taxonomía Bloom -->
-            <div class="bloom-y-axis-right" style="margin-top: ${chartTop - 10}px; height: ${chartHeight + 10}px;">
-                ${bloomLevels.map(level => `
-                    <div class="bloom-item">
-                        <span class="bloom-level">${level}</span>
-                    </div>
-                `).join('')}
+                <!-- Eje Y derecho - Taxonomía Bloom -->
+                <div class="bloom-y-axis-right" style="height: ${chartHeight}px; justify-content: space-between; display: flex; flex-direction: column;">
+                    ${bloomLevels.map(level => `
+                        <div class="bloom-item">
+                            <span class="bloom-level">${level}</span>
+                        </div>
+                    `).join('')}
+                </div>
             </div>
         </div>
 
