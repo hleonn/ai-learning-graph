@@ -152,7 +152,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
 
     const areaPath = `${curvePath} L${points[points.length - 1].x},${chartBottom} L40,${chartBottom} Z`
 
-    const bloomLevels = ['Recordar y Comprender', 'Comprender y Aplicar', 'Aplicar y Analizar', 'Analizar y Evaluar', 'Evaluar y Crear']
+    const bloomLevels = ['Evaluar y Crear', 'Analizar y Evaluar', 'Aplicar y Analizar', 'Comprender y Aplicar', 'Recordar y Comprender']
 
     // Construir HTML por partes para evitar anidamiento complejo
     let modulesHTML = ''
@@ -284,7 +284,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
                 </svg>
             </div>
 
-            <div class="bloom-y-axis-right" style="padding-top: ${marginTop};height: ${chartHeight}">
+            <div class="bloom-y-axis-right" style="padding-top: ${marginTop}px;height: ${chartHeight}px;">
                 ${bloomHTML}
             </div>
         </div>
