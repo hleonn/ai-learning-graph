@@ -5,6 +5,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom'
 import { getProgram, getCourses, type Program } from '../lib/api'
 import { generateAndDownloadBootcampPDF } from '../utils/generateBootcampPDF'
 import CalendarDialog from '../components/CalendarDialog'
+import BloomProgressChart from '../components/BloomProgressChart'
 
 interface Course {
     id: string
@@ -184,6 +185,10 @@ export default function ProgramView() {
     const totalWeeks = program.duration_weeks || 16
     const hoursPerWeek = Math.round(totalHours / totalWeeks)
 
+    // Calcular total de nodos y edges (si están disponibles en los módulos)
+    const totalNodes = program.modules?.reduce((sum, m) => sum + (m.nodeCount || 0), 0) || 0
+    const totalEdges = program.modules?.reduce((sum, m) => sum + (m.edgeCount || 0), 0) || 0
+
     const handleGenerateIntensityPDF = async (intensity: 'intensive' | 'partial' | 'weekend') => {
         if (!program) return
 
@@ -319,6 +324,17 @@ export default function ProgramView() {
                     </div>
                 )}
 
+                {/* ✅ NUEVO: Gráfico de Avance y Taxonomía de Bloom */}
+                {program.modules && program.modules.length > 0 && (
+                    <BloomProgressChart
+                        modules={program.modules}
+                        durationWeeks={program.duration_weeks || 16}
+                        totalHours={totalHours}
+                        totalNodes={totalNodes}
+                        totalEdges={totalEdges}
+                    />
+                )}
+
                 <div style={styles.section}>
                     <h2 style={styles.sectionTitle}>📚 Cursos Incluidos ({program.course_ids?.length || 0})</h2>
                     <div style={styles.coursesGrid}>
@@ -360,10 +376,15 @@ const styles: Record<string, React.CSSProperties> = {
         padding: '40px 24px',
         fontFamily: 'system-ui, sans-serif',
         minHeight: '100vh',
-        background: '#F1EFE8'
+        background: '#F1EFE8',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        overflow: 'hidden'
     },
     header: {
-        marginBottom: 32
+        marginBottom: 24,
+        flexShrink: 0
     },
     backBtn: {
         background: 'none',
@@ -389,17 +410,18 @@ const styles: Record<string, React.CSSProperties> = {
     content: {
         display: 'flex',
         flexDirection: 'column',
-        gap: 32,
+        gap: 24,
         flex: 1,
-        overflowY: 'auto',      // ← AGREGAR SCROLL
-        maxHeight: 'calc(100vh - 200px)',  // ← LIMITAR ALTURA
-        paddingRight: 8
+        overflowY: 'auto',
+        paddingRight: 8,
+        minHeight: 0
     },
     infoCard: {
         background: '#fff',
         borderRadius: 12,
         border: '1px solid #D3D1C7',
-        padding: 24
+        padding: 24,
+        flexShrink: 0
     },
     infoGrid: {
         display: 'grid',
@@ -441,7 +463,8 @@ const styles: Record<string, React.CSSProperties> = {
         margin: '0 0 8px 0'
     },
     section: {
-        marginBottom: 8
+        marginBottom: 8,
+        flexShrink: 0
     },
     sectionHeader: {
         display: 'flex',
@@ -470,8 +493,7 @@ const styles: Record<string, React.CSSProperties> = {
     modulesGrid: {
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: 16,
-        overflowY: 'visible'
+        gap: 16
     },
     moduleCard: {
         background: '#fff',
@@ -573,10 +595,11 @@ const styles: Record<string, React.CSSProperties> = {
         color: '#1E3A5F'
     },
     footer: {
-        marginTop: 32,
-        paddingTop: 24,
+        marginTop: 24,
+        paddingTop: 16,
         borderTop: '1px solid #D3D1C7',
-        textAlign: 'center'
+        textAlign: 'center',
+        flexShrink: 0
     },
     exportBtn: {
         padding: '10px 24px',
