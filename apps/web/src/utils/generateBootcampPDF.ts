@@ -111,6 +111,7 @@ const MODULE_COLORS = [
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
+// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 function generateBloomProgressChart(modules: Module[], totalWeeks: number): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const moduleCount = sortedModules.length
@@ -127,10 +128,10 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
     })
 
     const svgWidth = 800
-    const marginTop = 60
+    const marginTop = 60      // ← AUMENTADO DE 40 A 60
     const chartTop = 20
     const chartBottom = 240
-    const chartHeight = chartBottom - chartTop  // = 220
+    const chartHeight = chartBottom - chartTop
 
     const points = moduleData.map((mod, idx) => {
         const x = 40 + (idx / (moduleCount - 1 || 1)) * (svgWidth - 80)
@@ -166,8 +167,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         
         <div class="bloom-chart-layout">
             <!-- Eje Y izquierdo - Módulos -->
-            <!-- ✅ ALTURA FIJA = chartHeight + margen, con flex space-between -->
-            <div class="bloom-y-axis-left" style="padding-top: ${marginTop}px; height: ${chartHeight + 20}px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div class="bloom-y-axis-left" style="padding-top: ${marginTop}px;">
                 ${moduleData.slice().reverse().map(mod => `
                     <div class="bloom-y-item">
                         <span class="bloom-y-name" style="color: ${mod.color}">Módulo ${mod.order}</span>
@@ -248,8 +248,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
             </div>
 
             <!-- Eje Y derecho - Taxonomía Bloom -->
-            <!-- ✅ Misma altura y distribución que el eje izquierdo -->
-            <div class="bloom-y-axis-right" style="padding-top: ${marginTop}; height: ${chartHeight + 20}px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div class="bloom-y-axis-right" style="padding-top: ${marginTop};">
                 ${bloomLevels.map(level => `
                     <div class="bloom-item">
                         <span class="bloom-level">${level}</span>
