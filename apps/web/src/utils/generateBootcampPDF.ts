@@ -106,11 +106,11 @@ const MODULE_COLORS = [
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
+// ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 function generateBloomProgressChart(modules: Module[], totalWeeks: number): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
     const moduleCount = sortedModules.length
 
-    // Calcular progreso acumulado basado en pesos
     let cumulativeWeight = 0
     const moduleData = sortedModules.map((mod, idx) => {
         cumulativeWeight += mod.weight
@@ -122,20 +122,18 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         }
     })
 
-    // ✅ NUEVO ENFOQUE: Área de dibujo más alta, curva desplazada hacia arriba
     const svgWidth = 800
-    const chartTop = 60      // Margen superior para la curva
-    const chartBottom = 260  // Línea base más abajo
-    const chartHeight = chartBottom - chartTop  // 200px de altura para la curva
+    const marginTop = 40      // ← Espacio extra en la parte superior
+    const chartTop = 20       // ← Y=0 estará 40px más abajo del borde superior
+    const chartBottom = 240
+    const chartHeight = chartBottom - chartTop
 
-    // Generar puntos para la curva (Y invertida: 0% = chartBottom, 100% = chartTop)
     const points = moduleData.map((mod, idx) => {
         const x = 40 + (idx / (moduleCount - 1 || 1)) * (svgWidth - 80)
         const y = chartBottom - (mod.progressPercent / 100) * chartHeight
         return { x, y }
     })
 
-    // Generar path de la curva
     const curvePath = points.map((p, i) => {
         if (i === 0) return `M${p.x},${p.y}`
         const prev = points[i - 1]
@@ -164,7 +162,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         
         <div class="bloom-chart-layout">
             <!-- Eje Y izquierdo - Módulos -->
-            <div class="bloom-y-axis-left">
+            <div class="bloom-y-axis-left" style="padding-top: ${marginTop}px;">
                 ${moduleData.slice().reverse().map(mod => `
                     <div class="bloom-y-item">
                         <span class="bloom-y-name" style="color: ${mod.color}">Módulo ${mod.order}</span>
@@ -175,7 +173,8 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
 
             <!-- SVG del gráfico -->
             <div class="bloom-svg-container">
-                <svg viewBox="0 0 ${svgWidth} 300" class="bloom-main-svg">
+                <!-- ✅ viewBox con Y negativo para bajar el origen visual -->
+                <svg viewBox="0 -${marginTop} ${svgWidth} 310" class="bloom-main-svg">
                     <defs>
                         <linearGradient id="areaGrad" x1="0" y1="0" x2="1" y2="0">
                             ${moduleData.map((mod, idx) => `
@@ -208,16 +207,11 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
                         `).join('')}
                     </g>
 
-                    <!-- Línea base -->
                     <line x1="40" y1="${chartBottom}" x2="${svgWidth - 40}" y2="${chartBottom}" stroke="#c5cde0" stroke-width="1.5" />
 
-                    <!-- Área bajo la curva -->
                     <path d="${areaPath}" fill="url(#areaGrad)" />
-
-                    <!-- Curva principal -->
                     <path d="${curvePath}" fill="none" stroke="url(#lineGrad)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
 
-                    <!-- Puntos y etiquetas -->
                     ${points.map((p, idx) => {
         const mod = moduleData[idx]
         const isFirst = idx === 0
@@ -227,12 +221,10 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
         if (isFirst) translateX = p.x + 10
         if (isLast) translateX = p.x - 85
 
-        const translateY = p.y - 45
-
         return `
                             <g>
                                 <circle cx="${p.x}" cy="${p.y}" r="5.5" fill="white" stroke="${mod.color}" stroke-width="2.5" />
-                                <g transform="translate(${translateX}, ${translateY})">
+                                <g transform="translate(${translateX}, ${p.y - 45})">
                                     <rect x="0" y="0" width="76" height="36" rx="8" fill="white" stroke="${mod.color}" stroke-width="1.5" />
                                     <text x="38" y="14" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="10" font-weight="700" fill="${mod.color}">Módulo ${mod.order}</text>
                                     <text x="38" y="28" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="12" font-weight="800" fill="#1a1f36">${mod.progressPercent}%</text>
@@ -241,7 +233,6 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
                         `
     }).join('')}
 
-                    <!-- Eje X -->
                     <g font-family="DM Sans, sans-serif" font-size="11" fill="#6b7394" text-anchor="middle">
                         ${[...Array(totalWeeks + 1)].map((_, i) => {
         const x = 40 + (i / totalWeeks) * (svgWidth - 80)
@@ -253,7 +244,7 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
             </div>
 
             <!-- Eje Y derecho - Taxonomía Bloom -->
-            <div class="bloom-y-axis-right">
+            <div class="bloom-y-axis-right" style="padding-top: ${marginTop}px;">
                 ${bloomLevels.map(level => `
                     <div class="bloom-item">
                         <span class="bloom-level">${level}</span>
@@ -262,7 +253,6 @@ function generateBloomProgressChart(modules: Module[], totalWeeks: number): stri
             </div>
         </div>
 
-        <!-- Footer stats -->
         <div class="bloom-chart-footer">
             <div class="bloom-stat">
                 <span class="bloom-stat-icon">📊</span>
