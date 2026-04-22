@@ -100,6 +100,105 @@ const MODULE_COLORS = [
     '#5b8dee', '#9b72e8', '#f07a3a', '#3bbf8c', '#2ab8c8', '#e85d75', '#a78bfa'
 ]
 
+// ========== GENERAR DIAGRAMA DE GANTT ==========
+function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: number[]): string {
+    const sortedModules = [...modules].sort((a, b) => a.order - b.order)
+
+    let currentX = 0
+    const modulePositions: { x: number; width: number; mod: Module; weeks: number; color: string; progress: number }[] = []
+
+    let cumulativeWeight = 0
+    sortedModules.forEach((mod, idx) => {
+        cumulativeWeight += mod.weight
+        const progressPercent = Math.round(cumulativeWeight * 100)
+        const weeks = moduleWeeks[idx]
+        const width = (weeks / totalWeeks) * 800
+
+        modulePositions.push({
+            x: currentX,
+            width,
+            mod,
+            weeks,
+            color: MODULE_COLORS[idx % MODULE_COLORS.length],
+            progress: progressPercent
+        })
+
+        currentX += width
+    })
+
+    let labelsHTML = ''
+    modulePositions.forEach((item, idx) => {
+        labelsHTML += `
+            <div class="gantt-module-label m${idx + 1}">
+                <span class="gantt-module-name" style="color: ${item.color}">Módulo ${item.mod.order}</span>
+                <span class="gantt-module-duration">${item.weeks} ${item.weeks === 1 ? 'semana' : 'semanas'}</span>
+            </div>
+        `
+    })
+
+    let barsHTML = ''
+    modulePositions.forEach((item) => {
+        const bgColor = `${item.color}15`
+        const words = item.mod.name.split(' ')
+        let line1 = ''
+        let line2 = ''
+
+        if (words.length > 4) {
+            const mid = Math.ceil(words.length / 2)
+            line1 = words.slice(0, mid).join(' ')
+            line2 = words.slice(mid).join(' ')
+        } else {
+            line1 = item.mod.name
+            line2 = ''
+        }
+
+        if (line1.length > 38) line1 = line1.substring(0, 35) + '...'
+        if (line2.length > 38) line2 = line2.substring(0, 35) + '...'
+
+        const y = 4 + (item.mod.order - 1) * 52
+
+        barsHTML += `
+            <rect x="${item.x}" y="${y}" width="${item.width}" height="34" rx="7" fill="${bgColor}" stroke="${item.color}" stroke-width="1"/>
+            <text x="${item.x + 8}" y="${y + 18}" font-family="DM Sans, sans-serif" font-size="9.5" fill="#1a1f36" font-weight="500">${line1}</text>
+            ${line2 ? `<text x="${item.x + 8}" y="${y + 30}" font-family="DM Sans, sans-serif" font-size="9.5" fill="#1a1f36" font-weight="500">${line2}</text>` : ''}
+            <text x="${item.x + item.width - 8}" y="${y + 30}" font-family="DM Sans, sans-serif" font-size="10" fill="${item.color}" font-weight="700" text-anchor="end">${item.progress}%</text>
+        `
+    })
+
+    let xAxisHTML = ''
+    for (let i = 0; i <= totalWeeks; i++) {
+        const x = (i / totalWeeks) * 800
+        xAxisHTML += `<text x="${x}" y="272" font-family="DM Sans, sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
+    }
+
+    let gridHTML = ''
+    for (let i = 0; i <= totalWeeks; i++) {
+        const x = (i / totalWeeks) * 800
+        gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="260" stroke="#e8edf5" stroke-width="1"/>`
+    }
+
+    const svgHeight = (modulePositions.length * 52) + 30
+
+    return `
+    <div class="gantt-container">
+        <div class="gantt-labels-side">
+            ${labelsHTML}
+        </div>
+        <div class="gantt-chart-area">
+            <svg class="gantt-svg" viewBox="0 0 800 ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
+                <g stroke="#e8edf5" stroke-width="1">
+                    ${gridHTML}
+                </g>
+                ${barsHTML}
+                <g font-family="DM Sans, sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">
+                    ${xAxisHTML}
+                </g>
+            </svg>
+        </div>
+    </div>
+    `
+}
+
 // ========== GENERAR GRÁFICA DE AVANCE Y TAXONOMÍA DE BLOOM (SVG) ==========
 function generateBloomProgressChart(
     modules: Module[],
@@ -147,7 +246,6 @@ function generateBloomProgressChart(
 
     const bloomLevels = ['Evaluar y Crear', 'Analizar y Evaluar', 'Aplicar y Analizar', 'Comprender y Aplicar', 'Recordar y Comprender']
 
-    // Construir HTML por partes para evitar anidamiento complejo
     let modulesHTML = ''
     moduleData.slice().reverse().forEach(mod => {
         modulesHTML += `
@@ -349,8 +447,6 @@ const BLOOM_CHART_STYLES = `
     justify-content: space-between;
     min-width: 90px;
     padding-right: 12px;
-    // height: 210px;
-    // margin-top: 20px;
 }
 
 .bloom-y-item {
@@ -387,8 +483,6 @@ const BLOOM_CHART_STYLES = `
     justify-content: space-between;
     min-width: 140px;
     padding-left: 12px;
-    // height: 210px;
-    // margin-top: 20px;
 }
 
 .bloom-item {
@@ -456,25 +550,68 @@ const BLOOM_CHART_STYLES = `
     background: #e4e8f0;
 }
 
-.bloom-legend {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    color: #6b7394;
+.gantt-section {
+    padding: 25px 30px;
+    background: white;
+    border-top: 1px solid #e0e0e0;
 }
 
-.bloom-legend-line {
-    width: 22px;
-    height: 1px;
-    border-top: 2px dashed #6b7394;
-    display: inline-block;
+.gantt-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #6b7394;
+    margin-bottom: 18px;
+    letter-spacing: 0.2px;
+}
+
+.gantt-container {
+    display: flex;
+    gap: 0;
+}
+
+.gantt-labels-side {
+    min-width: 100px;
+    padding-right: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.gantt-module-label {
+    height: 42px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.gantt-module-name {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.gantt-module-duration {
+    font-size: 10.5px;
+    color: #6b7394;
+    font-weight: 400;
+}
+
+.gantt-chart-area {
+    flex: 1;
+}
+
+.gantt-svg {
+    width: 100%;
+    display: block;
 }
 
 @media print {
     .bloom-chart-container {
         box-shadow: none;
         border: 1px solid #ccc;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    .gantt-section {
         break-inside: avoid;
         page-break-inside: avoid;
     }
@@ -486,7 +623,6 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
     const hoursPerWeek = Math.round(totalHours / bootcamp.duration_weeks)
     const createdDate = formatDateUTC(normalizeDate(bootcamp.created_at))
 
-    // Normalizar fechas UTC
     const startDate = bootcamp.start_date ? normalizeDate(bootcamp.start_date) : getDefaultStartDate()
     const endDate = bootcamp.end_date ? normalizeDate(bootcamp.end_date) : calculateEndDate(startDate, bootcamp.duration_weeks)
 
@@ -555,44 +691,6 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             </div>`
         })
         html += '</div>'
-        return html
-    }
-
-    const generateWeeklyDistribution = () => {
-        let html = '<div class="weekly-distribution"><h3>📅 Distribución Semanal Estimada</h3><div class="weekly-grid">'
-        let currentWeekDate = new Date(startDate)
-
-        for (let week = 1; week <= bootcamp.duration_weeks; week++) {
-            let cumulativeWeeks = 0
-            let weekModules: string[] = []
-            let weekHours = 0
-
-            for (let m = 0; m < bootcamp.modules.length; m++) {
-                const module = bootcamp.modules[m]
-                const weeksForModule = moduleWeeks[m]
-                const moduleStartWeek = cumulativeWeeks + 1
-                const moduleEndWeek = cumulativeWeeks + weeksForModule
-                if (week >= moduleStartWeek && week <= moduleEndWeek) {
-                    weekModules.push(module.name.split(' ').slice(0, 2).join(' '))
-                    weekHours = 40
-                }
-                cumulativeWeeks += weeksForModule
-            }
-
-            const weekStartDate = new Date(currentWeekDate)
-            const weekEndDate = new Date(currentWeekDate)
-            weekEndDate.setUTCDate(weekEndDate.getUTCDate() + 6)
-
-            html += `
-            <div class="week-card ${week === 1 ? 'current-week' : ''}">
-                <div class="week-number">Semana ${week}</div>
-                <div class="week-dates">${formatDateUTC(weekStartDate)} - ${formatDateUTC(weekEndDate)}</div>
-                <div class="week-hours">${weekHours}h</div>
-                <div class="week-topics">${weekModules.slice(0, 2).join(', ') || 'Continuación'}</div>
-            </div>`
-            currentWeekDate.setUTCDate(currentWeekDate.getUTCDate() + 7)
-        }
-        html += '</div></div>'
         return html
     }
 
@@ -869,62 +967,6 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
         ${BLOOM_CHART_STYLES}
 
-        .weekly-distribution {
-            padding: 25px 30px;
-            background: #f8f8f8;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .weekly-distribution h3 {
-            color: #1E3A5F;
-            margin-bottom: 20px;
-            font-size: 1.2rem;
-        }
-
-        .weekly-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 12px;
-        }
-
-        .week-card {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 10px;
-            text-align: center;
-        }
-
-        .week-card.current-week {
-            border: 2px solid #1D9E75;
-            background: #E1F5EE;
-        }
-
-        .week-number {
-            font-weight: 700;
-            color: #1E3A5F;
-            font-size: 0.8rem;
-            margin-bottom: 5px;
-        }
-
-        .week-dates {
-            font-size: 0.6rem;
-            color: #666;
-            margin: 4px 0;
-        }
-
-        .week-hours {
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: #1D9E75;
-        }
-
-        .week-topics {
-            font-size: 0.65rem;
-            color: #888;
-            margin-top: 5px;
-        }
-
         .footer {
             background: #1E3A5F;
             color: white;
@@ -972,9 +1014,6 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             .module-card {
                 break-inside: avoid;
                 page-break-inside: avoid;
-            }
-            .weekly-grid {
-                break-inside: avoid;
             }
             .badge {
                 background: #f0f0f0;
@@ -1032,14 +1071,16 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
     </div>
 
     ${generateBloomProgressChart(
-        bootcamp.modules, 
+        bootcamp.modules,
         bootcamp.duration_weeks,
         formattedStartDate,
         formattedEndDate
-        )}
-        
+    )}
 
-    ${generateWeeklyDistribution()}
+    <div class="gantt-section">
+        <div class="gantt-section-title">📅 Duración y distribución por módulo</div>
+        ${generateGanttChart(bootcamp.modules, bootcamp.duration_weeks, moduleWeeks)}
+    </div>
 
     <div class="footer">
         <h3>🎓 ¿Listo para comenzar tu viaje de aprendizaje?</h3>
