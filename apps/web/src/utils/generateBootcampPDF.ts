@@ -96,21 +96,37 @@ const MODULE_COLORS = [
 function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: number[]): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
 
-    const BAR_HEIGHT     = 40
-    const ROW_HEIGHT     = 54
-    const LABEL_WIDTH    = 110
-    const PIXELS_PER_WEEK = 45
+    const BAR_HEIGHT  = 40
+    const ROW_HEIGHT  = 54
+    const LABEL_WIDTH = 110
+
+    // ── Escala dinámica según duración total ──────────────────────
+    // Ancho disponible estimado del SVG (el contenedor .program tiene max 1000px,
+    // menos padding 28px*2, menos label 110px, menos margen 30px*2 = ~774px útiles)
+    const AVAILABLE_WIDTH = 774
+
+    // PIXELS_PER_WEEK se ajusta para que el gráfico siempre quepa sin scroll
+    // pero respetando un mínimo legible de 28px/semana
+    const PIXELS_PER_WEEK = Math.max(28, Math.floor(AVAILABLE_WIDTH / totalWeeks))
+
+    // Referencia por duración:
+    //  8 sem → 96px/sem  (774/8)
+    // 12 sem → 64px/sem  (774/12)
+    // 16 sem → 48px/sem  (774/16)
+    // 20 sem → 38px/sem  (774/20)
+    // 24 sem → 32px/sem  (774/24)
+    // ─────────────────────────────────────────────────────────────
 
     let currentX = 0
     const positions = sortedModules.map((mod, idx) => {
         const weeks = moduleWeeks[idx]
-        const width = Math.max(weeks * PIXELS_PER_WEEK, 100)
-        const item = { x: currentX, width, mod, weeks, color: MODULE_COLORS[idx % MODULE_COLORS.length] }
+        const width = weeks * PIXELS_PER_WEEK   // escala siempre consistente
+        const item  = { x: currentX, width, mod, weeks, color: MODULE_COLORS[idx % MODULE_COLORS.length] }
         currentX += width
         return item
     })
 
-    const TOTAL_SVG_WIDTH = currentX + 20
+    const TOTAL_SVG_WIDTH = totalWeeks * PIXELS_PER_WEEK + 20
     const SVG_HEIGHT      = positions.length * ROW_HEIGHT + 40
 
     // Labels
@@ -124,7 +140,7 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
         </div>`
     })
 
-    // Bars
+    // Bars — el texto se adapta al ancho real de cada barra
     let barsHTML = ''
     positions.forEach((item, idx) => {
         const y       = idx * ROW_HEIGHT + 8
@@ -132,29 +148,44 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
         const mid     = Math.ceil(words.length / 2)
         const line1   = words.length <= 3 ? words.join(' ') : words.slice(0, mid).join(' ')
         const line2   = words.length <= 3 ? '' : words.slice(mid).join(' ')
+
+        // chars disponibles según el ancho real de la barra
         const maxChars = Math.floor(item.width / 6.5)
         const l1 = line1.length > maxChars ? line1.slice(0, maxChars - 3) + '…' : line1
         const l2 = line2.length > maxChars ? line2.slice(0, maxChars - 3) + '…' : line2
-        const textY   = y + BAR_HEIGHT / 2 + 4
-        const line1Y  = l2 ? textY - 7 : textY
-        const line2Y  = textY + 7
+
+        const textY  = y + BAR_HEIGHT / 2 + 4
+        const line1Y = l2 ? textY - 7 : textY
+        const line2Y = textY + 7
+
+        // Ajuste de font-size según espacio disponible
+        const fontSize = PIXELS_PER_WEEK >= 60 ? 9.5 : PIXELS_PER_WEEK >= 40 ? 8.5 : 7.5
 
         barsHTML += `
         <rect x="${item.x}" y="${y}" width="${item.width - 4}" height="${BAR_HEIGHT}"
               rx="6" fill="${item.color}15" stroke="${item.color}" stroke-width="1.5"/>
-        <text x="${item.x + 10}" y="${line1Y}"
-              font-family="DM Sans,sans-serif" font-size="9.5" fill="#1a1f36" font-weight="600">${l1}</text>
-        ${l2 ? `<text x="${item.x + 10}" y="${line2Y}"
-              font-family="DM Sans,sans-serif" font-size="9.5" fill="#1a1f36" font-weight="600">${l2}</text>` : ''}`
+        <text x="${item.x + 8}" y="${line1Y}"
+              font-family="DM Sans,sans-serif" font-size="${fontSize}" fill="#1a1f36" font-weight="600">${l1}</text>
+        ${l2 ? `<text x="${item.x + 8}" y="${line2Y}"
+              font-family="DM Sans,sans-serif" font-size="${fontSize}" fill="#1a1f36" font-weight="600">${l2}</text>` : ''}`
     })
 
-    // Grid + X axis
+    // Grid + eje X — usan exactamente PIXELS_PER_WEEK, en sync con las barras
     let gridHTML = '', xAxisHTML = ''
+
+    // Marcas de semana: si hay muchas semanas, mostrar solo cada N para no saturar
+    const labelEvery = totalWeeks <= 12 ? 1 : totalWeeks <= 20 ? 2 : 4
+
     for (let i = 0; i <= totalWeeks; i++) {
         const x = i * PIXELS_PER_WEEK
-        gridHTML  += `<line x1="${x}" y1="0" x2="${x}" y2="${positions.length * ROW_HEIGHT}" stroke="#e8edf5" stroke-width="1"/>`
-        xAxisHTML += `<text x="${x}" y="${positions.length * ROW_HEIGHT + 22}"
-            font-family="DM Sans,sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
+        // línea de grid siempre
+        gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="${positions.length * ROW_HEIGHT}"
+                           stroke="#e8edf5" stroke-width="1"/>`
+        // label solo cada labelEvery semanas (y siempre el 0 y el último)
+        if (i % labelEvery === 0 || i === totalWeeks) {
+            xAxisHTML += `<text x="${x}" y="${positions.length * ROW_HEIGHT + 22}"
+                font-family="DM Sans,sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
+        }
     }
 
     return `
@@ -167,7 +198,7 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
         <div class="gantt-svg-col">
             <svg width="${TOTAL_SVG_WIDTH}" height="${SVG_HEIGHT}"
                  viewBox="0 0 ${TOTAL_SVG_WIDTH} ${SVG_HEIGHT}"
-                 xmlns="http://www.w3.org/2000/svg" style="display:block;">
+                 xmlns="http://www.w3.org/2000/svg" style="display:block; width:100%;">
                 <g>${gridHTML}</g>
                 ${barsHTML}
                 <g>${xAxisHTML}</g>
