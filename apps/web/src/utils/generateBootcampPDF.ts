@@ -296,9 +296,13 @@ function generateBloomProgressChart(
     })
 
     let xAxisHTML = ''
+    const labelEvery = totalWeeks <= 12 ? 1 : 2  // 16 sem → cada 2 semanas
+
     for (let i = 0; i <= totalWeeks; i++) {
         const x = 40 + (i / totalWeeks) * (svgWidth - 80)
-        xAxisHTML += `<text x="${x}" y="${chartBottom+25}">${i}</text>`
+        if (i % labelEvery === 0 || i === totalWeeks) {
+            xAxisHTML += `<text x="${x}" y="${chartBottom + 25}">${i}</text>`
+        }
     }
 
     let gridV = '', gridH = '', modLines = '', areaStops = '', lineStops = ''
