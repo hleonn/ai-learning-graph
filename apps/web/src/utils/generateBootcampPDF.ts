@@ -100,128 +100,109 @@ const MODULE_COLORS = [
     '#5b8dee', '#9b72e8', '#f07a3a', '#3bbf8c', '#2ab8c8', '#e85d75', '#a78bfa'
 ]
 
-// ========== GENERAR DIAGRAMA DE GANTT ==========
-// ========== GENERAR DIAGRAMA DE GANTT ==========
+
 // ========== GENERAR DIAGRAMA DE GANTT ==========
 function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: number[]): string {
     const sortedModules = [...modules].sort((a, b) => a.order - b.order)
 
-    // Calcular ancho total basado en totalWeeks (escala fija)
-    const totalWidth = 760  // Ancho total del SVG
-    const scale = totalWidth / totalWeeks
+    const BAR_HEIGHT = 40
+    const ROW_HEIGHT = 54
+    const LABEL_WIDTH = 100
+    const MIN_BAR_WIDTH = 120
+    const PIXELS_PER_WEEK = 45  // Escala fija: cada semana = 45px
 
+    // Calcular posiciones
+    let positions: { x: number; width: number; mod: Module; weeks: number; color: string }[] = []
     let currentX = 0
-    const modulePositions: { x: number; width: number; mod: Module; weeks: number; color: string }[] = []
 
     sortedModules.forEach((mod, idx) => {
         const weeks = moduleWeeks[idx]
-        let width = weeks * scale
+        let width = weeks * PIXELS_PER_WEEK
+        if (width < MIN_BAR_WIDTH) width = MIN_BAR_WIDTH
 
-        // Ancho mínimo para que quepa el texto
-        width = Math.max(width, 140)
-
-        modulePositions.push({
+        positions.push({
             x: currentX,
             width: width,
             mod,
             weeks,
             color: MODULE_COLORS[idx % MODULE_COLORS.length]
         })
-
         currentX += width
     })
 
-    // Si el último módulo se sale, ajustar la escala de todos
-    const totalUsedWidth = currentX
-    if (totalUsedWidth > totalWidth) {
-        const adjustmentFactor = totalWidth / totalUsedWidth
-        currentX = 0
-        modulePositions.forEach(item => {
-            item.width = item.width * adjustmentFactor
-            item.x = currentX
-            currentX += item.width
-        })
-    }
+    const TOTAL_SVG_WIDTH = currentX + 20  // +20 para margen derecho
+    const SVG_HEIGHT = positions.length * ROW_HEIGHT + 40
 
+    // Labels laterales - posicionamiento absoluto
     let labelsHTML = ''
-    modulePositions.forEach((item, idx) => {
+    positions.forEach((item, idx) => {
+        const topPosition = idx * ROW_HEIGHT + 8
         labelsHTML += `
-            <div class="gantt-module-label m${idx + 1}">
+            <div class="gantt-module-label" style="top: ${topPosition}px; height: ${BAR_HEIGHT}px;">
                 <span class="gantt-module-name" style="color: ${item.color}">Módulo ${item.mod.order}</span>
                 <span class="gantt-module-duration">${item.weeks} ${item.weeks === 1 ? 'semana' : 'semanas'}</span>
             </div>
         `
     })
 
+    // Barras del Gantt
     let barsHTML = ''
-    modulePositions.forEach((item) => {
+    positions.forEach((item, idx) => {
         const bgColor = `${item.color}15`
-        const name = item.mod.name
+        const y = idx * ROW_HEIGHT + 8
 
-        // Dividir en líneas de máximo 22 caracteres
-        const words = name.split(' ')
-        const lines: string[] = []
-        let currentLine = ''
+        // Texto - dividir en máximo 2 líneas
+        const words = item.mod.name.split(' ')
+        let line1 = ''
+        let line2 = ''
 
-        words.forEach(word => {
-            if ((currentLine + ' ' + word).length <= 24) {
-                currentLine = currentLine ? currentLine + ' ' + word : word
-            } else {
-                lines.push(currentLine)
-                currentLine = word
-            }
-        })
-        if (currentLine) lines.push(currentLine)
-
-        // Máximo 3 líneas
-        const displayLines = lines.slice(0, 3)
-        if (displayLines.length === 3 && lines.length > 3) {
-            displayLines[2] = displayLines[2].substring(0, 20) + '...'
+        if (words.length <= 3) {
+            line1 = words.join(' ')
+        } else {
+            const mid = Math.ceil(words.length / 2)
+            line1 = words.slice(0, mid).join(' ')
+            line2 = words.slice(mid).join(' ')
         }
 
-        const y = 4 + (item.mod.order - 1) * 58
-        const barHeight = 46
+        // Truncar si es necesario (basado en ancho disponible)
+        const maxChars = Math.floor(item.width / 6)
+        if (line1.length > maxChars) line1 = line1.substring(0, maxChars - 3) + '...'
+        if (line2.length > maxChars) line2 = line2.substring(0, maxChars - 3) + '...'
 
-        // Calcular posición Y para centrar el texto
-        const startY = y + 20 - (displayLines.length - 1) * 6
-
-        let textElements = ''
-        displayLines.forEach((line, i) => {
-            textElements += `<text x="${item.x + 8}" y="${startY + i * 14}" font-family="DM Sans, sans-serif" font-size="9" fill="#1a1f36" font-weight="500">${line}</text>`
-        })
+        const textY = y + BAR_HEIGHT/2 + 4
+        const line1Y = line2 ? textY - 7 : textY
+        const line2Y = textY + 7
 
         barsHTML += `
-            <rect x="${item.x}" y="${y}" width="${item.width - 2}" height="${barHeight}" rx="8" fill="${bgColor}" stroke="${item.color}" stroke-width="1.5"/>
-            ${textElements}
+            <rect x="${item.x}" y="${y}" width="${item.width - 4}" height="${BAR_HEIGHT}" rx="6" fill="${bgColor}" stroke="${item.color}" stroke-width="1.5"/>
+            <text x="${item.x + 8}" y="${line1Y}" font-family="DM Sans, sans-serif" font-size="9" fill="#1a1f36" font-weight="500">${line1}</text>
+            ${line2 ? `<text x="${item.x + 8}" y="${line2Y}" font-family="DM Sans, sans-serif" font-size="9" fill="#1a1f36" font-weight="500">${line2}</text>` : ''}
         `
     })
 
+    // Grid y eje X
+    let gridHTML = ''
     let xAxisHTML = ''
     for (let i = 0; i <= totalWeeks; i++) {
-        const x = i * scale
-        xAxisHTML += `<text x="${x}" y="282" font-family="DM Sans, sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
+        const x = i * PIXELS_PER_WEEK
+        gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="${positions.length * ROW_HEIGHT}" stroke="#e8edf5" stroke-width="1"/>`
+        xAxisHTML += `<text x="${x}" y="${positions.length * ROW_HEIGHT + 20}" font-family="DM Sans, sans-serif" font-size="9" fill="#9aa0b8" text-anchor="middle">${i}</text>`
     }
-
-    let gridHTML = ''
-    for (let i = 0; i <= totalWeeks; i++) {
-        const x = i * scale
-        gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="268" stroke="#e8edf5" stroke-width="1"/>`
-    }
-
-    const svgHeight = (modulePositions.length * 58) + 40
 
     return `
-    <div class="gantt-container">
-        <div class="gantt-labels-side">
-            ${labelsHTML}
+    <div class="gantt-wrapper">
+        <div class="gantt-labels" style="width: ${LABEL_WIDTH}px;">
+            <div style="position: relative; height: ${SVG_HEIGHT}px;">
+                ${labelsHTML}
+            </div>
         </div>
-        <div class="gantt-chart-area">
-            <svg class="gantt-svg" viewBox="0 0 ${totalWidth} ${svgHeight}" xmlns="http://www.w3.org/2000/svg">
+        <div class="gantt-chart" style="width: calc(100% - ${LABEL_WIDTH}px); overflow-x: auto;">
+            <svg width="${TOTAL_SVG_WIDTH}" height="${SVG_HEIGHT}" viewBox="0 0 ${TOTAL_SVG_WIDTH} ${SVG_HEIGHT}" xmlns="http://www.w3.org/2000/svg" style="display: block;">
                 <g stroke="#e8edf5" stroke-width="1">
                     ${gridHTML}
                 </g>
                 ${barsHTML}
-                <g font-family="DM Sans, sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">
+                <g font-family="DM Sans, sans-serif" font-size="9" fill="#9aa0b8" text-anchor="middle">
                     ${xAxisHTML}
                 </g>
             </svg>
@@ -594,45 +575,43 @@ const BLOOM_CHART_STYLES = `
     margin-bottom: 18px;
     letter-spacing: 0.2px;
 }
-
-.gantt-container {
+.gantt-wrapper {
     display: flex;
-    gap: 0;
 }
 
-.gantt-labels-side {
-    min-width: 100px;
-    padding-right: 15px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+.gantt-labels {
+    position: relative;
+    flex-shrink: 0;
 }
 
 .gantt-module-label {
-    height: 42px;
+    position: absolute;
+    left: 0;
+    right: 8px;
     display: flex;
     flex-direction: column;
     justify-content: center;
 }
 
 .gantt-module-name {
-    font-size: 12px;
+    font-size: 10.5px;
     font-weight: 700;
+    line-height: 1.3;
+}
+
+.gantt-container {
+    display: flex;
+    // gap: 0;
 }
 
 .gantt-module-duration {
-    font-size: 10.5px;
+    font-size: 9px;
     color: #6b7394;
     font-weight: 400;
 }
 
-.gantt-chart-area {
-    flex: 1;
-}
-
-.gantt-svg {
-    width: 100%;
-    display: block;
+.gantt-chart {
+    overflow-x: auto;
 }
 
 @media print {
