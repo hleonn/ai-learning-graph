@@ -66,9 +66,6 @@ function formatDateUTC(date: Date): string {
     return `${day}/${month}/${year}`
 }
 
-/**
- * Calcula el calendario del bootcamp basado en fecha de inicio e intensidad
- */
 export function calculateBootcampCalendar(
     startDate: Date,
     durationWeeks: number,
@@ -79,7 +76,6 @@ export function calculateBootcampCalendar(
     const intensityConfig = INTENSITY_OPTIONS.find(o => o.id === intensity) || INTENSITY_OPTIONS[0]
     const hoursPerWeek = intensityConfig.daysPerWeek * intensityConfig.hoursPerDay
 
-    // ✅ CÁLCULO DINÁMICO basado en durationWeeks del bootcamp
     const totalWeeks = (() => {
         switch (intensity) {
             case 'intensive': return durationWeeks
@@ -89,7 +85,6 @@ export function calculateBootcampCalendar(
         }
     })()
 
-    // Calcular endDate correctamente en UTC
     const endDate = new Date(startDate)
     endDate.setUTCDate(endDate.getUTCDate() + (totalWeeks * 7) - 1)
 
@@ -97,7 +92,6 @@ export function calculateBootcampCalendar(
     let currentDate = new Date(startDate)
     let weekNumber = 1
 
-    // Pre-calcular qué módulos caen en cada semana
     let currentWeekStart = 1
     const moduleSchedule: { weekStart: number; weekEnd: number; module: any }[] = []
 
@@ -172,9 +166,6 @@ function getDayName(dayOfWeek: number): string {
     return days[dayOfWeek]
 }
 
-/**
- * Genera HTML del calendario para exportar a PDF
- */
 export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: string): string {
     const intensityOption = INTENSITY_OPTIONS.find(o => o.id === calendar.intensity) || INTENSITY_OPTIONS[0]
 
@@ -193,12 +184,16 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         return formatDateUTC(date)
     }
 
+    const formattedStartDate = formatDate(calendar.startDate)
+    const formattedEndDate = formatDate(calendar.endDate)
+
     return `<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${bootcampTitle} - Calendario del Bootcamp</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -207,7 +202,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         }
         
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f5f5f5;
             display: flex;
             flex-direction: column;
@@ -243,23 +238,55 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         }
         
         .header {
-            background: linear-gradient(135deg, #1E3A5F 0%, #2d5a8c 100%);
-            padding: 30px;
-            color: white;
+            background: #ffffff;
+            padding: 30px 35px;
+            color: #1a1f36;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .header-logo {
+            width: 64px;
+            height: 64px;
+            border-radius: 14px;
+            background: white;
+            padding: 6px;
+            flex-shrink: 0;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .header-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        .header-content {
+            flex: 1;
         }
         
         .header h1 {
             font-size: 1.8rem;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
+            color: #1a1f36;
+            font-weight: 700;
+        }
+        
+        .header p {
+            color: #555;
+            font-size: 0.95rem;
+            font-weight: 400;
         }
         
         .info-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 20px;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255,255,255,0.2);
+            gap: 16px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #e0e0e0;
         }
         
         .info-item {
@@ -267,24 +294,27 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         }
         
         .info-label {
-            font-size: 0.7rem;
-            opacity: 0.7;
+            font-size: 0.65rem;
+            color: #888;
             display: block;
+            margin-bottom: 3px;
         }
         
         .info-value {
-            font-size: 1.2rem;
+            font-size: 1rem;
             font-weight: 600;
+            color: #1a1f36;
             display: block;
-            margin-top: 5px;
         }
         
         .intensity-badge {
             display: inline-block;
-            background: rgba(255,255,255,0.2);
+            background: #f0f0f0;
             padding: 4px 12px;
             border-radius: 20px;
             font-size: 0.8rem;
+            color: #1a1f36;
+            border: 1px solid #d4d4d4;
         }
         
         .week-card {
@@ -295,7 +325,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         }
         
         .week-header {
-            background: #f0f0f0;
+            background: #f5f5f5;
             padding: 12px 20px;
             font-weight: 700;
             color: #1E3A5F;
@@ -320,13 +350,14 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         
         .day-card.no-class {
             background: #f9f9f9;
-            color: #ccc;
+            color: #999;
         }
         
         .day-name {
             font-weight: 700;
             font-size: 0.8rem;
             margin-bottom: 4px;
+            color: #1a1f36;
         }
         
         .day-date {
@@ -357,10 +388,22 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         }
         
         .footer {
-            background: #1E3A5F;
-            color: white;
-            padding: 20px;
+            background: #ffffff;
+            color: #1a1f36;
+            padding: 20px 30px;
             text-align: center;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .footer p {
+            color: #1a1f36;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .footer small {
+            color: #888;
+            font-size: 0.7rem;
         }
         
         @media print {
@@ -373,6 +416,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
             }
             .calendar-container {
                 box-shadow: none;
+                border-radius: 0;
             }
             .day-card {
                 break-inside: avoid;
@@ -387,32 +431,37 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
 
 <div class="calendar-container">
     <div class="header">
-        <h1>📅 ${bootcampTitle}</h1>
-        <p>Calendario de formación</p>
-        <div class="info-grid">
-            <div class="info-item">
-                <span class="info-label">📅 Inicio</span>
-                <span class="info-value">${formatDate(calendar.startDate)}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">🏁 Fin</span>
-                <span class="info-value">${formatDate(calendar.endDate)}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">⏱️ Duración</span>
-                <span class="info-value">${calendar.totalWeeks} semanas</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">⚡ Intensidad</span>
-                <span class="info-value"><span class="intensity-badge">${intensityOption.icon} ${intensityOption.name}</span></span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">📖 Horas totales</span>
-                <span class="info-value">${calendar.totalHours}h</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">📚 Horas/semana</span>
-                <span class="info-value">${calendar.hoursPerWeek}h</span>
+        <div class="header-logo">
+            <img src="https://ai-learning-graph.vercel.app/logo.png" alt="Logo" />
+        </div>
+        <div class="header-content">
+            <h1>📅 ${bootcampTitle}</h1>
+            <p>Calendario de formación</p>
+            <div class="info-grid">
+                <div class="info-item">
+                    <span class="info-label">📅 Inicio</span>
+                    <span class="info-value">${formattedStartDate}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">🏁 Fin</span>
+                    <span class="info-value">${formattedEndDate}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">⏱️ Duración</span>
+                    <span class="info-value">${calendar.totalWeeks} semanas</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">⚡ Intensidad</span>
+                    <span class="info-value"><span class="intensity-badge">${intensityOption.icon} ${intensityOption.name}</span></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">📖 Horas totales</span>
+                    <span class="info-value">${calendar.totalHours}h</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">📚 Horas/semana</span>
+                    <span class="info-value">${calendar.hoursPerWeek}h</span>
+                </div>
             </div>
         </div>
     </div>
@@ -448,9 +497,6 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
 </html>`
 }
 
-/**
- * Genera y descarga el calendario como PDF
- */
 export async function generateAndDownloadCalendarPDF(
     bootcampTitle: string,
     calendar: CalendarData

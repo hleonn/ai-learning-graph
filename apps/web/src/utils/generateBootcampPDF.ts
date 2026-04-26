@@ -100,27 +100,13 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
     const ROW_HEIGHT  = 54
     const LABEL_WIDTH = 110
 
-    // ── Escala dinámica según duración total ──────────────────────
-    // Ancho disponible estimado del SVG (el contenedor .program tiene max 1000px,
-    // menos padding 28px*2, menos label 110px, menos margen 30px*2 = ~774px útiles)
     const AVAILABLE_WIDTH = 774
-
-    // PIXELS_PER_WEEK se ajusta para que el gráfico siempre quepa sin scroll
-    // pero respetando un mínimo legible de 28px/semana
     const PIXELS_PER_WEEK = Math.max(28, Math.floor(AVAILABLE_WIDTH / totalWeeks))
-
-    // Referencia por duración:
-    //  8 sem → 96px/sem  (774/8)
-    // 12 sem → 64px/sem  (774/12)
-    // 16 sem → 48px/sem  (774/16)
-    // 20 sem → 38px/sem  (774/20)
-    // 24 sem → 32px/sem  (774/24)
-    // ─────────────────────────────────────────────────────────────
 
     let currentX = 0
     const positions = sortedModules.map((mod, idx) => {
         const weeks = moduleWeeks[idx]
-        const width = weeks * PIXELS_PER_WEEK   // escala siempre consistente
+        const width = weeks * PIXELS_PER_WEEK
         const item  = { x: currentX, width, mod, weeks, color: MODULE_COLORS[idx % MODULE_COLORS.length] }
         currentX += width
         return item
@@ -129,7 +115,6 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
     const TOTAL_SVG_WIDTH = totalWeeks * PIXELS_PER_WEEK + 20
     const SVG_HEIGHT      = positions.length * ROW_HEIGHT + 40
 
-    // Labels
     let labelsHTML = ''
     positions.forEach((item, idx) => {
         const top = idx * ROW_HEIGHT + 8
@@ -140,7 +125,6 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
         </div>`
     })
 
-    // Bars — el texto se adapta al ancho real de cada barra
     let barsHTML = ''
     positions.forEach((item, idx) => {
         const y       = idx * ROW_HEIGHT + 8
@@ -149,7 +133,6 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
         const line1   = words.length <= 3 ? words.join(' ') : words.slice(0, mid).join(' ')
         const line2   = words.length <= 3 ? '' : words.slice(mid).join(' ')
 
-        // chars disponibles según el ancho real de la barra
         const maxChars = Math.floor(item.width / 6.5)
         const l1 = line1.length > maxChars ? line1.slice(0, maxChars - 3) + '…' : line1
         const l2 = line2.length > maxChars ? line2.slice(0, maxChars - 3) + '…' : line2
@@ -158,7 +141,6 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
         const line1Y = l2 ? textY - 7 : textY
         const line2Y = textY + 7
 
-        // Ajuste de font-size según espacio disponible
         const fontSize = PIXELS_PER_WEEK >= 60 ? 9.5 : PIXELS_PER_WEEK >= 40 ? 8.5 : 7.5
 
         barsHTML += `
@@ -170,18 +152,13 @@ function generateGanttChart(modules: Module[], totalWeeks: number, moduleWeeks: 
               font-family="DM Sans,sans-serif" font-size="${fontSize}" fill="#1a1f36" font-weight="600">${l2}</text>` : ''}`
     })
 
-    // Grid + eje X — usan exactamente PIXELS_PER_WEEK, en sync con las barras
     let gridHTML = '', xAxisHTML = ''
-
-    // Marcas de semana: si hay muchas semanas, mostrar solo cada N para no saturar
     const labelEvery = totalWeeks <= 12 ? 1 : totalWeeks <= 20 ? 2 : 4
 
     for (let i = 0; i <= totalWeeks; i++) {
         const x = i * PIXELS_PER_WEEK
-        // línea de grid siempre
         gridHTML += `<line x1="${x}" y1="0" x2="${x}" y2="${positions.length * ROW_HEIGHT}"
                            stroke="#e8edf5" stroke-width="1"/>`
-        // label solo cada labelEvery semanas (y siempre el 0 y el último)
         if (i % labelEvery === 0 || i === totalWeeks) {
             xAxisHTML += `<text x="${x}" y="${positions.length * ROW_HEIGHT + 22}"
                 font-family="DM Sans,sans-serif" font-size="10" fill="#9aa0b8" text-anchor="middle">${i}</text>`
@@ -223,7 +200,7 @@ function generateBloomProgressChart(
     const chartBottom = 240
     const chartHeight = chartBottom - chartTop
     const viewBoxH    = 330
-    const totalVH     = viewBoxH + marginTop   // 390
+    const totalVH     = viewBoxH + marginTop
 
     let cumulativeWeight = 0
     const moduleData = sortedModules.map((mod, idx) => {
@@ -296,7 +273,7 @@ function generateBloomProgressChart(
     })
 
     let xAxisHTML = ''
-    const labelEvery = totalWeeks <= 12 ? 1 : 2  // 16 sem → cada 2 semanas
+    const labelEvery = totalWeeks <= 12 ? 1 : 2
 
     for (let i = 0; i <= totalWeeks; i++) {
         const x = 40 + (i / totalWeeks) * (svgWidth - 80)
@@ -381,7 +358,6 @@ function generateBloomProgressChart(
 
 // ========== CSS ==========
 const BLOOM_CHART_STYLES = `
-/* ── Bloom chart ─────────────────────────────────────── */
 .bloom-chart-container {
     background: white;
     border-radius: 16px;
@@ -554,8 +530,18 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
     const hoursPerWeek = Math.round(totalHours / bootcamp.duration_weeks)
     const createdDate  = formatDateUTC(normalizeDate(bootcamp.created_at))
 
-    const startDate = bootcamp.start_date ? normalizeDate(bootcamp.start_date) : getDefaultStartDate()
-    const endDate   = bootcamp.end_date   ? normalizeDate(bootcamp.end_date)   : calculateEndDate(startDate, bootcamp.duration_weeks)
+    // ✅ Obtener fechas guardadas del calendario (prioridad sobre las del bootcamp)
+    const savedStartDate = typeof localStorage !== 'undefined' ? localStorage.getItem('bootcamp_calendar_start_date') : null
+
+    const startDate = savedStartDate
+        ? normalizeDate(savedStartDate)
+        : bootcamp.start_date
+            ? normalizeDate(bootcamp.start_date)
+            : getDefaultStartDate()
+
+    const endDate = bootcamp.end_date
+        ? normalizeDate(bootcamp.end_date)
+        : calculateEndDate(startDate, bootcamp.duration_weeks)
 
     const formattedStartDate = formatDateUTC(startDate)
     const formattedEndDate   = formatDateUTC(endDate)
@@ -626,7 +612,6 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
         return html
     }
 
-    // El Gantt ya no vive dentro de .gantt-section — ahora tiene su propio container igual que Bloom
     const ganttInnerHTML = generateGanttChart(bootcamp.modules, bootcamp.duration_weeks, moduleWeeks)
 
     return `<!DOCTYPE html>
@@ -667,11 +652,13 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             border-radius: 16px; overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #1E3A5F 0%, #2d5a8c 100%);
-            padding: 40px 35px; color: white;
+            background: #ffffff;
+            padding: 40px 35px; 
+            color: #1a1f36;
             display: flex;
             align-items: center;
             gap: 24px;
+            border-bottom: 1px solid #e0e0e0;
         }
         .header-logo {
             width: 72px;
@@ -686,32 +673,23 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             height: 100%;
             object-fit: contain;
         }
-        .header-content {
-            flex: 1;
-        }
-        .header h1 { font-size: 2.2rem; margin-bottom: 10px; font-weight: 700; }
-        .header h2 { font-size: 1rem; font-weight: 400; opacity: 0.9; margin-bottom: 14px; }
-        .badge-container {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 10px;
-        }
+        .header-content { flex: 1; }
+        .header h1 { color: #1a1f36; font-size: 2.2rem; margin-bottom: 10px; font-weight: 700; }
+        .header h2 { color: #555; font-size: 1rem; font-weight: 400; opacity: 0.9; margin-bottom: 14px; }
+        .badge-container { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
         .badge {
-            background: rgba(255,255,255,0.15);
-            padding: 5px 12px;
-            border-radius: 30px;
-            font-size: 0.7rem;
-            font-weight: 500;
-            border: 1px solid rgba(255,255,255,0.2);
+            background: #f0f0f0; padding: 5px 12px; border-radius: 30px;
+            font-size: 0.7rem; font-weight: 500; border: 1px solid #d4d4d4; color: #1a1f36;
         }
         .date-range { display: flex; gap: 16px; margin-top: 6px; }
-        .date-badge { background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; }
+        .date-badge { 
+            background: #f0f0f0; padding: 4px 10px; border-radius: 20px; 
+            font-size: 0.7rem; color: #1a1f36; border: 1px solid #d4d4d4;
+        }
 
         .stats {
             display: grid; grid-template-columns: repeat(4,1fr);
-            background: #f8f8f8; padding: 20px 30px;
-            border-bottom: 1px solid #e0e0e0;
+            background: #f8f8f8; padding: 20px 30px; border-bottom: 1px solid #e0e0e0;
         }
         .stat { text-align: center; }
         .stat-number { font-size: 2rem; font-weight: 700; color: #1E3A5F; margin-bottom: 5px; }
@@ -755,10 +733,13 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
         ${BLOOM_CHART_STYLES}
 
-        .footer { background: #1E3A5F; color: white; padding: 20px 30px; text-align: center; }
-        .footer h3 { font-size: 1.1rem; margin-bottom: 10px; }
-        .footer-info { display: flex; justify-content: center; gap: 20px; margin: 10px 0; font-size: 0.75rem; opacity: 0.8; }
-        .footer small { font-size: 0.65rem; opacity: 0.6; }
+        .footer { 
+            background: #ffffff; color: #1a1f36; padding: 20px 30px; 
+            text-align: center; border-top: 1px solid #e0e0e0;
+        }
+        .footer h3 { color: #1a1f36; font-size: 1.1rem; margin-bottom: 10px; }
+        .footer-info { color: #555; display: flex; justify-content: center; gap: 20px; margin: 10px 0; font-size: 0.75rem; opacity: 0.8; }
+        .footer small { color: #888; font-size: 0.65rem; opacity: 0.6; }
 
         @media print {
             @page { size: letter; margin: 0.5cm; }
@@ -777,25 +758,24 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
 <div class="program">
     <div class="header">
-    <div class="header-logo">
+        <div class="header-logo">
             <img src="https://ai-learning-graph.vercel.app/logo.png" alt="Logo" />
         </div>
         <div class="header-content">
-        <h1>🚀 ${bootcamp.title}</h1>
-        <h2>Programa de formación intensiva en ${bootcamp.title}</h2>
-        <div class="badge-container">
-            <span class="badge">📅 ${bootcamp.duration_weeks} semanas</span>
-            <span class="badge">📚 ${bootcamp.modules.length} módulos</span>
-            <span class="badge">⏱️ ${totalHours} horas totales</span>
-            <span class="badge">📖 ${hoursPerWeek}h/semana</span>
-            <span class="badge">🎓 Bootcamp</span>
+            <h1>🚀 ${bootcamp.title}</h1>
+            <h2>Programa de formación intensiva en ${bootcamp.title}</h2>
+            <div class="badge-container">
+                <span class="badge">📅 ${bootcamp.duration_weeks} semanas</span>
+                <span class="badge">📚 ${bootcamp.modules.length} módulos</span>
+                <span class="badge">⏱️ ${totalHours} horas totales</span>
+                <span class="badge">📖 ${hoursPerWeek}h/semana</span>
+                <span class="badge">🎓 Bootcamp</span>
+            </div>
+            <div class="date-range">
+                <span class="date-badge">📅 Inicio: ${formattedStartDate}</span>
+                <span class="date-badge">🏁 Fin: ${formattedEndDate}</span>
+            </div>
         </div>
-        <div class="date-range">
-            <span class="date-badge">📅 Inicio: ${formattedStartDate}</span>
-            <span class="date-badge">🏁 Fin: ${formattedEndDate}</span>
-        </div>
-</div>
-        
     </div>
 
     <div class="stats">
@@ -825,7 +805,6 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
     ${generateBloomProgressChart(bootcamp.modules, bootcamp.duration_weeks, formattedStartDate, formattedEndDate)}
 
-    <!-- Gantt: mismo tratamiento visual que Bloom -->
     <div class="gantt-chart-container">
         <div class="gantt-chart-header">
             <div class="gantt-chart-title">
