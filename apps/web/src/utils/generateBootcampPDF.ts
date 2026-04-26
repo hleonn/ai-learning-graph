@@ -656,13 +656,13 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             padding: 40px 35px; 
             color: #1a1f36;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 24px;
             border-bottom: 1px solid #e0e0e0;
         }
         .header-logo {
-            width: 72px;
-            height: 72px;
+            width: 100px;
+            height: 100px;
             border-radius: 16px;
             background: white;
             padding: 8px;
