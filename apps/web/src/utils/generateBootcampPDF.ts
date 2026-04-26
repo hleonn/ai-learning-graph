@@ -669,18 +669,44 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
         .header {
             background: linear-gradient(135deg, #1E3A5F 0%, #2d5a8c 100%);
             padding: 40px 35px; color: white;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+        }
+        .header-logo {
+            width: 72px;
+            height: 72px;
+            border-radius: 16px;
+            background: white;
+            padding: 8px;
+            flex-shrink: 0;
+        }
+        .header-logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .header-content {
+            flex: 1;
         }
         .header h1 { font-size: 2.2rem; margin-bottom: 10px; font-weight: 700; }
-        .header h2 { font-size: 1rem; font-weight: 400; opacity: 0.9; margin-bottom: 20px; }
-        .badge-container { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px; }
+        .header h2 { font-size: 1rem; font-weight: 400; opacity: 0.9; margin-bottom: 14px; }
+        .badge-container {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
         .badge {
             background: rgba(255,255,255,0.15);
-            padding: 6px 14px; border-radius: 30px;
-            font-size: 0.75rem; font-weight: 500;
+            padding: 5px 12px;
+            border-radius: 30px;
+            font-size: 0.7rem;
+            font-weight: 500;
             border: 1px solid rgba(255,255,255,0.2);
         }
-        .date-range { display: flex; gap: 20px; margin-top: 10px; }
-        .date-badge { background: rgba(255,255,255,0.2); padding: 5px 12px; border-radius: 20px; font-size: 0.7rem; }
+        .date-range { display: flex; gap: 16px; margin-top: 6px; }
+        .date-badge { background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; }
 
         .stats {
             display: grid; grid-template-columns: repeat(4,1fr);
@@ -751,6 +777,10 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
 <div class="program">
     <div class="header">
+    <div class="header-logo">
+            <img src="https://ai-learning-graph.vercel.app/logo.png" alt="Logo" />
+        </div>
+        <div class="header-content">
         <h1>🚀 ${bootcamp.title}</h1>
         <h2>Programa de formación intensiva en ${bootcamp.title}</h2>
         <div class="badge-container">
@@ -764,6 +794,8 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             <span class="date-badge">📅 Inicio: ${formattedStartDate}</span>
             <span class="date-badge">🏁 Fin: ${formattedEndDate}</span>
         </div>
+</div>
+        
     </div>
 
     <div class="stats">
