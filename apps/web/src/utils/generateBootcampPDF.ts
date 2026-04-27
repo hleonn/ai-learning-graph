@@ -1131,7 +1131,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             padding: 40px 35px; 
             color: #1a1f36;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 24px;
             border-bottom: 1px solid #e0e0e0;
         }
@@ -1229,10 +1229,10 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
 <div class="program">
     <div class="header">
-        <div class="header-logo">
+        <div class="header-logo" style="align-self: flex-start;">
             <img src="https://ai-learning-graph.vercel.app/logo.png" alt="Logo" />
         </div>
-        <div class="header-content">
+        <div class="header-content" style="text-align: left;">
             <h1>🚀 ${bootcamp.title}</h1>
             <h2>Programa de formación intensiva en ${bootcamp.title}</h2>
             <div class="badge-container">

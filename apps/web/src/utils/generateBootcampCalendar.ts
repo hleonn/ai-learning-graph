@@ -242,9 +242,10 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
             padding: 30px 35px;
             color: #1a1f36;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: 24px;
             border-bottom: 1px solid #e0e0e0;
+            position: relative; 
         }
         
         .header-logo {
@@ -254,6 +255,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
             background: white;
             padding: 6px;
             flex-shrink: 0;
+            margin-top: -10px;
             /*border: 1px solid #e0e0e0;*/
         }
         
@@ -431,10 +433,10 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
 
 <div class="calendar-container">
     <div class="header">
-        <div class="header-logo">
+        <div class="header-logo" style="order: 1; position: relative; z-index: 2;">
             <img src="https://ai-learning-graph.vercel.app/logo.png" alt="Logo" />
         </div>
-        <div class="header-content">
+        <div class="header-content" style="order: 2;">
             <h1>📅 ${bootcampTitle}</h1>
             <p>Calendario de formación</p>
             <div class="info-grid">
