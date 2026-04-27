@@ -242,10 +242,11 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
             padding: 30px 35px;
             color: #1a1f36;
             display: flex;
+            flex-direction: row;
             align-items: flex-start;
             gap: 24px;
             border-bottom: 1px solid #e0e0e0;
-            position: relative; 
+             
         }
         
         .header-logo {
@@ -255,7 +256,6 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
             background: white;
             padding: 6px;
             flex-shrink: 0;
-            margin-top: -10px;
             /*border: 1px solid #e0e0e0;*/
         }
         
@@ -433,40 +433,40 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
 
 <div class="calendar-container">
     <div class="header">
-        <div class="header-logo" style="order: 1; position: relative; z-index: 2;">
-            <img src="https://ai-learning-graph.vercel.app/logo.png" alt="Logo" />
-        </div>
-        <div class="header-content" style="order: 2;">
-            <h1>📅 ${bootcampTitle}</h1>
-            <p>Calendario de formación</p>
-            <div class="info-grid">
-                <div class="info-item">
-                    <span class="info-label">📅 Inicio</span>
-                    <span class="info-value">${formattedStartDate}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">🏁 Fin</span>
-                    <span class="info-value">${formattedEndDate}</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">⏱️ Duración</span>
-                    <span class="info-value">${calendar.totalWeeks} semanas</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">⚡ Intensidad</span>
-                    <span class="info-value"><span class="intensity-badge">${intensityOption.icon} ${intensityOption.name}</span></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">📖 Horas totales</span>
-                    <span class="info-value">${calendar.totalHours}h</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">📚 Horas/semana</span>
-                    <span class="info-value">${calendar.hoursPerWeek}h</span>
-                </div>
+    <div class="header-logo">
+        <img src="https://ai-learning-graph.vercel.app/logo.png" alt="HACK-TECH Logo" />
+    </div>
+    <div class="header-content">
+        <h1>📅 ${bootcampTitle}</h1>
+        <p>Calendario de formación</p>
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">📅 Inicio</span>
+                <span class="info-value">${formattedStartDate}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">🏁 Fin</span>
+                <span class="info-value">${formattedEndDate}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">⏱️ Duración</span>
+                <span class="info-value">${calendar.totalWeeks} semanas</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">⚡ Intensidad</span>
+                <span class="info-value"><span class="intensity-badge">${intensityOption.icon} ${intensityOption.name}</span></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">📖 Horas totales</span>
+                <span class="info-value">${calendar.totalHours}h</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">📚 Horas/semana</span>
+                <span class="info-value">${calendar.hoursPerWeek}h</span>
             </div>
         </div>
     </div>
+</div>
     
     <div style="padding: 24px;">
         ${weeks.map((week, idx) => `
