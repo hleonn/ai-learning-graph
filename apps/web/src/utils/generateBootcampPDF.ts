@@ -357,79 +357,149 @@ function generateBloomProgressChart(
 }
 
 // ========== CERTIFICATE PAGE ==========
-// ========== CERTIFICATE PAGE ==========
 function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: string, formattedEndDate: string): string {
     const sortedModules = [...bootcamp.modules].sort((a, b) => a.order - b.order)
     const n = sortedModules.length
 
-    // ---- dynamic radar --------------------------------------------------
-    const cx = 145, cy = 145, rMax = 110
+    // ── Radar palette: one distinct color per module axis, scales to N modules ──
+    const RADAR_COLORS = [
+        { stroke: '#2a7a3b', fill: '#2a7a3b' }, // green
+        { stroke: '#c0392b', fill: '#c0392b' }, // red
+        { stroke: '#1a3a8f', fill: '#1a3a8f' }, // blue
+        { stroke: '#b8860b', fill: '#b8860b' }, // amber
+        { stroke: '#6a1f8a', fill: '#6a1f8a' }, // purple
+        { stroke: '#0e6b8a', fill: '#0e6b8a' }, // teal
+        { stroke: '#b05030', fill: '#b05030' }, // coral
+    ]
 
-    // Generate angles for N axes (first axis at 12 o'clock)
+    // SVG canvas — extra margin for labels (340×340)
+    const cx = 170, cy = 170, rMax = 118
+
+    // N axes starting at 12 o'clock, evenly distributed
     const anglesDeg = Array.from({ length: n }, (_, i) => -90 + (360 / n) * i)
     const anglesRad = anglesDeg.map(d => d * Math.PI / 180)
 
-    // Grid rings
-    const gridLevels = [0.33, 0.66, 1.0]
+    // Grid rings (5 concentric, dashed inner, solid outer)
+    const gridLevels = [0.2, 0.4, 0.6, 0.8, 1.0]
     const gridPolygons = gridLevels.map(lvl => {
-        const pts = anglesRad.map(a => `${cx + rMax * lvl * Math.cos(a)},${cy + rMax * lvl * Math.sin(a)}`).join(' ')
-        return `<polygon points="${pts}" fill="none" stroke="#e0e0e0" stroke-width="1"/>`
+        const pts = anglesRad.map(a =>
+            `${(cx + rMax * lvl * Math.cos(a)).toFixed(2)},${(cy + rMax * lvl * Math.sin(a)).toFixed(2)}`
+        ).join(' ')
+        return `<polygon points="${pts}" fill="none" stroke="#cccccc" stroke-width="${lvl === 1.0 ? 1.4 : 0.8}" ${lvl < 1.0 ? 'stroke-dasharray="4,3"' : ''}/>`
     }).join('')
 
-    // Axis lines
-    const axisLines = anglesRad.map(a =>
-        `<line x1="${cx}" y1="${cy}" x2="${cx + rMax * Math.cos(a)}" y2="${cy + rMax * Math.sin(a)}" stroke="#e0e0e0" stroke-width="1"/>`
-    ).join('')
+    // Axis lines (thin dashed)
+    const axisLines = anglesRad.map(a => {
+        const x2 = (cx + rMax * Math.cos(a)).toFixed(2)
+        const y2 = (cy + rMax * Math.sin(a)).toFixed(2)
+        return `<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" stroke="#cccccc" stroke-width="0.8" stroke-dasharray="3,3"/>`
+    }).join('')
 
-    // Dynamic data values from module complexity
-    let dataValues = sortedModules.map(m => Math.min(m.complexity, 1.0))
-    // Ensure at least 4 data points for visual shape
-    while (dataValues.length < 4) dataValues.push(0.75 + Math.random() * 0.2)
+    // Data values from module complexity (clamped 0.3–1.0 for visual minimum)
+    const dataValues = sortedModules.map(m => Math.min(Math.max(m.complexity, 0.3), 1.0))
 
-    // Data polygon
-    const dataPoints = anglesRad.map((a, i) => {
+    // ── Sector polygons: each module owns one "pie slice" colored region ──
+    // Each sector goes: center → arc along data value from axis i to axis i+1
+    const sectorPolygons = anglesRad.map((a, i) => {
+        const nextIdx = (i + 1) % n
+        const nextA   = anglesRad[nextIdx]
+        const r       = rMax * dataValues[i]
+        const rNext   = rMax * dataValues[nextIdx]
+        const color   = RADAR_COLORS[i % RADAR_COLORS.length]
+
+        // Sweep arc from axis i to axis i+1 in small steps for smooth curve
+        const STEPS = 10
+        let arcPts = ''
+        for (let s = 0; s <= STEPS; s++) {
+            const t   = s / STEPS
+            // Angle interpolation — handle wrap-around correctly
+            let da = nextA - a
+            if (n > 2 && da > Math.PI)  da -= 2 * Math.PI
+            if (n > 2 && da < -Math.PI) da += 2 * Math.PI
+            const ang = a + t * da
+            const rr  = r + t * (rNext - r)
+            arcPts += `${(cx + rr * Math.cos(ang)).toFixed(2)},${(cy + rr * Math.sin(ang)).toFixed(2)} `
+        }
+
+        const pts = `${cx},${cy} ${arcPts}`
+        return `<polygon points="${pts}" fill="${color.fill}" fill-opacity="0.18" stroke="${color.stroke}" stroke-width="2" stroke-linejoin="round"/>`
+    }).join('')
+
+    // Thin black connecting outline on top of sectors
+    const outlinePoints = anglesRad.map((a, i) => {
         const r = rMax * dataValues[i]
-        return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`
+        return `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`
     }).join(' ')
 
-    // ================================================================
-    // Dynamic competency metadata — derived from module order + name
-    // ================================================================
-    const competencyLabels: string[] = []
-    const competencyScores: number[] = []
+    // Colored dots at each axis vertex
+    const dotsSVG = anglesRad.map((a, i) => {
+        const r     = rMax * dataValues[i]
+        const dx    = (cx + r * Math.cos(a)).toFixed(2)
+        const dy    = (cy + r * Math.sin(a)).toFixed(2)
+        const color = RADAR_COLORS[i % RADAR_COLORS.length]
+        return `<circle cx="${dx}" cy="${dy}" r="4.5" fill="white" stroke="${color.stroke}" stroke-width="2.2"/>`
+    }).join('')
 
-    for (let i = 0; i < n; i++) {
-        const mod = sortedModules[i]
-        // Generate a deterministic score based on module complexity
-        const score = Math.round(70 + mod.complexity * 30)
-        competencyScores.push(score)
+    // ── Dynamic axis labels — computed from module names, N-aware ──
+    const axisLabelsSVG = anglesRad.map((a, i) => {
+        const LABEL_R = rMax + 22
+        const lx = cx + LABEL_R * Math.cos(a)
+        const ly = cy + LABEL_R * Math.sin(a)
 
-        // Generate a short competency label from the module name
-        const words = mod.name.split(' ')
-        // Take first 2-3 meaningful words
-        const meaningful = words.filter(w => w.length > 3 && !['para', 'con', 'los', 'las', 'del', 'por'].includes(w.toLowerCase()))
-        const label = meaningful.slice(0, 2).join(' ').substring(0, 22) || `Módulo ${mod.order}`
-        competencyLabels.push(label)
-    }
+        // Text anchor based on horizontal position
+        let anchor = 'middle'
+        if (lx < cx - 8) anchor = 'end'
+        else if (lx > cx + 8) anchor = 'start'
 
+        // Short label from module name (first 2 significant words, max 18 chars)
+        const words = sortedModules[i].name.split(' ')
+        const sig   = words.filter(w => w.length > 3 && !['para','con','los','las','del','por','una','que'].includes(w.toLowerCase()))
+        const label = (sig.slice(0, 2).join(' ') || `M${sortedModules[i].order}`).substring(0, 18)
+        const color = RADAR_COLORS[i % RADAR_COLORS.length]
+
+        // Two-line if label > 10 chars
+        if (label.length > 10) {
+            const mid  = label.lastIndexOf(' ', 10)
+            const cut  = mid > 0 ? mid : 9
+            const l1   = label.substring(0, cut)
+            const l2   = label.substring(cut).trim()
+            const yOff = anchor === 'middle' ? (Math.sin(a) < 0 ? -8 : 4) : 0
+            return `<text text-anchor="${anchor}" font-family="DM Sans,sans-serif" font-size="9" font-weight="700" fill="${color.stroke}">
+                <tspan x="${lx.toFixed(2)}" y="${(ly + yOff).toFixed(2)}">${l1}</tspan>
+                <tspan x="${lx.toFixed(2)}" dy="11">${l2}</tspan>
+            </text>`
+        }
+        return `<text x="${lx.toFixed(2)}" y="${(ly + 4).toFixed(2)}" text-anchor="${anchor}" font-family="DM Sans,sans-serif" font-size="9" font-weight="700" fill="${color.stroke}">${label}</text>`
+    }).join('')
+
+    // ── Dynamic metric rows — derived from modules (not hardcoded) ──
+    const competencyLabels: string[] = sortedModules.map(mod => {
+        const words    = mod.name.split(' ')
+        const filtered = words.filter(w => w.length > 3 && !['para','con','los','las','del','por'].includes(w.toLowerCase()))
+        return (filtered.slice(0, 3).join(' ') || `Módulo ${mod.order}`).substring(0, 30)
+    })
+
+    const competencyScores: number[] = sortedModules.map(m => Math.round(70 + m.complexity * 30))
     const avgScore = Math.round(competencyScores.reduce((a, b) => a + b, 0) / competencyScores.length)
 
-    // ----------------------------------------------------------------
-    // Metric rows (dynamic)
-    // ----------------------------------------------------------------
-    const metricRows = sortedModules.slice(0, n).map((mod, i) => {
+    const metricRows = sortedModules.map((mod, i) => {
         const score = competencyScores[i]
         const level = score >= 90 ? 'Excelente' : score >= 85 ? 'Destacado' : 'Aprobado'
-        const pct = score
+        const color = RADAR_COLORS[i % RADAR_COLORS.length]
         return `
         <tr>
             <td style="padding:9px 12px 9px 0; border-bottom:1px solid #f0f0f0; vertical-align:middle;">
-                <div style="font-size:12px; font-weight:600; color:#1a1a1a;">M${mod.order} · ${mod.name}</div>
-                <div style="font-size:10px; color:#888; margin-top:1px;">${competencyLabels[i]}</div>
+                <div style="display:flex;align-items:center;gap:7px;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color.stroke};flex-shrink:0;"></span>
+                    <div>
+                        <div style="font-size:12px; font-weight:600; color:#1a1a1a;">M${mod.order} · ${mod.name}</div>
+                        <div style="font-size:10px; color:#888; margin-top:1px;">${competencyLabels[i]}</div>
+                    </div>
+                </div>
             </td>
             <td style="padding:9px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; width:120px;">
                 <div style="height:5px; background:#efefef; border-radius:3px; overflow:hidden;">
-                    <div style="width:${pct}%; height:100%; background:#1a1a1a; border-radius:3px;"></div>
+                    <div style="width:${score}%; height:100%; background:${color.stroke}; border-radius:3px;"></div>
                 </div>
             </td>
             <td style="padding:9px 0 9px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; text-align:right; white-space:nowrap;">
@@ -439,27 +509,15 @@ function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: str
         </tr>`
     }).join('')
 
-    // ----------------------------------------------------------------
-    // Radar axis labels (dynamic)
-    // ----------------------------------------------------------------
-    const axisLabels = anglesRad.map((a, i) => {
-        const labelR = rMax + 20
-        const x = cx + labelR * Math.cos(a)
-        const y = cy + labelR * Math.sin(a)
-        // Determine text-anchor based on position
-        let anchor = 'start'
-        if (Math.abs(x - cx) < 8) anchor = 'middle'
-        else if (x < cx) anchor = 'end'
-        else anchor = 'start'
-
-        return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-family="DM Sans,sans-serif" font-size="9" font-weight="600" fill="#666">${competencyLabels[i]}</text>`
-    }).join('')
-
-    // Data dots
-    const dotsSVG = anglesRad.map((a, i) => {
-        const r = rMax * dataValues[i]
-        return `<circle cx="${(cx + r * Math.cos(a)).toFixed(1)}" cy="${(cy + r * Math.sin(a)).toFixed(1)}" r="3" fill="#1a1a1a"/>`
-    }).join('')
+    // Alias for radar SVG inline use
+    const radarSVG = `
+        ${gridPolygons}
+        ${axisLines}
+        ${sectorPolygons}
+        <polygon points="${outlinePoints}" fill="none" stroke="#333333" stroke-width="1.2" stroke-linejoin="round" stroke-dasharray="3,2" opacity="0.5"/>
+        ${dotsSVG}
+        ${axisLabelsSVG}
+    `
 
     return `
     <!-- ═══════════ CERTIFICATE PAGE ═══════════ -->
@@ -517,17 +575,13 @@ function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: str
             <!-- Right: radar + level -->
             <div class="cert-radar-col">
                 <div class="cert-col-label">Radar de competencias</div>
-                <svg viewBox="0 0 290 290" width="100%" style="max-width:260px; display:block; margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
-                    ${gridPolygons}
-                    ${axisLines}
-                    <polygon points="${dataPoints}" fill="#1a1a1a" fill-opacity="0.08" stroke="#1a1a1a" stroke-width="2" stroke-linejoin="round"/>
-                    ${dotsSVG}
-                    ${axisLabels}
+                <svg viewBox="0 0 340 340" width="100%" style="max-width:280px; display:block; margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+                    ${radarSVG}
                 </svg>
 
                 <div class="cert-level-card">
                     <div class="cert-level-eyebrow">Nivel de certificación</div>
-                    <div class="cert-level-name">${bootcamp.title.includes('Análisis') ? 'Analista de datos competente' : 'Profesional certificado'}</div>
+                    <div class="cert-level-name">${bootcamp.title.toLowerCase().includes('análisis') || bootcamp.title.toLowerCase().includes('analisis') ? 'Analista de datos competente' : 'Profesional certificado'}</div>
                     <div class="cert-level-org">Avalado por AI Learning Graph</div>
                 </div>
             </div>
