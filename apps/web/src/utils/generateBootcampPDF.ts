@@ -398,8 +398,8 @@ function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: str
     // Data values from module complexity (clamped 0.3–1.0 for visual minimum)
     const dataValues = sortedModules.map(m => Math.min(Math.max(m.complexity, 0.3), 1.0))
 
-    // ── Sector polygons: each module owns one "pie slice" colored region ──
-    // Each sector goes: center → arc along data value from axis i to axis i+1
+    // ── Sector polygons: flat triangle center → tip_i → tip_(i+1) ──
+    // Matches reference image: each module = one flat colored triangle, no curves
     const sectorPolygons = anglesRad.map((a, i) => {
         const nextIdx = (i + 1) % n
         const nextA   = anglesRad[nextIdx]
@@ -407,22 +407,13 @@ function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: str
         const rNext   = rMax * dataValues[nextIdx]
         const color   = RADAR_COLORS[i % RADAR_COLORS.length]
 
-        // Sweep arc from axis i to axis i+1 in small steps for smooth curve
-        const STEPS = 10
-        let arcPts = ''
-        for (let s = 0; s <= STEPS; s++) {
-            const t   = s / STEPS
-            // Angle interpolation — handle wrap-around correctly
-            let da = nextA - a
-            if (n > 2 && da > Math.PI)  da -= 2 * Math.PI
-            if (n > 2 && da < -Math.PI) da += 2 * Math.PI
-            const ang = a + t * da
-            const rr  = r + t * (rNext - r)
-            arcPts += `${(cx + rr * Math.cos(ang)).toFixed(2)},${(cy + rr * Math.sin(ang)).toFixed(2)} `
-        }
+        const x1  = (cx + r     * Math.cos(a)).toFixed(2)
+        const y1  = (cy + r     * Math.sin(a)).toFixed(2)
+        const x2  = (cx + rNext * Math.cos(nextA)).toFixed(2)
+        const y2  = (cy + rNext * Math.sin(nextA)).toFixed(2)
+        const pts = `${cx},${cy} ${x1},${y1} ${x2},${y2}`
 
-        const pts = `${cx},${cy} ${arcPts}`
-        return `<polygon points="${pts}" fill="${color.fill}" fill-opacity="0.18" stroke="${color.stroke}" stroke-width="2" stroke-linejoin="round"/>`
+        return `<polygon points="${pts}" fill="${color.fill}" fill-opacity="0.20" stroke="${color.stroke}" stroke-width="2" stroke-linejoin="round"/>`
     }).join('')
 
     // Thin black connecting outline on top of sectors
