@@ -1131,9 +1131,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             padding: 40px 35px; 
             color: #1a1f36;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
+            align-items: flex-start;
             gap: 24px;
             border-bottom: 1px solid #e0e0e0;
         }
@@ -1231,25 +1229,25 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
 
 <div class="program">
     <div class="header">
-    <div class="header-logo">
-        <img src="https://ai-learning-graph.vercel.app/logo.png" alt="HACK-TECH Logo" />
-    </div>
-    <div class="header-content">
-        <h1>🚀 ${bootcamp.title}</h1>
-        <h2>Programa de formación intensiva en ${bootcamp.title}</h2>
-        <div class="badge-container">
-            <span class="badge">📅 ${bootcamp.duration_weeks} semanas</span>
-            <span class="badge">📚 ${bootcamp.modules.length} módulos</span>
-            <span class="badge">⏱️ ${totalHours} horas totales</span>
-            <span class="badge">📖 ${hoursPerWeek}h/semana</span>
-            <span class="badge">🎓 Bootcamp</span>
+        <div class="header-logo" style="align-self: flex-start;">
+            <img src="https://ai-learning-graph.vercel.app/logo.png" alt="Logo" />
         </div>
-        <div class="date-range">
-            <span class="date-badge">📅 Inicio: ${formattedStartDate}</span>
-            <span class="date-badge">🏁 Fin: ${formattedEndDate}</span>
+        <div class="header-content" style="text-align: left;">
+            <h1>🚀 ${bootcamp.title}</h1>
+            <h2>Programa de formación intensiva en ${bootcamp.title}</h2>
+            <div class="badge-container">
+                <span class="badge">📅 ${bootcamp.duration_weeks} semanas</span>
+                <span class="badge">📚 ${bootcamp.modules.length} módulos</span>
+                <span class="badge">⏱️ ${totalHours} horas totales</span>
+                <span class="badge">📖 ${hoursPerWeek}h/semana</span>
+                <span class="badge">🎓 Bootcamp</span>
+            </div>
+            <div class="date-range">
+                <span class="date-badge">📅 Inicio: ${formattedStartDate}</span>
+                <span class="date-badge">🏁 Fin: ${formattedEndDate}</span>
+            </div>
         </div>
     </div>
-</div>
 
     <div class="stats">
         <div class="stat"><div class="stat-number">${bootcamp.modules.length}</div><div class="stat-label">Módulos</div></div>
