@@ -1136,7 +1136,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             border-bottom: 1px solid #e0e0e0;
         }
         .header-logo {
-            width: 100px; height: 100px;
+            width: 120px; height: 120px;
             border-radius: 16px;
             background: white;
             padding: 8px;
