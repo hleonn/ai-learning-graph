@@ -357,54 +357,75 @@ function generateBloomProgressChart(
 }
 
 // ========== CERTIFICATE PAGE ==========
+// ========== CERTIFICATE PAGE ==========
 function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: string, formattedEndDate: string): string {
     const sortedModules = [...bootcamp.modules].sort((a, b) => a.order - b.order)
+    const n = sortedModules.length
 
-    // Radar hexagon points — 6 axes, data mapped from module complexity
+    // ---- dynamic radar --------------------------------------------------
     const cx = 145, cy = 145, rMax = 110
-    const angles = [-90, -30, 30, 90, 150, 210].map(d => d * Math.PI / 180)
 
+    // Generate angles for N axes (first axis at 12 o'clock)
+    const anglesDeg = Array.from({ length: n }, (_, i) => -90 + (360 / n) * i)
+    const anglesRad = anglesDeg.map(d => d * Math.PI / 180)
+
+    // Grid rings
     const gridLevels = [0.33, 0.66, 1.0]
     const gridPolygons = gridLevels.map(lvl => {
-        const pts = angles.map(a => `${cx + rMax * lvl * Math.cos(a)},${cy + rMax * lvl * Math.sin(a)}`).join(' ')
+        const pts = anglesRad.map(a => `${cx + rMax * lvl * Math.cos(a)},${cy + rMax * lvl * Math.sin(a)}`).join(' ')
         return `<polygon points="${pts}" fill="none" stroke="#e0e0e0" stroke-width="1"/>`
     }).join('')
 
-    const axisLines = angles.map(a =>
+    // Axis lines
+    const axisLines = anglesRad.map(a =>
         `<line x1="${cx}" y1="${cy}" x2="${cx + rMax * Math.cos(a)}" y2="${cy + rMax * Math.sin(a)}" stroke="#e0e0e0" stroke-width="1"/>`
     ).join('')
 
-    // Use complexity as proxy for each competency axis
-    const dataValues = sortedModules.slice(0, 6).map(m => Math.min(m.complexity, 1.0))
-    while (dataValues.length < 6) dataValues.push(0.8)
+    // Dynamic data values from module complexity
+    let dataValues = sortedModules.map(m => Math.min(m.complexity, 1.0))
+    // Ensure at least 4 data points for visual shape
+    while (dataValues.length < 4) dataValues.push(0.75 + Math.random() * 0.2)
 
-    const dataPoints = angles.map((a, i) => {
+    // Data polygon
+    const dataPoints = anglesRad.map((a, i) => {
         const r = rMax * dataValues[i]
         return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`
     }).join(' ')
 
-    // Metric rows
-    const competencies = [
-        'Dominio de fundamentos',
-        'Manejo y calidad de datos',
-        'Pensamiento analítico',
-        'Comunicación de resultados',
-        'Aplicación de ML',
-        'Resolución de problemas'
-    ]
-    const scores = [95, 90, 88, 85, 87, 90]
+    // ================================================================
+    // Dynamic competency metadata — derived from module order + name
+    // ================================================================
+    const competencyLabels: string[] = []
+    const competencyScores: number[] = []
 
-    const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+    for (let i = 0; i < n; i++) {
+        const mod = sortedModules[i]
+        // Generate a deterministic score based on module complexity
+        const score = Math.round(70 + mod.complexity * 30)
+        competencyScores.push(score)
 
-    const metricRows = sortedModules.slice(0, 6).map((mod, i) => {
-        const score = scores[i] ?? Math.round(70 + mod.complexity * 30)
+        // Generate a short competency label from the module name
+        const words = mod.name.split(' ')
+        // Take first 2-3 meaningful words
+        const meaningful = words.filter(w => w.length > 3 && !['para', 'con', 'los', 'las', 'del', 'por'].includes(w.toLowerCase()))
+        const label = meaningful.slice(0, 2).join(' ').substring(0, 22) || `Módulo ${mod.order}`
+        competencyLabels.push(label)
+    }
+
+    const avgScore = Math.round(competencyScores.reduce((a, b) => a + b, 0) / competencyScores.length)
+
+    // ----------------------------------------------------------------
+    // Metric rows (dynamic)
+    // ----------------------------------------------------------------
+    const metricRows = sortedModules.slice(0, n).map((mod, i) => {
+        const score = competencyScores[i]
         const level = score >= 90 ? 'Excelente' : score >= 85 ? 'Destacado' : 'Aprobado'
-        const pct   = score
+        const pct = score
         return `
         <tr>
             <td style="padding:9px 12px 9px 0; border-bottom:1px solid #f0f0f0; vertical-align:middle;">
                 <div style="font-size:12px; font-weight:600; color:#1a1a1a;">M${mod.order} · ${mod.name}</div>
-                <div style="font-size:10px; color:#888; margin-top:1px;">${competencies[i] ?? 'Competencia ' + (i+1)}</div>
+                <div style="font-size:10px; color:#888; margin-top:1px;">${competencyLabels[i]}</div>
             </td>
             <td style="padding:9px 8px; border-bottom:1px solid #f0f0f0; vertical-align:middle; width:120px;">
                 <div style="height:5px; background:#efefef; border-radius:3px; overflow:hidden;">
@@ -418,22 +439,26 @@ function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: str
         </tr>`
     }).join('')
 
-    // Radar axis labels
-    const axisLabels = [
-        { label: 'Fundamentos',  x: cx,       y: cy - rMax - 14 , anchor: 'middle' },
-        { label: 'Datos',        x: cx + rMax * Math.cos(-30*Math.PI/180) + 10, y: cy + rMax * Math.sin(-30*Math.PI/180) - 4, anchor: 'start'  },
-        { label: 'Analítico',    x: cx + rMax * Math.cos(30*Math.PI/180) + 10,  y: cy + rMax * Math.sin(30*Math.PI/180) + 4,  anchor: 'start'  },
-        { label: 'Resolución',   x: cx,       y: cy + rMax + 18,  anchor: 'middle' },
-        { label: 'ML',           x: cx + rMax * Math.cos(150*Math.PI/180) - 10, y: cy + rMax * Math.sin(150*Math.PI/180) + 4, anchor: 'end'    },
-        { label: 'Comunic.',     x: cx + rMax * Math.cos(210*Math.PI/180) - 10, y: cy + rMax * Math.sin(210*Math.PI/180) - 4, anchor: 'end'    },
-    ]
-    const labelsSVG = axisLabels.map(l =>
-        `<text x="${l.x.toFixed(1)}" y="${l.y.toFixed(1)}" text-anchor="${l.anchor}" font-family="DM Sans,sans-serif" font-size="9" font-weight="600" fill="#666">${l.label}</text>`
-    ).join('')
+    // ----------------------------------------------------------------
+    // Radar axis labels (dynamic)
+    // ----------------------------------------------------------------
+    const axisLabels = anglesRad.map((a, i) => {
+        const labelR = rMax + 20
+        const x = cx + labelR * Math.cos(a)
+        const y = cy + labelR * Math.sin(a)
+        // Determine text-anchor based on position
+        let anchor = 'start'
+        if (Math.abs(x - cx) < 8) anchor = 'middle'
+        else if (x < cx) anchor = 'end'
+        else anchor = 'start'
 
-    const dotsSVG = angles.map((a, i) => {
+        return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-family="DM Sans,sans-serif" font-size="9" font-weight="600" fill="#666">${competencyLabels[i]}</text>`
+    }).join('')
+
+    // Data dots
+    const dotsSVG = anglesRad.map((a, i) => {
         const r = rMax * dataValues[i]
-        return `<circle cx="${(cx + r * Math.cos(a)).toFixed(1)}" cy="${(cy + r * Math.sin(a)).toFixed(1)}" r="3.5" fill="#1a1a1a"/>`
+        return `<circle cx="${(cx + r * Math.cos(a)).toFixed(1)}" cy="${(cy + r * Math.sin(a)).toFixed(1)}" r="3" fill="#1a1a1a"/>`
     }).join('')
 
     return `
@@ -497,12 +522,12 @@ function generateCertificatePage(bootcamp: BootcampData, formattedStartDate: str
                     ${axisLines}
                     <polygon points="${dataPoints}" fill="#1a1a1a" fill-opacity="0.08" stroke="#1a1a1a" stroke-width="2" stroke-linejoin="round"/>
                     ${dotsSVG}
-                    ${labelsSVG}
+                    ${axisLabels}
                 </svg>
 
                 <div class="cert-level-card">
                     <div class="cert-level-eyebrow">Nivel de certificación</div>
-                    <div class="cert-level-name">Analista de datos competente</div>
+                    <div class="cert-level-name">${bootcamp.title.includes('Análisis') ? 'Analista de datos competente' : 'Profesional certificado'}</div>
                     <div class="cert-level-org">Avalado por AI Learning Graph</div>
                 </div>
             </div>
