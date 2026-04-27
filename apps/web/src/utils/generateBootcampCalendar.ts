@@ -248,13 +248,13 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
         }
         
         .header-logo {
-            width: 90px;
-            height: 90px;
+            width: 120px;
+            height: 120px;
             border-radius: 14px;
             background: white;
             padding: 6px;
             flex-shrink: 0;
-            border: 1px solid #e0e0e0;
+            /*border: 1px solid #e0e0e0;*/
         }
         
         .header-logo img {
