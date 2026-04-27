@@ -1131,7 +1131,7 @@ function generateBootcampHTML(bootcamp: BootcampData): string {
             padding: 40px 35px; 
             color: #1a1f36;
             display: flex;
-            align-items: flex-start;
+            align-items: center;
             gap: 24px;
             border-bottom: 1px solid #e0e0e0;
         }

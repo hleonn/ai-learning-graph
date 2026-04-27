@@ -242,7 +242,7 @@ export function generateCalendarHTML(calendar: CalendarData, bootcampTitle: stri
             padding: 30px 35px;
             color: #1a1f36;
             display: flex;
-            align-items: flex-start;
+            align-items: center;
             gap: 24px;
             border-bottom: 1px solid #e0e0e0;
         }
